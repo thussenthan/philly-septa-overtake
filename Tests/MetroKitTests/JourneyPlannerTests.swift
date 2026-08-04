@@ -236,6 +236,71 @@ final class JourneyPlannerTests: XCTestCase {
         }
     }
 
+    // MARK: - Step-free routing
+
+    /// C has no elevator in the fixture, and C is where the overtake happens. With
+    /// step-free routing on, that change has to disappear — not merely be ranked
+    /// lower.
+    func testStepFreeRoutingRefusesToChangeAtAnInaccessibleStation() throws {
+        let plan = Fixture.planner { $0.requiresStepFreeAccess = true }.plan(PlanRequest(
+            origin: .station("b"),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 0)
+        ))
+
+        for journey in plan.journeys {
+            XCTAssertNotEqual(
+                journey.overtakeWait?.stationID, "c",
+                "changed trains at a station with no elevator: \(journey.trace)"
+            )
+            for ride in journey.rides.dropFirst() {
+                XCTAssertNotEqual(ride.boardStation, "c", journey.trace)
+            }
+        }
+        // The plain local should still be there.
+        XCTAssertTrue(plan.journeys.contains { $0.rides.count == 1 }, "\(plan.journeys.map(\.trace))")
+    }
+
+    /// Without the restriction, that same trip *does* change at C — otherwise the
+    /// test above proves nothing.
+    func testTheOvertakeAtCIsAvailableWithoutTheRestriction() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .station("b"),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 0)
+        ))
+        XCTAssertEqual(try XCTUnwrap(plan.best).overtakeWait?.stationID, "c")
+    }
+
+    /// Walking to an inaccessible station is refused too, not just changing there.
+    func testStepFreeRoutingSkipsInaccessibleStationsAtBothEnds() {
+        let plan = Fixture.planner { $0.requiresStepFreeAccess = true }.plan(PlanRequest(
+            origin: .place(name: "Near C", coordinate: Fixture.coordinate(of: "c", offsetMeters: 40)),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 0)
+        ))
+        for journey in plan.journeys where !journey.isWalkOnly {
+            XCTAssertNotEqual(journey.boardStation, "c", journey.trace)
+        }
+    }
+
+    /// A rider given a worse answer should be told the restriction caused it.
+    func testStepFreeRoutingSaysWhenItCostsTime() {
+        let plan = Fixture.planner { $0.requiresStepFreeAccess = true }.plan(PlanRequest(
+            origin: .station("b"),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 0)
+        ))
+        let explained = plan.notes.contains { note in
+            if case .stepFreeCostsTime = note { return true }
+            if case .noStepFreeRouteFound = note { return true }
+            return false
+        }
+        // Losing the overtake costs two minutes here, which is the threshold.
+        XCTAssertTrue(explained || plan.journeys.allSatisfy { $0.overtake == nil },
+                      "notes were \(plan.notes)")
+    }
+
     // MARK: - Feasibility
 
     /// A plan the rider cannot physically reach in time must not be shown.

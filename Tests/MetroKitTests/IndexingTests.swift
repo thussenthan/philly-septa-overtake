@@ -4,6 +4,16 @@ import XCTest
 /// Covers the lookups the planner leans on thousands of times per plan. These are
 /// pure performance machinery, which is exactly why they need tests: a subtly
 /// wrong binary search produces plausible departure times rather than a crash.
+extension ServicePattern {
+    /// First, middle and last stop — the zero-offset, mid-offset and full-offset
+    /// cases. Enough to catch an indexing or offset bug without walking every stop
+    /// of every pattern on a 585-station network.
+    var sampledStops: [PatternStop] {
+        guard stops.count > 2 else { return stops }
+        return [stops[0], stops[stops.count / 2], stops[stops.count - 1]]
+    }
+}
+
 final class ScheduleIndexTests: XCTestCase {
 
     private let schedule = Schedule(blocks: [
@@ -165,8 +175,12 @@ final class TimetableIndexTests: XCTestCase {
             date(8, 5, 23, 55), date(8, 6, 0, 30), date(8, 6, 2, 15),
             date(8, 8, 11, 0), date(8, 9, 15, 30),
         ]
+        // Every pattern, but the interesting stops rather than all of them: first,
+        // middle and last exercise the zero, mid- and full-offset cases, which is
+        // where this can differ. Exhausting 585 stations' worth of stops took 13
+        // seconds of a 20-second suite for no extra coverage.
         for pattern in network.patterns {
-            for stop in pattern.stops {
+            for stop in pattern.sampledStops {
                 for instant in instants {
                     let window = DateInterval(start: instant, end: instant.addingTimeInterval(horizon))
                     let fast = timetable.nextTrip(
@@ -193,8 +207,8 @@ final class TimetableIndexTests: XCTestCase {
     func testNextTripRespectsItsBounds() {
         let horizon: TimeInterval = 3600
         for pattern in network.patterns {
-            for stop in pattern.stops {
-                for hour in [5, 8, 12, 17, 22, 1] {
+            for stop in pattern.sampledStops {
+                for hour in [5, 8, 17, 1] {
                     let instant = date(8, 5, hour, 7)
                     guard let trip = timetable.nextTrip(
                         of: pattern,

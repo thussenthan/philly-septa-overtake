@@ -32,6 +32,12 @@ public struct PlannerOptions: Sendable {
     /// Options arriving more than this much later than the best are dropped:
     /// nobody wants a fifth-best option that loses twenty minutes.
     public var arrivalTolerance: TimeInterval = 12 * 60
+    /// Use only stations with elevator access, including for changes of train.
+    ///
+    /// This genuinely changes answers on this network rather than just trimming
+    /// them: Erie and Fairmount have no elevator, so the commute the app was built
+    /// around has an entirely different shape step-free.
+    public var requiresStepFreeAccess: Bool = false
     public var walking = WalkingModel()
 
     public init() {}
@@ -69,6 +75,10 @@ public enum PlanNote: Sendable, Hashable {
     case scheduleOutOfDate(feedEndDate: String)
     /// Trains have stopped for the night; a replacement bus is running.
     case nightServiceOnly
+    /// Step-free routing is on, and it is the reason there is nothing to show.
+    case noStepFreeRouteFound
+    /// Step-free routing is on and cost the rider time.
+    case stepFreeCostsTime(extra: TimeInterval)
     /// No station was close enough to walk to.
     case originTooFarFromLine(nearest: StationID, meters: Double)
     case destinationTooFarFromLine(nearest: StationID, meters: Double)
@@ -166,6 +176,10 @@ public struct JourneyPlanner: Sendable {
 
         notes.append(contentsOf: serviceNotes(request: request, journeys: ranked, access: access))
 
+        if options.requiresStepFreeAccess {
+            notes.append(contentsOf: stepFreeNotes(request: request, ranked: ranked))
+        }
+
         if ranked.isEmpty {
             notes.append(.noServiceFound)
         }
@@ -194,6 +208,8 @@ public struct JourneyPlanner: Sendable {
         switch endpoint {
         case .station(let id):
             guard let station = network.station(id) else { return [] }
+            // An explicitly chosen station is honoured even without step-free
+            // access — the rider is standing in it.
             // Already inside the station: no walk, but still a moment to reach
             // the platform when boarding.
             let seconds: TimeInterval = role == .access ? options.walking.stationEntrySeconds * 0.5 : 0
@@ -207,6 +223,10 @@ public struct JourneyPlanner: Sendable {
 
             var legs: [TerminalLeg] = []
             for candidate in nearby {
+                // A station with unknown accessibility is excluded under step-free
+                // routing: promising an elevator that may not exist is worse than
+                // omitting the station.
+                if options.requiresStepFreeAccess, candidate.station.isAccessible != true { continue }
                 let key: WalkTimeOverrides.Kind = role == .access
                     ? .access(candidate.station.id)
                     : .egress(candidate.station.id)
@@ -402,7 +422,9 @@ public struct JourneyPlanner: Sendable {
                 // is later than the one you are on, so getting off can only lose
                 // time — and skipping those stops removes most of the search space
                 // on a network the size of the full Metro map.
-                if rides.count <= options.maxTransfers, network.isInterchange(stop.station) {
+                let changeIsAllowed = !options.requiresStepFreeAccess
+                    || network.station(stop.station)?.isAccessible == true
+                if rides.count <= options.maxTransfers, network.isInterchange(stop.station), changeIsAllowed {
                     explore(
                         from: stop.station,
                         readyAt: arrival.addingTimeInterval(options.minTransferSeconds),
@@ -503,6 +525,32 @@ public struct JourneyPlanner: Sendable {
             arrivalTime: arrival,
             urgency: Urgency(leaveBy: leaveBy, boardingDeparture: first.departure, slack: slack)
         )
+    }
+
+    /// What restricting to step-free stations cost.
+    ///
+    /// A rider who gets a worse answer deserves to know the restriction caused it,
+    /// so they can decide whether to relax it — rather than silently receiving a
+    /// slower trip. Costs one extra unrestricted search, which is cheap and only
+    /// happens when the setting is on.
+    private func stepFreeNotes(request: PlanRequest, ranked: [Journey]) -> [PlanNote] {
+        var unrestricted = options
+        unrestricted.requiresStepFreeAccess = false
+        let open = JourneyPlanner(network: network, calendar: timetable.calendar, options: unrestricted)
+
+        let openBest = open.enumerateJourneys(
+            request: request,
+            access: open.terminalLegs(for: request.origin, role: .access, overrides: request.walkOverrides),
+            egress: open.terminalLegs(for: request.destination, role: .egress, overrides: request.walkOverrides)
+        ).map(\.arrivalTime).min()
+
+        guard let openBest else { return [] }
+
+        let stepFreeArrivals = ranked.filter { !$0.isWalkOnly }.map(\.arrivalTime)
+        guard let stepFreeBest = stepFreeArrivals.min() else { return [.noStepFreeRouteFound] }
+
+        let extra = stepFreeBest.timeIntervalSince(openBest)
+        return extra >= 120 ? [.stepFreeCostsTime(extra: extra)] : []
     }
 
     /// The best option still available to a rider who misses this one's first train.

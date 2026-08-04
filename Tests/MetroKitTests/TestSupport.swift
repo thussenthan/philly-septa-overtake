@@ -25,7 +25,9 @@ enum Fixture {
                 // ~0.0036° of latitude is ~400 m.
                 coordinate: Coordinate(latitude: 40.0 - Double(index) * 0.0036, longitude: -75.16),
                 lines: [lineID],
-                isAccessible: true
+                // C has no elevator, so step-free routing must avoid changing there
+                // — which is exactly where the overtake happens.
+                isAccessible: name != "c"
             )
         }
     }()

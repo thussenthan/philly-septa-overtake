@@ -38,6 +38,8 @@ struct RiderPreferences: Codable, Equatable {
     var useMeasuredWalkTimes: Bool = true
     /// Whether to consider itineraries with a change of train.
     var allowTransfers: Bool = true
+    /// Route only via stations with elevator access.
+    var stepFreeOnly: Bool = false
 
     /// Stored as an optional so preferences saved before this setting existed still
     /// decode — otherwise adding a key would silently reset every other setting.
@@ -56,6 +58,7 @@ struct RiderPreferences: Codable, Equatable {
         options.maxWalkSeconds = maxWalkMinutes * 60
         options.boardingBufferSeconds = boardingBufferSeconds
         options.maxTransfers = allowTransfers ? 2 : 0
+        options.requiresStepFreeAccess = stepFreeOnly
         return options
     }
 }
@@ -465,6 +468,10 @@ final class CommuteModel: ObservableObject {
                 return "You're \(Format.distance(meters: meters)) from the nearest station (\(network.station(station)?.name ?? station.rawValue)) — too far to walk within your limit."
             case .destinationTooFarFromLine(let station, let meters):
                 return "Your destination is \(Format.distance(meters: meters)) from \(network.station(station)?.name ?? station.rawValue) — too far to walk within your limit."
+            case .noStepFreeRouteFound:
+                return "No step-free route found. The stations near you don't all have elevators — turn off step-free routing in Settings to see the rest."
+            case .stepFreeCostsTime(let extra):
+                return "Step-free routing is costing you \(Format.minutes(extra)) here, because a closer station has no elevator."
             case .noServiceFound:
                 return "No trips found in the next hour and a half."
             }

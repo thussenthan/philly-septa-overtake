@@ -124,6 +124,7 @@ struct SettingsView: View {
     private var routingSection: some View {
         Section {
             Toggle("Suggest changing trains", isOn: $model.preferences.allowTransfers)
+            Toggle("Step-free routes only", isOn: $model.preferences.stepFreeOnly)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Safety margin before boarding")
@@ -137,7 +138,7 @@ struct SettingsView: View {
         } header: {
             Text("Routing")
         } footer: {
-            Text("Turning off train changes hides the local-then-express trick, which is often the fastest way out of a station the express skips.")
+            Text("Turning off train changes hides the local-then-express trick, which is often the fastest way out of a station the express skips.\n\nStep-free routing uses only stations SEPTA lists as having elevators, for changes as well as for the two ends. On the Broad Street Line that rules out Erie and Fairmount, so it can change the answer rather than just narrow it — the app says when it costs you time.")
         }
     }
 
