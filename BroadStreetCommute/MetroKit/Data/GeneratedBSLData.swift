@@ -262,6 +262,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1-southbound-fern-rock-nrg-22",
             lineID: "B",
+            routeID: "B1",
             kind: .local,
             direction: .southbound,
             headsign: "NRG",
@@ -299,6 +300,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1-southbound-fern-rock-nrg-9",
             lineID: "B",
+            routeID: "B1",
             kind: .local,
             direction: .southbound,
             headsign: "NRG",
@@ -323,6 +325,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1-northbound-nrg-fern-rock-22",
             lineID: "B",
+            routeID: "B1",
             kind: .local,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -360,6 +363,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1-northbound-nrg-fern-rock-16",
             lineID: "B",
+            routeID: "B1",
             kind: .local,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -391,6 +395,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1-northbound-nrg-fern-rock-22-v2",
             lineID: "B",
+            routeID: "B1",
             kind: .local,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -428,6 +433,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "NRG Station",
@@ -465,6 +471,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22-v2",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "NRG Station",
@@ -502,6 +509,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22-v3",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "NRG Station",
@@ -539,6 +547,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22-v4",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "NRG Station",
@@ -576,6 +585,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-city-hall-nrg-8",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "NRG Station",
@@ -599,6 +609,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-southbound-erie-city-hall-10",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .southbound,
             headsign: "City Hall Station",
@@ -622,6 +633,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-northbound-nrg-fern-rock-22",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -659,6 +671,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-northbound-city-hall-fern-rock-15",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -689,6 +702,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-northbound-nrg-fern-rock-22-v2",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -726,6 +740,7 @@ public enum BSLData {
         ServicePattern(
             id: "B1_OWL-northbound-oregon-fern-rock-21",
             lineID: "B-OWL",
+            routeID: "B1_OWL",
             kind: .nightBus,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -760,6 +775,7 @@ public enum BSLData {
         ServicePattern(
             id: "B2-southbound-fern-rock-walnut-locust-8",
             lineID: "B",
+            routeID: "B2",
             kind: .express,
             direction: .southbound,
             headsign: "Walnut-Locust",
@@ -781,6 +797,7 @@ public enum BSLData {
         ServicePattern(
             id: "B2-northbound-walnut-locust-fern-rock-8",
             lineID: "B",
+            routeID: "B2",
             kind: .express,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",
@@ -802,6 +819,7 @@ public enum BSLData {
         ServicePattern(
             id: "B3-southbound-olney-8th-and-market-7",
             lineID: "B",
+            routeID: "B3",
             kind: .spur,
             direction: .southbound,
             headsign: "8th-Market",
@@ -822,6 +840,7 @@ public enum BSLData {
         ServicePattern(
             id: "B3-southbound-fern-rock-8th-and-market-8",
             lineID: "B",
+            routeID: "B3",
             kind: .spur,
             direction: .southbound,
             headsign: "8th-Market",
@@ -844,6 +863,7 @@ public enum BSLData {
         ServicePattern(
             id: "B3-northbound-8th-and-market-olney-7",
             lineID: "B",
+            routeID: "B3",
             kind: .spur,
             direction: .northbound,
             headsign: "Olney Transit Center",
@@ -864,6 +884,7 @@ public enum BSLData {
         ServicePattern(
             id: "B3-northbound-8th-and-market-fern-rock-8",
             lineID: "B",
+            routeID: "B3",
             kind: .spur,
             direction: .northbound,
             headsign: "Fern Rock Transit Center",

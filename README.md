@@ -156,7 +156,9 @@ at all — which is precisely why the rider is on the local.
    platform before the train leaves. `leaveBy` — the number the countdown shows — is
    the boarding time minus the walk minus the safety margin.
 4. **Collapse.** Riding the same two trains between the same two places is one
-   option, not one per station where the change happens to be possible.
+   option, not one per station where the change happens to be possible. Changes are
+   only considered at stations served by more than one route; anywhere else, every
+   train goes the same way and getting off can only lose time.
 5. **Pareto filter** on arrival time, number of changes, walking time, and how late
    you can leave. An option is hidden only when another is at least as good on all
    four. That fourth axis is why a slower train sometimes still appears — it may let
@@ -228,26 +230,40 @@ Verified end to end: Temple → 40th St changes onto the L at City Hall, Erie �
 finds three routings, and Penn Med → Erie comes in on a trolley and changes to the
 Broad St express.
 
-**It is not switched on yet, because it is too slow.** Measured in the Python
-cross-check harness (so treat the absolute numbers as a shape, not a benchmark):
+It is not the default yet, but it is now fast enough to be. The search leaned on
+two linear scans, both inside the innermost loop:
 
-| Query | Broad only | Whole Metro |
+- `Schedule.startTimes(on:)` expanded every `.frequency` band into a freshly
+  allocated, freshly sorted array **on every lookup** — thousands of times per
+  plan. Schedules now resolve once at init and departures are found by binary
+  search.
+- `ServicePattern.stopIndex(of:)` walked up to 62 stops. It is a dictionary built
+  at init.
+
+Service days are resolved once per plan rather than per lookup (`Calendar`
+arithmetic is far too slow for that loop), and changes of train are only considered
+at the 69 stations served by more than one route — at a mid-line stop every train
+goes the same way and the next one is later than the one you are on, so getting off
+can only lose time. Measured in the cross-check harness (Python, so read these as
+ratios rather than absolutes):
+
+| Query | Before | After |
 |---|---|---|
-| Erie → near Fairmount | 30 ms | 2,300 ms |
-| Erie → 69th St | — | 3,500 ms |
-| Penn Med → Erie | — | 41,000 ms |
+| Erie → near Fairmount | 2,300 ms | 233 ms |
+| Erie → 69th St | 3,500 ms | 285 ms |
+| Erie → 34th & Spruce | 4,400 ms | 366 ms |
+| Penn Med → Erie | 41,000 ms | 4,400 ms |
+| Temple → 40th St | 1,400 ms | 92 ms |
 
-Two things stand between that and shipping:
+Every routing stayed identical. The binary search was checked against the linear
+scan over 12,000 random (pattern, station, instant) samples on both scopes — that
+turned up a real trap: **loop routes visit the same station twice** (28 such stops
+on the Metro map), so the index has to resolve to the *first* visit or every
+departure computed for those stations is wrong by the length of the loop. There is
+a test for it.
 
-1. **The timetable lookup is a linear scan.** `Timetable.nextTrip` walks every
-   departure of a pattern across three service days, and the search calls it once
-   per pattern per station per round. Precomputing sorted per-station departure
-   arrays and binary-searching them fixes the dominant cost. Restricting changes to
-   the 69 stations served by more than one route helps too, but only bought about
-   40% on its own — the scan is the real problem.
-2. **`CommuteModel.replan()` is synchronous and on the main actor.** Fine at
-   Broad St's microseconds; a visible hitch every 30 seconds at anything slower.
-   Planning needs to move off the main actor regardless.
+Planning also now runs off the main actor, with a newer request superseding an
+in-flight one, so a slow plan can't stutter the UI or land stale after a fresh one.
 
 Two caveats specific to the wider scope, both visible in `--report`:
 
@@ -259,6 +275,10 @@ Two caveats specific to the wider scope, both visible in `--report`:
   different names and do *not* merge, so that interchange is currently missing.
   Proximity-based transfer footpaths would close it; the major interchanges don't
   need them.
+
+Titles also still read in Broad St terms — an L1 trip is described as "Local,
+straight through" rather than by its line — so the narrator wants a pass before
+this becomes the default.
 
 Buses (131 routes) and Regional Rail (a separate feed) are out of scope. Buses in
 particular would need a different search strategy, not just a faster one.

@@ -23,6 +23,20 @@ public struct LineID: Hashable, Codable, Sendable, ExpressibleByStringLiteral, C
     public var description: String { rawValue }
 }
 
+/// The operator's own service identifier — `B1`, `B2`, `L1`, `T3`.
+///
+/// Distinct from `LineID`, which is the letter on the map. The Broad Street Line
+/// is one line carrying three routes, and the difference matters: a rider can
+/// change from a B1 to a B2 at Olney, but changing from one B1 to another is
+/// never useful. The planner uses route identity to decide where a change of
+/// train is even possible.
+public struct RouteID: Hashable, Codable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+    public let rawValue: String
+    public init(_ rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+    public var description: String { rawValue }
+}
+
 public struct PatternID: Hashable, Codable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
     public let rawValue: String
     public init(_ rawValue: String) { self.rawValue = rawValue }

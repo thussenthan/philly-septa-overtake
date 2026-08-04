@@ -13,8 +13,15 @@ public struct Network: Sendable {
 
     private let stationsByID: [StationID: Station]
     private let patternsByID: [PatternID: ServicePattern]
-    private let patternsByStation: [StationID: [PatternID]]
+    private let patternsByStation: [StationID: [ServicePattern]]
     private let linesByID: [LineID: Line]
+    /// How many distinct operator routes call at each station.
+    ///
+    /// This is what tells the planner where changing trains is even conceivable.
+    /// On the full Metro map only 69 of 590 stations are served by more than one
+    /// route; the rest are mid-line stops where a change can never help, and
+    /// skipping them removes most of the search.
+    private let routeCountByStation: [StationID: Int]
 
     public init(
         lines: [Line],
@@ -31,21 +38,40 @@ public struct Network: Sendable {
         self.patternsByID = Dictionary(patterns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.linesByID = Dictionary(lines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        var index: [StationID: [PatternID]] = [:]
+        var index: [StationID: [ServicePattern]] = [:]
+        var routes: [StationID: Set<RouteID>] = [:]
         for pattern in patterns {
             for stop in pattern.stops {
-                index[stop.station, default: []].append(pattern.id)
+                index[stop.station, default: []].append(pattern)
+                routes[stop.station, default: []].insert(pattern.routeID)
             }
         }
         self.patternsByStation = index
+        self.routeCountByStation = routes.mapValues(\.count)
     }
 
     public func station(_ id: StationID) -> Station? { stationsByID[id] }
     public func pattern(_ id: PatternID) -> ServicePattern? { patternsByID[id] }
     public func line(_ id: LineID) -> Line? { linesByID[id] }
 
+    /// Patterns calling at a station. Pre-resolved, so this is a dictionary hit
+    /// rather than a lookup per pattern.
     public func patterns(serving station: StationID) -> [ServicePattern] {
-        (patternsByStation[station] ?? []).compactMap { patternsByID[$0] }
+        patternsByStation[station] ?? []
+    }
+
+    /// Number of distinct operator routes calling at a station.
+    public func routeCount(at station: StationID) -> Int {
+        routeCountByStation[station] ?? 0
+    }
+
+    /// Whether changing trains here could possibly achieve anything.
+    ///
+    /// One route means every train through here goes the same way, and the next
+    /// one is by definition later than the one you are on — so getting off can
+    /// only ever lose time.
+    public func isInterchange(_ station: StationID) -> Bool {
+        routeCount(at: station) > 1
     }
 
     /// Stations within `radius` meters of `coordinate`, nearest first.

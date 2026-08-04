@@ -93,7 +93,55 @@ public struct Timetable: Sendable {
         within searchHorizon: TimeInterval = 4 * 3600
     ) -> Trip? {
         let window = DateInterval(start: time, end: time.addingTimeInterval(searchHorizon))
-        return trips(of: pattern, departingFrom: station, in: window).first
+        return nextTrip(
+            of: pattern,
+            departingFrom: station,
+            atOrAfter: time,
+            within: searchHorizon,
+            serviceDays: calendar.serviceDays(overlapping: window)
+        )
+    }
+
+    /// The hot path, taking pre-resolved service days.
+    ///
+    /// Resolving service days means `Calendar` arithmetic, which is far too slow
+    /// to repeat inside the planner's innermost loop — the caller works them out
+    /// once per plan and passes them in. Departures are then found by binary
+    /// search rather than by walking the day's timetable.
+    public func nextTrip(
+        of pattern: ServicePattern,
+        departingFrom station: StationID,
+        atOrAfter time: Date,
+        within searchHorizon: TimeInterval,
+        serviceDays: [ServiceDay]
+    ) -> Trip? {
+        guard let index = pattern.stopIndex(of: station) else { return nil }
+        let offset = pattern.stops[index].departureOffset
+        let limit = time.addingTimeInterval(searchHorizon)
+
+        var best: Trip?
+        var bestDeparture = Date.distantFuture
+
+        for day in serviceDays {
+            // Earliest schedule value that could still be caught, allowing for how
+            // far into the trip this station is.
+            let threshold = time.timeIntervalSince(day.start) - offset
+            guard let position = pattern.schedule.firstStartIndex(on: day.dayType, atOrAfter: threshold) else {
+                continue
+            }
+            let seconds = pattern.schedule.startTimes(on: day.dayType)[position]
+            let start = day.date(secondsAfterMidnight: seconds)
+            let departure = start.addingTimeInterval(offset)
+            guard departure <= limit, departure < bestDeparture else { continue }
+            bestDeparture = departure
+            best = Trip(
+                patternID: pattern.id,
+                startTime: start,
+                scheduledStartSecondsAfterMidnight: seconds,
+                dayType: day.dayType
+            )
+        }
+        return best
     }
 
     /// The next `count` trips of `pattern` from `station` — used to show

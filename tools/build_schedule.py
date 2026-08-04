@@ -566,6 +566,16 @@ def swift_bool(value: bool | None) -> str:
     return "true" if value else "false"
 
 
+# SEPTA Metro map letters. A line can carry several routes: the Broad Street Line
+# is one orange "B" on the map but three routes in the feed, and it is the route
+# identity the planner needs to know where a change of train is possible.
+def line_id_for(route_id: str) -> str:
+    if route_id in NIGHT_ROUTES:
+        return "B-OWL"
+    letter = route_id.rstrip("0123456789")
+    return letter if letter else route_id
+
+
 def pattern_kind(route_id: str) -> str:
     if route_id in NIGHT_ROUTES:
         return "nightBus"
@@ -666,22 +676,53 @@ def emit_swift(data: dict) -> str:
     add("")
 
     # Lines
+    # One Line per map letter, coloured and named from the feed itself.
+    line_rows: dict[str, dict] = {}
+    for route_id in data["route_ids"]:
+        line_id = line_id_for(route_id)
+        route = data["routes"][route_id]
+        existing = line_rows.get(line_id)
+        name = route["route_long_name"] or route["route_short_name"]
+        if route_id in NIGHT_ROUTES:
+            name = "Broad Street Owl Bus"
+        elif line_id == "B":
+            name = "Broad Street Line"
+        elif line_id == "L":
+            name = "Market-Frankford Line"
+        elif line_id == "M":
+            name = "Norristown High Speed Line"
+        elif line_id == "T":
+            name = "Subway-Surface Trolleys"
+        elif line_id == "G":
+            name = "Girard Ave Trolley"
+        elif line_id == "D":
+            name = "Media-Sharon Hill Trolleys"
+        # Keep the first route's colour; SEPTA colours agree within a line.
+        if existing is None:
+            line_rows[line_id] = {
+                "id": line_id,
+                "badge": line_id.split("-")[0],
+                "name": name,
+                "color": route["route_color"] or "666666",
+            }
+
     add("    public static let lines: [Line] = [")
-    add('        Line(id: "B", badge: "B", name: "Broad Street Line", colorHex: "F26100"),')
-    add('        Line(id: "B-OWL", badge: "B", name: "Broad Street Owl Bus", colorHex: "F26100"),')
+    for line in line_rows.values():
+        add(f'        Line(id: "{line["id"]}", badge: {swift_string(line["badge"])}, '
+            f'name: {swift_string(line["name"])}, colorHex: {swift_string(line["color"])}),')
     add("    ]")
     add("")
 
     # Which lines serve each station.
     station_lines: dict[str, set[str]] = defaultdict(set)
     for pattern in patterns:
-        line_id = "B-OWL" if pattern.key.route_id in NIGHT_ROUTES else "B"
+        line_id = line_id_for(pattern.key.route_id)
         for station_id in pattern.key.stops:
             station_lines[station_id].add(line_id)
 
     add("    public static let stations: [Station] = [")
     for station in stations.values():
-        line_list = ", ".join(f'"{l}"' for l in sorted(station_lines.get(station["id"], {"B"})))
+        line_list = ", ".join(f'"{l}"' for l in sorted(station_lines.get(station["id"], set())))
         add("        Station(")
         add(f'            id: "{station["id"]}",')
         add(f"            name: {swift_string(station['name'])},")
@@ -701,7 +742,7 @@ def emit_swift(data: dict) -> str:
         station_ids = list(pattern.key.stops)
         direction = "southbound" if pattern.key.direction_id == "0" else "northbound"
         kind = pattern_kind(route_id)
-        line_id = "B-OWL" if route_id in NIGHT_ROUTES else "B"
+        line_id = line_id_for(route_id)
 
         base = f"{route_id}-{direction}-{station_ids[0]}-{station_ids[-1]}-{len(station_ids)}"
         pattern_id = base
@@ -722,6 +763,7 @@ def emit_swift(data: dict) -> str:
         add("        ServicePattern(")
         add(f"            id: {swift_string(pattern_id)},")
         add(f'            lineID: "{line_id}",')
+        add(f'            routeID: "{route_id}",')
         add(f"            kind: .{kind},")
         add(f"            direction: .{direction},")
         add(f"            headsign: {swift_string(headsign)},")

@@ -60,19 +60,32 @@ public struct PatternStop: Hashable, Sendable {
 /// A `ServicePattern` is a template. Combined with a trip start time it becomes
 /// a concrete `Trip` with real clock times at every stop.
 public struct ServicePattern: Identifiable, Sendable {
-    public var id: PatternID
-    public var lineID: LineID
-    public var kind: PatternKind
-    public var direction: Direction
+    public let id: PatternID
+    public let lineID: LineID
+    /// The operator's route this pattern belongs to (`B1`, `B2`, `L1`, …).
+    public let routeID: RouteID
+    public let kind: PatternKind
+    public let direction: Direction
     /// Terminus shown on the train, e.g. "NRG" or "Fern Rock TC".
-    public var headsign: String
+    public let headsign: String
     /// Ordered stops in travel order.
-    public var stops: [PatternStop]
-    public var schedule: Schedule
+    ///
+    /// Immutable because `positions` indexes it: a mutable `stops` could be
+    /// reassigned on a copy and silently desync the index from the stop list.
+    public let stops: [PatternStop]
+    public let schedule: Schedule
+
+    /// Station → position, built once at init.
+    ///
+    /// `stopIndex(of:)` is the single most-called function in the planner — a
+    /// linear scan over up to 62 stops, several times per station per search
+    /// round. As a dictionary it stops mattering.
+    private let positions: [StationID: Int]
 
     public init(
         id: PatternID,
         lineID: LineID,
+        routeID: RouteID? = nil,
         kind: PatternKind,
         direction: Direction,
         headsign: String,
@@ -81,17 +94,27 @@ public struct ServicePattern: Identifiable, Sendable {
     ) {
         self.id = id
         self.lineID = lineID
+        // Falls back to the line so hand-written patterns stay concise; generated
+        // data always supplies the real route.
+        self.routeID = routeID ?? RouteID(lineID.rawValue)
         self.kind = kind
         self.direction = direction
         self.headsign = headsign
         self.stops = stops
         self.schedule = schedule
+
+        var positions: [StationID: Int] = [:]
+        positions.reserveCapacity(stops.count)
+        for (index, stop) in stops.enumerated() where positions[stop.station] == nil {
+            positions[stop.station] = index
+        }
+        self.positions = positions
     }
 
     public var stationIDs: [StationID] { stops.map(\.station) }
 
     public func stopIndex(of station: StationID) -> Int? {
-        stops.firstIndex { $0.station == station }
+        positions[station]
     }
 
     public func serves(_ station: StationID) -> Bool {

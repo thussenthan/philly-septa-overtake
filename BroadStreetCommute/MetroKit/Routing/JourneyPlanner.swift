@@ -296,6 +296,11 @@ public struct JourneyPlanner: Sendable {
         // Best arrival found so far, used to prune hopeless branches.
         var bestArrival = Date.distantFuture
 
+        // Calendar arithmetic once per plan, not once per timetable lookup.
+        let serviceDays = timetable.calendar.serviceDays(
+            overlapping: DateInterval(start: request.departAt, end: horizonEnd)
+        )
+
         for accessLeg in access {
             let readyAt = request.departAt.addingTimeInterval(accessLeg.seconds)
             guard readyAt <= horizonEnd else { continue }
@@ -309,6 +314,7 @@ public struct JourneyPlanner: Sendable {
                 egressByStation: egressByStation,
                 request: request,
                 horizonEnd: horizonEnd,
+                serviceDays: serviceDays,
                 bestArrival: &bestArrival,
                 results: &results
             )
@@ -324,6 +330,7 @@ public struct JourneyPlanner: Sendable {
         egressByStation: [StationID: TerminalLeg],
         request: PlanRequest,
         horizonEnd: Date,
+        serviceDays: [ServiceDay],
         bestArrival: inout Date,
         results: inout [Journey]
     ) {
@@ -340,7 +347,8 @@ public struct JourneyPlanner: Sendable {
                       of: pattern,
                       departingFrom: station,
                       atOrAfter: earliest,
-                      within: options.searchHorizon
+                      within: options.searchHorizon,
+                      serviceDays: serviceDays
                   ),
                   let departure = timetable.departure(of: trip, at: station),
                   departure <= horizonEnd,
@@ -380,7 +388,12 @@ public struct JourneyPlanner: Sendable {
                     results.append(journey)
                 }
 
-                if rides.count <= options.maxTransfers {
+                // Only consider changing trains where more than one route calls.
+                // At a mid-line stop every train goes the same way and the next one
+                // is later than the one you are on, so getting off can only lose
+                // time — and skipping those stops removes most of the search space
+                // on a network the size of the full Metro map.
+                if rides.count <= options.maxTransfers, network.isInterchange(stop.station) {
                     explore(
                         from: stop.station,
                         readyAt: arrival.addingTimeInterval(options.minTransferSeconds),
@@ -389,6 +402,7 @@ public struct JourneyPlanner: Sendable {
                         egressByStation: egressByStation,
                         request: request,
                         horizonEnd: horizonEnd,
+                        serviceDays: serviceDays,
                         bestArrival: &bestArrival,
                         results: &results
                     )

@@ -77,6 +77,7 @@ final class CommuteModel: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
+    private var planTask: Task<Void, Never>?
     private let defaults: UserDefaults
 
     /// How close counts as "you are at this station".
@@ -124,6 +125,8 @@ final class CommuteModel: ObservableObject {
     func onDisappear() {
         timer?.cancel()
         timer = nil
+        planTask?.cancel()
+        planTask = nil
         locationService.stop()
     }
 
@@ -221,8 +224,16 @@ final class CommuteModel: ObservableObject {
 
     // MARK: - Planning
 
+    /// Recompute the plan.
+    ///
+    /// The search itself runs off the main actor. On the Broad Street Line alone
+    /// it takes microseconds and this would not matter, but the engine also
+    /// handles the whole Metro rail map, where a plan is closer to a tenth of a
+    /// second — and a tenth of a second on the main actor, every thirty seconds
+    /// and again on every location update, is a visible stutter.
     func replan() {
         guard let origin = resolvedOrigin, let destination = resolvedTarget else {
+            planTask?.cancel()
             plan = nil
             advice = nil
             return
@@ -232,63 +243,61 @@ final class CommuteModel: ObservableObject {
         var options = preferences.plannerOptions()
         options.maxResults = 6
 
-        let planner = JourneyPlanner(network: network, options: options)
+        let accessCandidates = candidateStations(near: origin.coordinate, limit: options.maxAccessStations)
+        let egressCandidates = candidateStations(near: destination.coordinate, limit: options.maxEgressStations)
 
-        // First pass with estimates, so something is on screen immediately.
         let overrides = preferences.useMeasuredWalkTimes
             ? walkTimes.overrides(
                 from: origin.coordinate,
                 to: destination.coordinate,
-                accessStations: candidateStations(near: origin.coordinate, limit: options.maxAccessStations),
-                egressStations: candidateStations(near: destination.coordinate, limit: options.maxEgressStations)
+                accessStations: accessCandidates,
+                egressStations: egressCandidates
             )
             : .none
 
-        let result = planner.plan(PlanRequest(
-            origin: origin,
-            destination: destination,
-            departAt: now,
-            walkOverrides: overrides
-        ))
-
-        plan = result
-        advice = narrator.advice(for: result, asOf: now)
-        lastPlannedAt = now
+        compute(
+            request: PlanRequest(
+                origin: origin,
+                destination: destination,
+                departAt: now,
+                walkOverrides: overrides
+            ),
+            options: options
+        )
 
         guard preferences.useMeasuredWalkTimes else { return }
         walkTimes.measure(
             from: origin.coordinate,
             to: destination.coordinate,
-            accessStations: candidateStations(near: origin.coordinate, limit: options.maxAccessStations),
-            egressStations: candidateStations(near: destination.coordinate, limit: options.maxEgressStations),
+            accessStations: accessCandidates,
+            egressStations: egressCandidates,
             onUpdate: { [weak self] in
-                // Measured walks can reorder the options, so replan — but without
-                // re-triggering measurement, which `measure` guards by cache.
-                self?.replanUsingCachedWalkTimes()
+                // Measured walks can reorder the options, so replan — `measure`
+                // won't re-request anything already cached.
+                self?.replan()
             }
         )
     }
 
-    private func replanUsingCachedWalkTimes() {
-        guard let origin = resolvedOrigin, let destination = resolvedTarget else { return }
-        var options = preferences.plannerOptions()
-        options.maxResults = 6
-        let now = Date()
-        let overrides = walkTimes.overrides(
-            from: origin.coordinate,
-            to: destination.coordinate,
-            accessStations: candidateStations(near: origin.coordinate, limit: options.maxAccessStations),
-            egressStations: candidateStations(near: destination.coordinate, limit: options.maxEgressStations)
-        )
-        let result = JourneyPlanner(network: network, options: options).plan(PlanRequest(
-            origin: origin,
-            destination: destination,
-            departAt: now,
-            walkOverrides: overrides
-        ))
-        plan = result
-        advice = narrator.advice(for: result, asOf: now)
-        lastPlannedAt = now
+    /// Runs one search off the main actor and publishes the result.
+    ///
+    /// A newer request supersedes an in-flight one: the rider has moved on, and
+    /// a stale plan landing after a fresh one would make countdowns jump backwards.
+    private func compute(request: PlanRequest, options: PlannerOptions) {
+        planTask?.cancel()
+        let network = self.network
+        let narrator = self.narrator
+
+        planTask = Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                JourneyPlanner(network: network, options: options).plan(request)
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            self.plan = result
+            self.advice = narrator.advice(for: result, asOf: request.departAt)
+            self.lastPlannedAt = request.departAt
+        }
     }
 
     private func candidateStations(near coordinate: Coordinate?, limit: Int) -> [Station] {
