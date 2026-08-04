@@ -170,10 +170,14 @@ def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
 
 
 # A service running on this many dates or fewer is a special-event or
-# single-date addition, not part of the ordinary weekly timetable. SEPTA's
-# feed carried three FIFA World Cup express trips on one Sunday; treating them
-# as regular service would have told riders an express train existed on
-# Sundays, which it does not.
+# single-date addition, not part of the ordinary weekly timetable.
+#
+# SEPTA adds B2 express trips to NRG whenever there is a game at the sports
+# complex — Eagles, Phillies, and one-off events like the 2026 World Cup. Those
+# trips are real, but they run on a handful of named dates, and treating them as
+# regular service would tell a rider on an ordinary Sunday that an express train
+# exists when it does not. Filtering by how many dates a service covers catches
+# all of them without needing to know what the event was.
 RECURRING_DATE_THRESHOLD = 3
 
 

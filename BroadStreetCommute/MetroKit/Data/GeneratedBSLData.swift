@@ -29,6 +29,7 @@ public enum BSLData {
         fidelity: .official,
         source: "SEPTA GTFS v202607261",
         generated: "2026-08-04",
+        validUntil: "20260808",
         notes: "Sampled from SEPTA GTFS; regenerate with tools/build_schedule.py"
     )
 

@@ -86,10 +86,11 @@ tests now lock in:
 - **The express terminates at Walnut-Locust and never enters South Philadelphia.**
   The feed's `route_stops.txt` lists NRG for the B2, but no regular trip serves it.
   Patterns are derived from `trips.txt` + `stop_times.txt` instead.
-- **Special-event trips are excluded.** The feed carried three World Cup express
-  trips on a single Sunday. Taken at face value, that would have told riders there
-  is Sunday express service. Services running on fewer than three dates are
-  dropped.
+- **Special-event trips are excluded.** SEPTA adds express trips to NRG whenever
+  there's a game at the sports complex. They're real, but they run on a handful of
+  named dates, and taken at face value they'd tell a rider on an ordinary Sunday
+  that Sunday express service exists. Services covering fewer than three dates are
+  dropped, which catches them all without needing to know what the event was.
 - **Platform suffixes are merged.** Express and local use separate tracks at Olney
   and City Hall, and the feed names them `Olney Transit Center - B1` and
   `... - B2 & B3`. Left alone, the express platform would be a different *station*
