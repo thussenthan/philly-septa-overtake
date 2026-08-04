@@ -89,6 +89,29 @@ public struct Network: Sendable {
             .min { $0.meters < $1.meters }
     }
 
+    /// A line's stations in travel order.
+    ///
+    /// Taken from the line's longest pattern, since that is the one that visits the
+    /// most of them; anything a shorter branch adds is appended. "North to south"
+    /// only meant something while the app covered a single north-south line.
+    public func stationsInOrder(on lineID: LineID) -> [Station] {
+        let onLine = patterns.filter { $0.lineID == lineID }
+        guard let spine = onLine.max(by: { $0.stops.count < $1.stops.count }) else { return [] }
+
+        var seen = Set<StationID>()
+        var ordered: [Station] = []
+        for id in spine.stationIDs where seen.insert(id).inserted {
+            if let station = station(id) { ordered.append(station) }
+        }
+        // Branches the spine misses, in the order the other patterns visit them.
+        for pattern in onLine where pattern.id != spine.id {
+            for id in pattern.stationIDs where seen.insert(id).inserted {
+                if let station = station(id) { ordered.append(station) }
+            }
+        }
+        return ordered
+    }
+
     public func stationsSorted(by direction: Direction, on lineID: LineID) -> [Station] {
         guard let pattern = patterns.first(where: { $0.lineID == lineID && $0.kind == .local && $0.direction == direction }) else {
             return stations.filter { $0.lines.contains(lineID) }

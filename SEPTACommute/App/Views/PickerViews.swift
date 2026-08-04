@@ -29,18 +29,23 @@ struct DestinationPickerView: View {
                     }
                 }
 
-                Section("Stations, north to south") {
-                    ForEach(filteredStations) { station in
-                        row(
-                            symbol: "tram.fill",
-                            title: station.displayName,
-                            subtitle: station.intersection ?? "",
-                            isSelected: selection == .station(station.id),
-                            accessory: station.isAccessible == true ? "figure.roll" : nil
-                        ) {
-                            selection = .station(station.id)
-                            dismiss()
+                ForEach(filteredSections, id: \.line.id) { section in
+                    Section {
+                        ForEach(section.stations) { station in
+                            row(
+                                symbol: "tram.fill",
+                                title: station.displayName,
+                                subtitle: station.intersection ?? "",
+                                isSelected: selection == .station(station.id),
+                                accessory: station.isAccessible == true ? "figure.roll" : nil,
+                                tint: Theme.color(for: section.line)
+                            ) {
+                                selection = .station(station.id)
+                                dismiss()
+                            }
                         }
+                    } header: {
+                        lineHeader(section.line)
                     }
                 }
             }
@@ -55,13 +60,25 @@ struct DestinationPickerView: View {
         }
     }
 
-    private var filteredStations: [Station] {
-        let stations = model.stationsNorthToSouth
+    /// Sections of stations, one per line, filtered by the search text.
+    private var filteredSections: [(line: Line, stations: [Station])] {
         let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return stations }
-        return stations.filter {
-            $0.displayName.localizedCaseInsensitiveContains(query)
-                || ($0.intersection ?? "").localizedCaseInsensitiveContains(query)
+        return model.stationSections.compactMap { section in
+            guard !query.isEmpty else { return section }
+            let matches = section.stations.filter {
+                $0.displayName.localizedCaseInsensitiveContains(query)
+                    || ($0.intersection ?? "").localizedCaseInsensitiveContains(query)
+            }
+            return matches.isEmpty ? nil : (line: section.line, stations: matches)
+        }
+    }
+
+    /// A line's badge and name, as the section header.
+    @ViewBuilder
+    private func lineHeader(_ line: Line) -> some View {
+        HStack(spacing: 7) {
+            LineBadge(text: line.badge, color: Theme.color(for: line), size: 19)
+            Text(line.name)
         }
     }
 
@@ -71,13 +88,14 @@ struct DestinationPickerView: View {
         subtitle: String,
         isSelected: Bool,
         accessory: String? = nil,
+        tint: Color = Theme.accent,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .frame(width: 22)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(tint)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).foregroundStyle(.primary)
                     if !subtitle.isEmpty {
@@ -159,19 +177,24 @@ struct OriginPickerView: View {
                     }
                 }
 
-                Section("Start from a station") {
-                    ForEach(filteredStations) { station in
-                        Button {
-                            selection = .station(station.id)
-                            dismiss()
-                        } label: {
-                            labelRow(
-                                symbol: "tram.fill",
-                                title: station.displayName,
-                                subtitle: station.intersection ?? "",
-                                isSelected: selection == .station(station.id)
-                            )
+                ForEach(filteredSections, id: \.line.id) { section in
+                    Section {
+                        ForEach(section.stations) { station in
+                            Button {
+                                selection = .station(station.id)
+                                dismiss()
+                            } label: {
+                                labelRow(
+                                    symbol: "tram.fill",
+                                    title: station.displayName,
+                                    subtitle: station.intersection ?? "",
+                                    isSelected: selection == .station(station.id),
+                                    tint: Theme.color(for: section.line)
+                                )
+                            }
                         }
+                    } header: {
+                        lineHeader(section.line)
                     }
                 }
             }
@@ -193,21 +216,39 @@ struct OriginPickerView: View {
         return model.locationStatusSummary ?? "Uses your device location"
     }
 
-    private var filteredStations: [Station] {
-        let stations = model.stationsNorthToSouth
+    /// Sections of stations, one per line, filtered by the search text.
+    private var filteredSections: [(line: Line, stations: [Station])] {
         let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return stations }
-        return stations.filter {
-            $0.displayName.localizedCaseInsensitiveContains(query)
-                || ($0.intersection ?? "").localizedCaseInsensitiveContains(query)
+        return model.stationSections.compactMap { section in
+            guard !query.isEmpty else { return section }
+            let matches = section.stations.filter {
+                $0.displayName.localizedCaseInsensitiveContains(query)
+                    || ($0.intersection ?? "").localizedCaseInsensitiveContains(query)
+            }
+            return matches.isEmpty ? nil : (line: section.line, stations: matches)
         }
     }
 
-    private func labelRow(symbol: String, title: String, subtitle: String, isSelected: Bool) -> some View {
+    /// A line's badge and name, as the section header.
+    @ViewBuilder
+    private func lineHeader(_ line: Line) -> some View {
+        HStack(spacing: 7) {
+            LineBadge(text: line.badge, color: Theme.color(for: line), size: 19)
+            Text(line.name)
+        }
+    }
+
+    private func labelRow(
+        symbol: String,
+        title: String,
+        subtitle: String,
+        isSelected: Bool,
+        tint: Color = Theme.accent
+    ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .frame(width: 22)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).foregroundStyle(.primary)
                 if !subtitle.isEmpty {

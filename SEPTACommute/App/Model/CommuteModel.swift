@@ -95,18 +95,24 @@ final class CommuteModel: ObservableObject {
     /// guessing again, which is the behaviour that makes the app useful at a glance.
     @Published private(set) var hasManualTarget = false
 
+    /// The services default to `nil` rather than to freshly constructed values.
+    ///
+    /// A default argument is evaluated in a nonisolated context, so
+    /// `LocationService()` as a default fails to compile: both services are
+    /// `@MainActor`. Constructing them inside the initialiser — which *is*
+    /// main-actor isolated, because the class is — keeps the convenient call site.
     init(
         network: Network = SEPTAData.network,
         places: PlaceStore,
-        locationService: LocationService = LocationService(),
-        walkTimes: WalkTimeService = WalkTimeService(),
+        locationService: LocationService? = nil,
+        walkTimes: WalkTimeService? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.network = network
         self.narrator = JourneyNarrator(network: network)
         self.places = places
-        self.locationService = locationService
-        self.walkTimes = walkTimes
+        self.locationService = locationService ?? LocationService()
+        self.walkTimes = walkTimes ?? WalkTimeService()
         self.defaults = defaults
 
         if let data = defaults.data(forKey: RiderPreferences.storageKey),
@@ -384,8 +390,23 @@ final class CommuteModel: ObservableObject {
 
     // MARK: - Derived view state
 
-    var stationsNorthToSouth: [Station] {
-        network.stationsSorted(by: .southbound, on: "B")
+    /// Stations grouped by line, each in travel order — the only arrangement that
+    /// makes sense once there are 585 of them. Lines the rider's own places sit on
+    /// come first, then the rest by badge.
+    var stationSections: [(line: Line, stations: [Station])] {
+        let homeLines = Set((places.places.compactMap { place -> Station? in
+            network.nearestStation(to: place.coordinate)?.station
+        }).flatMap(\.lines))
+
+        return network.lines
+            .map { (line: $0, stations: network.stationsInOrder(on: $0.id)) }
+            .filter { !$0.stations.isEmpty }
+            .sorted { lhs, rhs in
+                let lhsNear = homeLines.contains(lhs.line.id)
+                let rhsNear = homeLines.contains(rhs.line.id)
+                if lhsNear != rhsNear { return lhsNear }
+                return lhs.line.badge < rhs.line.badge
+            }
     }
 
     /// The plan's notes, as sentences a rider can act on.
