@@ -40,6 +40,35 @@ single answer:
 
 <!-- Add a screenshot here once you've run it on a device. -->
 
+## What's on screen
+
+The home screen is deliberately the smallest thing that answers the question:
+
+```
+ Erie  →  Home
+ ┌──────────────────────────────────┐
+ │ (B)                              │
+ │ Local now, switch to the express │
+ │ at Girard                        │
+ │ Leave in 4:12          5:42      │
+ │                        arrive    │
+ │ Go now — miss this and you       │
+ │ lose 11 min                      │
+ └──────────────────────────────────┘
+ (B)  Straight through on the B
+      +6 min arrival · leave in 12 min
+ (B)(L) B to City Hall, change to the L
+      +9 min arrival · leave in 15 min
+ All 5 options                        ›
+ Delays on the B · 1 note             ›
+```
+
+Everything on it is a tap: the two ends open their pickers, the card and the rows
+open the step-by-step itinerary, and the bottom row opens SEPTA's alert text, the
+planner's caveats and where the timetable came from. Stop counts, walking
+distances, skipped stations and total trip time are all real information and all
+reasons to read instead of decide, so none of them are on the first screen.
+
 ## Getting started
 
 Requires **Xcode 16 or newer** and **iOS 17+**. There are no third-party
@@ -72,11 +101,19 @@ departure times are the real published ones rather than estimates:
 | Stations | 585 |
 | Stopping patterns | 309 |
 
-**These are scheduled times, not live train positions.** The app does not know
-about delays, single-tracking, or suspensions. It links to SEPTA's alerts page for
-exactly that reason. SEPTA publishes GTFS-Realtime feeds, but at the time of
-writing there is no confirmed real-time feed covering the subway specifically — see
-[Wiring up real-time](#wiring-up-real-time) below.
+**These are scheduled times, not live train positions.** SEPTA publishes
+GTFS-Realtime feeds, but at the time of writing there is no confirmed real-time feed
+covering the subway specifically — see [Wiring up real-time](#wiring-up-real-time)
+below.
+
+What the app *does* read is SEPTA's [service alerts
+API](https://www3.septa.org/api/Alerts/index.php) — plain JSON, no key, no
+dependency. An option whose lines have a notice on them is flagged by name
+("Delays on the B") and SEPTA's own words appear on its detail screen. Alerts are
+shown, never interpreted: alert text is prose, and a planner that acted on
+"expect residual delays" would be inventing a timetable. The last good response is
+cached for a day, so opening the app underground still shows this morning's
+notices.
 
 SEPTA's feed only declares about two weeks of validity, so the bundled data ages
 out. `DataProvenance.validUntil` carries the expiry date and the app tells you when
@@ -122,10 +159,11 @@ SEPTACommute/
 │   ├── Model/         stations, patterns, the network graph
 │   ├── Schedule/      service calendar, timetable, trip generation
 │   ├── Routing/       the planner, journeys, walking model, prose
+│   ├── Alerts/        SEPTA's alert feed: model and decoding, no networking
 │   └── Data/          GeneratedSEPTAData.swift  ← regenerate, don't edit
 └── App/               SwiftUI, CoreLocation, MapKit
     ├── Model/         saved places, preferences, the view model
-    ├── Services/      location, walking directions, address search
+    ├── Services/      location, walking directions, address search, alert fetching
     └── Views/
 Tests/MetroKitTests/   run with `swift test`
 tools/build_schedule.py
@@ -212,6 +250,14 @@ stub — turn measured walks off in Settings and everything still works with no 
   and terminating at Walnut-Locust, the Spur serving Fairmount but not City Hall,
   Saturday having no express, 2:30 AM routing onto the Owl bus.
 - **Regressions**: no pointless backtracking, no duplicate itineraries.
+- **Alert decoding**, against a fixture copied from a live response with its
+  inconsistencies intact — `isadvisory` really is `"Yes"`/`"No"` while every
+  neighbouring flag is `"Y"`/`"N"`, and the subway lines really are filed under
+  `rr_route_*` next to Regional Rail. Covered: routes the app can't plan over are
+  dropped, every mapped line exists in the bundled data, HTML and entities are
+  decoded rather than merely stripped, a suspension with no message still produces
+  one, a renamed or retyped key costs that one field instead of the whole feed, and
+  the card's single alert is the worst one on the journey.
 - **Edge cases in time**: after-midnight trips belonging to the previous service
   day, and scheduled times holding steady across a daylight-saving transition.
 
@@ -219,30 +265,26 @@ The planner fixtures use a synthetic six-station line with times chosen by hand,
 those assertions don't move when SEPTA changes its timetable. The data assertions
 deliberately do — that's the point of them.
 
-## Beyond the Broad Street Line
+## The whole Metro map
 
-The generator can already emit the whole SEPTA Metro rail map, and the planner
-routes across it correctly with **no changes to the routing code**:
+The Metro rail map is the default scope, and the planner routes across it with **no
+changes to the routing code**. Regenerating narrower coverage is a flag:
 
 ```sh
-python3 tools/build_schedule.py --scope metro
+python3 tools/build_schedule.py --scope broad    # Broad Street Line only
 ```
 
-That covers 16 routes — B1/B2/B3, L1 Market-Frankford, M1 Norristown High Speed,
-T1–T5 subway-surface trolleys, G1 Girard, D1/D2 Media-Sharon Hill, and the three
-trackless trolleys — as 590 stations and 307 stopping patterns.
+The reason cross-line routing needed no new code is a happy accident of the feed:
+the lines meet at stations that *already share a name*. `15th St/City Hall` is
+served by B1, B2, L1 and all five trolleys; `69th St Transit Center` by L1, M1, D1
+and D2; `13th St` and `30th St` by L1 and the trolleys. Because station identity is
+derived from the name, those merge into single stations and the interchanges exist
+for free. Stations that sit on top of each other under *different* names are merged
+by proximity instead — that is what makes `40th St` on the L and `40th-Market` on
+the trolleys, 13 m apart, one station rather than a missing interchange.
 
-The reason no routing changes were needed is a happy accident of the feed: the
-lines meet at stations that *already share a name*. `15th St/City Hall` is served
-by B1, B2, L1 and all five trolleys; `69th St Transit Center` by L1, M1, D1 and D2;
-`13th St` and `30th St` by L1 and the trolleys. Because station identity is derived
-from the name, those merge into single stations and the interchanges exist for free.
-Verified end to end: Temple → 40th St changes onto the L at City Hall, Erie → 69th St
-finds three routings, and Penn Med → Erie comes in on a trolley and changes to the
-Broad St express.
-
-It is not the default yet, but it is now fast enough to be. The search leaned on
-two linear scans, both inside the innermost loop:
+Making it the default was a performance problem, not a correctness one. The search
+leaned on two linear scans, both inside the innermost loop:
 
 - `Schedule.startTimes(on:)` expanded every `.frequency` band into a freshly
   allocated, freshly sorted array **on every lookup** — thousands of times per
@@ -273,23 +315,19 @@ on the Metro map), so the index has to resolve to the *first* visit or every
 departure computed for those stations is wrong by the length of the loop. There is
 a test for it.
 
-Planning also now runs off the main actor, with a newer request superseding an
+Planning also runs off the main actor, with a newer request superseding an
 in-flight one, so a slow plan can't stutter the UI or land stale after a fresh one.
 
-Two caveats specific to the wider scope, both visible in `--report`:
+What `--report` still shows as imperfect, at the current feed:
 
-- 435 of 7,163 trips are dropped because their service isn't in effect on any of
-  the three sampled dates. On Broad St that number is 1. Day-of-week-specific
-  trolley services need sampling per weekday rather than one representative
-  Wednesday.
-- `40th St` on the L and `40th-Market` on the trolleys are 13 m apart under
-  different names and do *not* merge, so that interchange is currently missing.
-  Proximity-based transfer footpaths would close it; the major interchanges don't
-  need them.
-
-Titles also still read in Broad St terms — an L1 trip is described as "Local,
-straight through" rather than by its line — so the narrator wants a pass before
-this becomes the default.
+- **234 of 7,163 trips are dropped** because their service isn't in effect on any of
+  the seven sampled dates, and 83 more are special-event trips excluded on purpose.
+  The sampled dates are the *last* occurrence of each weekday in the feed window,
+  because the feed carries more than one timetable revision and sampling the first
+  week generates a superseded schedule.
+- **One surface stop doesn't snap to a station.** 131 Owl-bus stop-times are dropped
+  for having no station within 350 m; all of them are `Broad St & Spring Garden St`,
+  which has no rail station outside it.
 
 Buses (131 routes) and Regional Rail (a separate feed) are out of scope. Buses in
 particular would need a different search strategy, not just a faster one.

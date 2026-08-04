@@ -13,6 +13,22 @@ struct DestinationPickerView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Handing the choice back to the app. The guess is what makes the
+                // home screen answer the question without being asked, so once a
+                // rider has overridden it they need a way back.
+                if model.hasManualTarget {
+                    Section {
+                        Button {
+                            model.resumeAutomaticTarget()
+                            dismiss()
+                        } label: {
+                            Label("Choose for me", systemImage: "wand.and.stars")
+                        }
+                    } footer: {
+                        Text("Near home means you're heading out; anywhere else means you're heading home.")
+                    }
+                }
+
                 if !places.places.isEmpty {
                     Section("Saved") {
                         ForEach(places.places) { place in

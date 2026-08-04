@@ -1,17 +1,24 @@
 import SwiftUI
 
-/// One option in the list: how to go, when to leave, when you arrive.
+/// One option in full: how to go, when to leave, when you arrive.
+///
+/// This is the "all options" card, not the home screen — the home screen shows the
+/// recommendation and one line per alternative. Here the rider has asked to compare,
+/// so the leg strip, the pattern chips and the footnote earn their space.
 struct JourneyCardView: View {
     var journey: Journey
     var summary: JourneySummary
     var comparison: JourneyComparison
     var narrator: JourneyNarrator
     var network: Network
+    /// "Delays on the B", when SEPTA is reporting something on this option's lines.
+    var alertLabel: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             legStrip
+            if let alertLabel { alertChip(alertLabel) }
             advisoryBanner
             Divider().opacity(0.4)
             footer
@@ -161,6 +168,19 @@ struct JourneyCardView: View {
         }
     }
 
+    /// Names the disruption, not SEPTA's paragraph about it — that is in the detail
+    /// view, where a rider has already decided they want to read.
+    private func alertChip(_ label: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2.weight(.bold))
+            Text(label)
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.color(for: .leaveSoon))
+    }
+
     private func advisorySymbol(_ advisory: Advisory) -> String {
         switch advisory {
         case .run: return "figure.run"
@@ -233,6 +253,7 @@ struct JourneyCardView: View {
         parts.append("arrive \(Format.clock(journey.arrivalTime))")
         parts.append("total \(Format.minutes(journey.totalDuration))")
         if comparison.isBest { parts.append("fastest option") }
+        if let alertLabel { parts.append(alertLabel) }
         return parts.joined(separator: ", ")
     }
 }

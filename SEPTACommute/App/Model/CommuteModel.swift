@@ -111,6 +111,7 @@ final class CommuteModel: ObservableObject {
     let narrator: JourneyNarrator
     let locationService: LocationService
     let walkTimes: WalkTimeService
+    let alertService: AlertService
     let places: PlaceStore
 
     private var cancellables: Set<AnyCancellable> = []
@@ -144,6 +145,7 @@ final class CommuteModel: ObservableObject {
         places: PlaceStore,
         locationService: LocationService? = nil,
         walkTimes: WalkTimeService? = nil,
+        alertService: AlertService? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.network = network
@@ -151,6 +153,7 @@ final class CommuteModel: ObservableObject {
         self.places = places
         self.locationService = locationService ?? LocationService()
         self.walkTimes = walkTimes ?? WalkTimeService()
+        self.alertService = alertService ?? AlertService()
         self.defaults = defaults
 
         if let data = defaults.data(forKey: RiderPreferences.storageKey),
@@ -170,6 +173,13 @@ final class CommuteModel: ObservableObject {
         self.places.$places
             .sink { [weak self] updated in self?.placesChanged(updated) }
             .store(in: &cancellables)
+
+        // A nested ObservableObject's changes don't reach a view observing this one,
+        // so they are forwarded by hand. Alerts don't affect the plan — nothing is
+        // replanned here, the screen just redraws with SEPTA's notice on it.
+        self.alertService.$digest
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     // MARK: - Lifecycle
@@ -178,6 +188,7 @@ final class CommuteModel: ObservableObject {
         locationService.requestPermissionIfNeeded()
         startTicking()
         replan()
+        alertService.refreshIfNeeded()
     }
 
     func onDisappear() {
@@ -200,6 +211,8 @@ final class CommuteModel: ObservableObject {
         isRefreshing = true
         locationService.refresh()
         replan()
+        // A deliberate pull, so refetch alerts even if the cached set is young.
+        await alertService.refresh()
         // A brief hold so a pull-to-refresh reads as having done something even
         // when the plan is unchanged.
         try? await Task.sleep(nanoseconds: 350_000_000)
@@ -332,11 +345,6 @@ final class CommuteModel: ObservableObject {
         }
     }
 
-    /// Destinations offered in the picker: the saved places, then every station.
-    var quickTargets: [Target] {
-        places.places.map(Target.saved)
-    }
-
     // MARK: - Planning
 
     /// Recompute the plan.
@@ -447,6 +455,53 @@ final class CommuteModel: ObservableObject {
                 if lhsNear != rhsNear { return lhsNear }
                 return lhs.line.badge < rhs.line.badge
             }
+    }
+
+    // MARK: - Service alerts
+
+    /// The lines the current options actually use.
+    ///
+    /// Alerts are filtered to these rather than shown wholesale: SEPTA publishes a
+    /// notice for every route it runs, and a rider looking at a B trip does not need
+    /// to hear about the Media-Sharon Hill trolleys.
+    private var linesInPlan: Set<LineID> {
+        Set((plan?.journeys ?? []).flatMap { $0.rides.map(\.lineID) })
+    }
+
+    /// SEPTA's notices for the lines on screen, worst first.
+    ///
+    /// Empty until the fetch lands, and empty when offline with no usable cache —
+    /// in both cases the app says nothing rather than implying all is well.
+    var serviceAlerts: [ServiceAlert] {
+        let lines = linesInPlan
+        // With no plan yet there is nothing to be specific about, so only
+        // system-wide notices are worth showing.
+        guard !lines.isEmpty else {
+            return alertService.digest.alerts
+                .filter(\.appliesToWholeSystem)
+                .sorted { $0.severity > $1.severity }
+        }
+        return alertService.digest.alerts(affecting: lines)
+    }
+
+    /// The worst notice touching one option, for the chip on its card.
+    func alert(for journey: Journey) -> ServiceAlert? {
+        alertService.digest.worstAlert(for: journey)
+    }
+
+    /// "Delays on the B" — the line named the way the map names it.
+    func alertChipText(_ alert: ServiceAlert) -> String {
+        guard let lineID = alert.lineID, let line = network.line(lineID) else {
+            return alert.severity.label
+        }
+        return "\(alert.severity.label) on the \(line.badge)"
+    }
+
+    /// Shown under the alerts when the fetch failed and there is nothing cached, so
+    /// an empty list isn't mistaken for good news.
+    var alertFetchProblem: String? {
+        guard alertService.digest.alerts.isEmpty else { return nil }
+        return alertService.lastError
     }
 
     /// The plan's notes, as sentences a rider can act on.

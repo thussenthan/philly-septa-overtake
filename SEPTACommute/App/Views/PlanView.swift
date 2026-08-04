@@ -1,25 +1,29 @@
 import SwiftUI
 
-/// The main screen: where am I, where am I going, and which train do I take.
+/// The home screen: which train, and how long have I got.
+///
+/// Deliberately the smallest thing that answers that. One card for the
+/// recommendation, at most two alternatives on one line each, and a single row for
+/// anything else worth knowing. Stops, transfers, skipped stations, SEPTA's alert
+/// text and the provenance of the timetable are all real information — they are
+/// also all reasons to read instead of deciding, so each of them is a tap away.
 struct PlanView: View {
     @EnvironmentObject private var model: CommuteModel
     @State private var showingSettings = false
     @State private var showingDestinationPicker = false
     @State private var showingOriginPicker = false
+    @State private var showingNotes = false
+
+    /// Alternatives shown inline before the rest move behind "all options".
+    private let inlineAlternatives = 2
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    routeSelector
-                    if let advice = model.advice, !advice.isEmpty {
-                        adviceBanner(advice)
-                    }
-                    ForEach(model.noteMessages, id: \.self) { note in
-                        noteRow(note)
-                    }
-                    optionsSection
-                    footer
+                VStack(alignment: .leading, spacing: 14) {
+                    tripRow
+                    answerSection
+                    statusRow
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -39,6 +43,9 @@ struct PlanView: View {
             .refreshable { await model.refresh() }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showingNotes) {
+                ServiceNotesView()
             }
             .sheet(isPresented: $showingDestinationPicker) {
                 DestinationPickerView(
@@ -62,61 +69,67 @@ struct PlanView: View {
         .onDisappear { model.onDisappear() }
     }
 
-    // MARK: - Route selector
+    // MARK: - Where to where
 
-    private var routeSelector: some View {
-        VStack(spacing: 0) {
+    /// The trip, as one fact: `Erie → Home`.
+    ///
+    /// Two rows labelled FROM and TO said the same thing in twice the space. The
+    /// halves are separately tappable, so changing either end is still one tap —
+    /// and addresses, cross-streets and "you're at this station" moved into the
+    /// pickers, which is where a rider is actually choosing between them.
+    private var tripRow: some View {
+        HStack(spacing: 10) {
             Button { showingOriginPicker = true } label: {
-                selectorRow(
-                    symbol: originSymbol,
-                    label: "From",
-                    value: originDescription,
-                    detail: originDetail
-                )
+                endpoint(symbol: originSymbol, text: originDescription, detail: nil, alignment: .leading)
             }
             .buttonStyle(.plain)
 
-            Divider().padding(.leading, 46)
+            Image(systemName: "arrow.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
 
             Button { showingDestinationPicker = true } label: {
-                selectorRow(
+                // The one caption worth keeping: when the app guessed the
+                // destination, the rider needs to see that it guessed.
+                endpoint(
                     symbol: "flag.checkered",
-                    label: "To",
-                    value: model.targetName,
-                    detail: targetDetail
+                    text: model.targetName,
+                    detail: model.targetReason ?? (model.target == nil ? "Tap to choose" : nil),
+                    alignment: .trailing
                 )
             }
             .buttonStyle(.plain)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private func selectorRow(symbol: String, label: String, value: String, detail: String?) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.body)
-                .frame(width: 22)
-                .foregroundStyle(Theme.accent)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label.uppercased())
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.body.weight(.medium))
+    private func endpoint(
+        symbol: String,
+        text: String,
+        detail: String?,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.accent)
+                Text(text)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            if let detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
-        .padding(14)
+        .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))
         .contentShape(Rectangle())
     }
 
@@ -140,64 +153,10 @@ struct PlanView: View {
         }
     }
 
-    private var originDetail: String? {
-        switch model.source {
-        case .currentLocation:
-            if model.currentStation != nil { return "You're at this station" }
-            return nil
-        case .station(let id):
-            return model.network.station(id)?.intersection
-        case .saved(let place):
-            return place.address
-        }
-    }
-
-    private var targetDetail: String? {
-        switch model.target {
-        case .saved(let place):
-            // Say why this destination was picked, when the app picked it.
-            return model.targetReason ?? place.address
-        case .station(let id):
-            return model.network.station(id)?.intersection
-        case nil:
-            return "Pick a destination to get started"
-        }
-    }
-
-    // MARK: - Advice
-
-    private func adviceBanner(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(Theme.accent)
-            Text(text)
-                .font(.subheadline.weight(.medium))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func noteRow(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Options
+    // MARK: - The answer
 
     @ViewBuilder
-    private var optionsSection: some View {
+    private var answerSection: some View {
         if model.target == nil {
             MessageCard(
                 symbol: "flag.checkered",
@@ -208,28 +167,21 @@ struct PlanView: View {
             locationPrompt
         } else if let plan = model.plan, let best = plan.journeys.first {
             VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: plan.journeys.count == 1 ? "Your option" : "\(plan.journeys.count) options")
-                ForEach(plan.journeys) { journey in
-                    NavigationLink {
-                        JourneyDetailView(
-                            journey: journey,
-                            summary: model.narrator.summary(for: journey),
-                            narrator: model.narrator,
-                            network: model.network,
-                            originName: originDescription,
-                            destinationName: model.targetName
-                        )
-                    } label: {
-                        JourneyCardView(
-                            journey: journey,
-                            summary: model.narrator.summary(for: journey),
-                            comparison: model.narrator.comparison(of: journey, against: best),
-                            narrator: model.narrator,
-                            network: model.network
-                        )
-                    }
-                    .buttonStyle(.plain)
+                NavigationLink {
+                    detailView(for: best)
+                } label: {
+                    HeroCard(
+                        journey: best,
+                        summary: model.narrator.summary(for: best),
+                        narrator: model.narrator,
+                        network: model.network,
+                        alert: model.alert(for: best),
+                        alertLabel: model.alert(for: best).map { model.alertChipText($0) }
+                    )
                 }
+                .buttonStyle(.plain)
+
+                alternatives(in: plan, best: best)
             }
         } else if model.plan != nil {
             MessageCard(
@@ -242,6 +194,63 @@ struct PlanView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
         }
+    }
+
+    @ViewBuilder
+    private func alternatives(in plan: Plan, best: Journey) -> some View {
+        let rest = Array(plan.journeys.dropFirst())
+        if !rest.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(Array(rest.prefix(inlineAlternatives).enumerated()), id: \.element.id) { index, journey in
+                    if index > 0 { Divider().padding(.leading, 44) }
+                    NavigationLink {
+                        detailView(for: journey)
+                    } label: {
+                        OptionRow(
+                            journey: journey,
+                            summary: model.narrator.summary(for: journey),
+                            comparison: model.narrator.comparison(of: journey, against: best),
+                            network: model.network,
+                            hasAlert: model.alert(for: journey) != nil
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if rest.count > inlineAlternatives {
+                    Divider().padding(.leading, 44)
+                    NavigationLink {
+                        OptionsListView(originName: originDescription)
+                    } label: {
+                        HStack {
+                            Text("All \(plan.journeys.count) options")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func detailView(for journey: Journey) -> some View {
+        JourneyDetailView(
+            journey: journey,
+            summary: model.narrator.summary(for: journey),
+            narrator: model.narrator,
+            network: model.network,
+            originName: originDescription,
+            destinationName: model.targetName,
+            alert: model.alert(for: journey)
+        )
     }
 
     @ViewBuilder
@@ -277,26 +286,59 @@ struct PlanView: View {
         }
     }
 
-    // MARK: - Footer
+    // MARK: - Status
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let plannedAt = model.lastPlannedAt {
-                Text("Updated \(Format.clock(plannedAt))")
+    /// One row for everything that isn't the answer: SEPTA's alerts, the planner's
+    /// caveats, where the timetable came from. Counted rather than quoted, so the
+    /// screen stays the same height whether there are none or nine.
+    private var statusRow: some View {
+        Button { showingNotes = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: statusSymbol)
+                    .font(.footnote)
+                    .foregroundStyle(statusTint)
+                    .frame(width: 18)
+                Text(statusSummary)
+                    .font(.footnote)
+                    .foregroundStyle(statusTint)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            Text(model.scheduleFootnote)
-            Text("Scheduled times, not live train positions.")
-            if model.hasManualTarget {
-                Button("Go back to picking my destination automatically") {
-                    model.resumeAutomaticTarget()
-                }
-                .font(.caption2)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .padding(.top, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var statusSymbol: String {
+        if let worst = model.serviceAlerts.first {
+            return worst.severity >= .delay ? "exclamationmark.triangle.fill" : "megaphone.fill"
+        }
+        return model.noteMessages.isEmpty ? "info.circle" : "info.circle.fill"
+    }
+
+    private var statusTint: Color {
+        guard let worst = model.serviceAlerts.first else { return .secondary }
+        return Theme.color(for: worst.severity)
+    }
+
+    /// "Delays on the B · 1 note", or just where the times came from.
+    private var statusSummary: String {
+        var parts: [String] = []
+        if let worst = model.serviceAlerts.first {
+            parts.append(model.alertChipText(worst))
+            let others = model.serviceAlerts.count - 1
+            if others > 0 { parts.append("\(others) more alert\(others == 1 ? "" : "s")") }
+        }
+        let notes = model.noteMessages.count
+        if notes > 0 { parts.append("\(notes) note\(notes == 1 ? "" : "s")") }
+        guard parts.isEmpty else { return parts.joined(separator: " · ") }
+        return "Scheduled times · service & data"
     }
 }
 

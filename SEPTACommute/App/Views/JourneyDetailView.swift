@@ -8,11 +8,15 @@ struct JourneyDetailView: View {
     var network: Network
     var originName: String
     var destinationName: String
+    /// SEPTA's worst notice for the lines this option uses. The home screen only
+    /// names it; this is where its text belongs.
+    var alert: ServiceAlert?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 overview
+                if let alert { alertBox(alert) }
                 timeline
                 if !journey.isWalkOnly {
                     breakdown
@@ -52,6 +56,41 @@ struct JourneyDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: - Service alert
+
+    /// SEPTA's own words, verbatim.
+    ///
+    /// The app doesn't try to interpret them: alert text is prose, and a planner
+    /// that guessed at "expect residual delays" would be inventing a timetable.
+    /// The rider gets the notice and the itinerary side by side, and decides.
+    private func alertBox(_ alert: ServiceAlert) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                Text(alert.severity.label)
+                    .font(.caption.weight(.bold))
+                Text(alert.routeName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(Theme.color(for: alert.severity))
+
+            Text(alert.message)
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("From SEPTA's service alerts. Times below come from the published timetable and don't account for this.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Theme.color(for: alert.severity).opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 14)
+        )
     }
 
     private func stat(_ label: String, _ value: String) -> some View {
