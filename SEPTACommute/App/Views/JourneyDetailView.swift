@@ -134,7 +134,12 @@ struct JourneyDetailView: View {
 
         case .ride(let ride):
             HStack(spacing: 6) {
-                LineBadge(text: badgeText(for: ride), color: Theme.color(for: network.line(ride.lineID)), size: 22)
+                LineBadge(
+                    text: badgeText(for: ride),
+                    color: Theme.color(for: network.line(ride.lineID)),
+                    textColor: Theme.foreground(on: network.line(ride.lineID)),
+                    size: 22
+                )
                 Text("\(ride.kind.label) toward \(ride.headsign)")
                     .font(.subheadline.weight(.medium))
             }

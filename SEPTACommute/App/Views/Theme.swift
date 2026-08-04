@@ -1,45 +1,105 @@
 import SwiftUI
+import UIKit
 
 extension Color {
     init(hex: String) {
+        self.init(uiColor: UIColor(hex: hex))
+    }
+}
+
+extension UIColor {
+    convenience init(hex: String) {
         var value: UInt64 = 0
         Scanner(string: hex.replacingOccurrences(of: "#", with: "")).scanHexInt64(&value)
         self.init(
-            .sRGB,
-            red: Double((value >> 16) & 0xFF) / 255,
-            green: Double((value >> 8) & 0xFF) / 255,
-            blue: Double(value & 0xFF) / 255,
-            opacity: 1
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
         )
+    }
+
+    /// The same hue, pushed into a brightness range that reads against the given
+    /// background.
+    ///
+    /// Transit colours are chosen to sit on white paper, and several of SEPTA's
+    /// are unreadable at one end or the other: the Norristown line's purple
+    /// (5F249F) disappears on black, and the Girard trolley's yellow (FFD700)
+    /// disappears on white. Hue and saturation are preserved so the palette still
+    /// looks like the map — only lightness moves, and only when it has to.
+    func adjustedForContrast(darkMode: Bool) -> UIColor {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        guard getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else { return self }
+
+        if darkMode {
+            // Lift dark colours off the background; ease off saturation slightly,
+            // since fully saturated brights vibrate against near-black.
+            brightness = max(brightness, 0.82)
+            saturation = min(saturation, 0.78)
+        } else {
+            // Pull pale colours down far enough to read on white.
+            brightness = min(brightness, 0.86)
+        }
+        return UIColor(hue: hue, saturation: saturation, brightness: brightness, alpha: alpha)
+    }
+
+    /// Whether text on top of this colour should be black rather than white.
+    var prefersDarkForeground: Bool {
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        guard getWhite(&white, alpha: &alpha) else { return false }
+        return white > 0.62
     }
 }
 
 enum Theme {
+    /// Resolves a fixed hex to a colour that adapts to light and dark.
+    ///
+    /// A `UIColor` with a dynamic provider re-resolves whenever the trait
+    /// collection changes, so this follows the appearance live rather than being
+    /// baked in at launch. Every colour in the app goes through here, including
+    /// the line colours that come from SEPTA's feed and so cannot be hand-tuned.
+    static func adaptive(_ hex: String) -> Color {
+        let base = UIColor(hex: hex)
+        return Color(uiColor: UIColor { traits in
+            base.adjustedForContrast(darkMode: traits.userInterfaceStyle == .dark)
+        })
+    }
+
     /// SEPTA's published Broad Street Line orange, used as the app accent.
-    static let accent = Color(hex: "F26100")
+    static let accent = adaptive("F26100")
 
     /// A line's own published colour. Every line in the bundled data carries one,
     /// so a B trip is orange, an L trip blue, a trolley trip green.
     static func color(for line: Line?) -> Color {
         guard let line else { return accent }
-        return Color(hex: line.colorHex)
+        return adaptive(line.colorHex)
+    }
+
+    /// Text colour to sit on top of a line's badge.
+    static func foreground(on line: Line?) -> Color {
+        guard let line else { return .white }
+        let base = UIColor(hex: line.colorHex)
+        return Color(uiColor: UIColor { traits in
+            let resolved = base.adjustedForContrast(darkMode: traits.userInterfaceStyle == .dark)
+            return resolved.prefersDarkForeground ? .black : .white
+        })
     }
 
     static func color(for kind: PatternKind) -> Color {
         switch kind {
-        case .express: return Color(hex: "0B7285")
+        case .express: return adaptive("0B7285")
         case .local: return accent
-        case .spur: return Color(hex: "6A4C93")
-        case .nightBus: return Color(hex: "495057")
+        case .spur: return adaptive("6A4C93")
+        case .nightBus: return adaptive("495057")
         }
     }
 
     static func color(for level: Urgency.Level) -> Color {
         switch level {
         case .missed: return .secondary
-        case .leaveNow: return Color(hex: "C92A2A")
-        case .leaveSoon: return Color(hex: "E8590C")
-        case .relaxed: return Color(hex: "2B8A3E")
+        case .leaveNow: return adaptive("C92A2A")
+        case .leaveSoon: return adaptive("E8590C")
+        case .relaxed: return adaptive("2B8A3E")
         }
     }
 
@@ -57,12 +117,14 @@ enum Theme {
 struct LineBadge: View {
     var text: String
     var color: Color = Theme.accent
+    /// Defaults to white; pass black for a badge whose fill is pale.
+    var textColor: Color = .white
     var size: CGFloat = 26
 
     var body: some View {
         Text(text)
             .font(.system(size: size * 0.6, weight: .heavy, design: .rounded))
-            .foregroundStyle(.white)
+            .foregroundStyle(textColor)
             .frame(width: size, height: size)
             .background(Circle().fill(color))
             .accessibilityHidden(true)

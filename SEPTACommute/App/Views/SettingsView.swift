@@ -15,6 +15,7 @@ struct SettingsView: View {
                 placesSection
                 walkingSection
                 routingSection
+                appearanceSection
                 dataSection
                 aboutSection
             }
@@ -158,6 +159,21 @@ struct SettingsView: View {
             Text("Timetable")
         } footer: {
             Text("Built from SEPTA's published GTFS feed. These are scheduled times — the app does not know about delays, so check SEPTA's alerts if something looks wrong.")
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            Picker("Appearance", selection: $model.preferences.appearance) {
+                ForEach(AppearanceChoice.allCases) { choice in
+                    Text(choice.label).tag(choice)
+                }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text("Line colours keep SEPTA's hues in both themes, lightened or darkened only as far as they need to be to stay readable.")
         }
     }
 

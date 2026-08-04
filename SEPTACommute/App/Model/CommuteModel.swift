@@ -1,5 +1,31 @@
 import Combine
 import Foundation
+import SwiftUI
+
+/// Light, dark, or whatever the phone is set to.
+enum AppearanceChoice: String, Codable, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "Match phone"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
 
 /// Rider-adjustable knobs, persisted.
 struct RiderPreferences: Codable, Equatable {
@@ -12,6 +38,15 @@ struct RiderPreferences: Codable, Equatable {
     var useMeasuredWalkTimes: Bool = true
     /// Whether to consider itineraries with a change of train.
     var allowTransfers: Bool = true
+
+    /// Stored as an optional so preferences saved before this setting existed still
+    /// decode — otherwise adding a key would silently reset every other setting.
+    private var appearanceRaw: String?
+
+    var appearance: AppearanceChoice {
+        get { appearanceRaw.flatMap(AppearanceChoice.init(rawValue:)) ?? .dark }
+        set { appearanceRaw = newValue.rawValue }
+    }
 
     static let storageKey = "riderPreferences.v1"
 

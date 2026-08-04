@@ -77,7 +77,8 @@ struct DestinationPickerView: View {
     @ViewBuilder
     private func lineHeader(_ line: Line) -> some View {
         HStack(spacing: 7) {
-            LineBadge(text: line.badge, color: Theme.color(for: line), size: 19)
+            LineBadge(text: line.badge, color: Theme.color(for: line),
+                      textColor: Theme.foreground(on: line), size: 19)
             Text(line.name)
         }
     }
@@ -233,7 +234,8 @@ struct OriginPickerView: View {
     @ViewBuilder
     private func lineHeader(_ line: Line) -> some View {
         HStack(spacing: 7) {
-            LineBadge(text: line.badge, color: Theme.color(for: line), size: 19)
+            LineBadge(text: line.badge, color: Theme.color(for: line),
+                      textColor: Theme.foreground(on: line), size: 19)
             Text(line.name)
         }
     }

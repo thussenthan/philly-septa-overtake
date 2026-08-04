@@ -17,6 +17,9 @@ struct SEPTACommuteApp: App {
                 .environmentObject(places)
                 .environmentObject(model)
                 .tint(Theme.accent)
+                // Dark by default. Every colour in the app adapts, so switching
+                // this changes the whole interface, not just the chrome.
+                .preferredColorScheme(model.preferences.appearance.colorScheme)
         }
     }
 }
