@@ -37,6 +37,30 @@ public struct JourneySummary: Sendable, Hashable {
     }
 }
 
+/// Whether this is worth hurrying for.
+///
+/// Deliberately a function of two things, because either alone misleads. Slack
+/// says how close you are cutting it; `MissedTrainCost` says what missing it
+/// costs. Two minutes of slack is an emergency before the last express of the
+/// peak and completely irrelevant when the next local is three minutes behind —
+/// and telling a rider to run in the second case is worse than saying nothing,
+/// because it teaches them to ignore the warning.
+public enum Advisory: Sendable, Hashable {
+    /// Tight, and expensive to miss.
+    case run(penalty: TimeInterval, secondsLeft: TimeInterval)
+    /// Tight, but the next one is right behind — don't bother running.
+    case dontRush(penalty: TimeInterval)
+    /// Not tight, but worth knowing this one is expensive to miss.
+    case worthCatching(penalty: TimeInterval)
+    /// Already gone.
+    case missed
+
+    public var isUrgent: Bool {
+        if case .run = self { return true }
+        return false
+    }
+}
+
 /// How one option compares to the best one.
 public struct JourneyComparison: Sendable, Hashable {
     /// Positive means this option arrives later than the best.
@@ -216,6 +240,46 @@ public struct JourneyNarrator: Sendable {
         )
     }
 
+    /// Whether to run for this train, if there is anything worth saying.
+    ///
+    /// Thresholds: "expensive" is five minutes lost, which is roughly one headway
+    /// on this network at peak and the point at which a rider notices. "Cheap" is
+    /// three minutes or less, where running gains almost nothing.
+    public func advisory(for journey: Journey, asOf now: Date) -> Advisory? {
+        guard !journey.isWalkOnly else { return nil }
+        let secondsLeft = journey.urgency.secondsUntilLeaveBy(asOf: now)
+        if secondsLeft < -30 { return .missed }
+
+        guard let cost = journey.missedCost else { return nil }
+        let tight = secondsLeft <= 150
+
+        if tight, cost.penalty >= 300 {
+            return .run(penalty: cost.penalty, secondsLeft: max(0, secondsLeft))
+        }
+        if tight, cost.penalty <= 180 {
+            return .dontRush(penalty: cost.penalty)
+        }
+        if !tight, cost.penalty >= 600 {
+            return .worthCatching(penalty: cost.penalty)
+        }
+        return nil
+    }
+
+    /// The advisory as a sentence.
+    public func advisoryText(_ advisory: Advisory) -> String {
+        switch advisory {
+        case .run(let penalty, let secondsLeft):
+            let when = secondsLeft <= 30 ? "Go now" : "Leave in \(Format.compactMinutes(secondsLeft))"
+            return "\(when) — miss this and you lose \(Format.minutes(penalty))"
+        case .dontRush(let penalty):
+            return "No need to run — the next option is only \(Format.minutes(penalty)) behind"
+        case .worthCatching(let penalty):
+            return "Worth catching: the next option arrives \(Format.minutes(penalty)) later"
+        case .missed:
+            return "This one has gone"
+        }
+    }
+
     /// The one sentence that answers "so which do I take?".
     ///
     /// The interesting case is when the fastest option also demands you move
@@ -224,6 +288,12 @@ public struct JourneyNarrator: Sendable {
     public func advice(for plan: Plan, asOf now: Date) -> String? {
         guard let best = plan.journeys.first else { return nil }
         let bestSummary = summary(for: best)
+
+        // A run warning outranks any comparison between options: it is the only
+        // thing that changes what the rider should do in the next thirty seconds.
+        if let advisory = advisory(for: best, asOf: now), advisory.isUrgent {
+            return "\(bestSummary.title). \(advisoryText(advisory))."
+        }
 
         guard let runnerUp = plan.journeys.dropFirst().first else {
             if best.isWalkOnly { return "Walking is your only option right now." }

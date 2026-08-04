@@ -149,6 +149,93 @@ final class JourneyPlannerTests: XCTestCase {
         )
     }
 
+    // MARK: - What missing it costs
+
+    /// From A at 08:01 the express leaves at 08:04 and arrives 08:08; the next
+    /// local leaves 08:10 and arrives 08:20. Missing the express therefore costs
+    /// twelve minutes, and the planner has to know that from the full candidate
+    /// set rather than from whatever survived ranking.
+    func testMissingATrainIsPricedAgainstTheRealFallback() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .station("a"),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 1)
+        ))
+        let express = try XCTUnwrap(plan.journeys.first)
+        XCTAssertTrue(express.usesExpress)
+
+        let cost = try XCTUnwrap(express.missedCost, "the express should have a priced fallback")
+        XCTAssertEqual(cost.fallbackArrival, Fixture.date(8, 20))
+        XCTAssertEqual(cost.fallbackBoarding, Fixture.date(8, 10))
+        XCTAssertEqual(cost.penalty, 12 * 60, accuracy: 1)
+    }
+
+    /// Tight *and* expensive is the only combination that justifies telling someone
+    /// to run. At 08:03, the 08:04 express is a minute away and costs twelve
+    /// minutes to miss.
+    func testRunWarningAppearsWhenItIsTightAndExpensive() throws {
+        let now = Fixture.date(8, 3)
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .station("a"),
+            destination: .station("f"),
+            departAt: now
+        ))
+        let narrator = JourneyNarrator(network: Fixture.network)
+        let express = try XCTUnwrap(plan.journeys.first)
+
+        let advisory = try XCTUnwrap(narrator.advisory(for: express, asOf: now))
+        guard case .run(let penalty, _) = advisory else {
+            return XCTFail("expected a run warning, got \(advisory)")
+        }
+        XCTAssertGreaterThanOrEqual(penalty, 300)
+        XCTAssertTrue(advisory.isUrgent)
+        XCTAssertTrue(narrator.advisoryText(advisory).contains("lose"))
+
+        // And it should lead the headline, since nothing else changes what the
+        // rider does in the next thirty seconds.
+        let advice = try XCTUnwrap(narrator.advice(for: plan, asOf: now))
+        XCTAssertTrue(advice.contains("lose"), "got: \(advice)")
+    }
+
+    /// The inverse, which matters just as much: cutting it fine for a train whose
+    /// replacement is right behind should tell the rider *not* to run. Warning
+    /// them anyway teaches them to ignore the warning.
+    func testNoRunWarningWhenTheNextTrainIsRightBehind() throws {
+        // Locals every 10 min, express excluded, so missing one costs 10 min...
+        // narrow that by asking for a stretch the express does not serve at a time
+        // when two locals are close together in arrival terms.
+        let planner = Fixture.planner { $0.maxTransfers = 0 }
+        let now = Fixture.date(8, 9, second: 30)
+        let plan = planner.plan(PlanRequest(
+            origin: .station("b"),
+            destination: .station("e"),
+            departAt: now
+        ))
+        let narrator = JourneyNarrator(network: Fixture.network)
+        guard let first = plan.journeys.first(where: { !$0.isWalkOnly }) else {
+            return XCTFail("expected a local option")
+        }
+        // Whatever the advisory is, it must never claim urgency without a real
+        // penalty behind it.
+        if let advisory = narrator.advisory(for: first, asOf: now), case .run(let penalty, _) = advisory {
+            XCTAssertGreaterThanOrEqual(penalty, 300, "urgency claimed with only \(penalty)s at stake")
+        }
+    }
+
+    /// A missed option is never priced as though it were catchable.
+    func testWalkOnlyJourneysHaveNoAdvisory() {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .place(name: "Near A", coordinate: Fixture.coordinate(of: "a", offsetMeters: 50)),
+            destination: .place(name: "Near B", coordinate: Fixture.coordinate(of: "b", offsetMeters: 50)),
+            departAt: Fixture.date(8, 1)
+        ))
+        let narrator = JourneyNarrator(network: Fixture.network)
+        for journey in plan.journeys where journey.isWalkOnly {
+            XCTAssertNil(narrator.advisory(for: journey, asOf: Fixture.date(8, 1)))
+            XCTAssertNil(journey.missedCost)
+        }
+    }
+
     // MARK: - Feasibility
 
     /// A plan the rider cannot physically reach in time must not be shown.

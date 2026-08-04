@@ -224,6 +224,7 @@ struct PlanView: View {
                             journey: journey,
                             summary: model.narrator.summary(for: journey),
                             comparison: model.narrator.comparison(of: journey, against: best),
+                            narrator: model.narrator,
                             network: model.network
                         )
                     }

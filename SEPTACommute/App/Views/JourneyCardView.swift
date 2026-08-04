@@ -5,12 +5,14 @@ struct JourneyCardView: View {
     var journey: Journey
     var summary: JourneySummary
     var comparison: JourneyComparison
+    var narrator: JourneyNarrator
     var network: Network
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             legStrip
+            advisoryBanner
             Divider().opacity(0.4)
             footer
         }
@@ -131,6 +133,49 @@ struct JourneyCardView: View {
             case .walk(let walk): return walk.duration >= 45
             case .ride: return true
             }
+        }
+    }
+
+    /// "Go now — miss this and you lose 12 min", or the opposite.
+    ///
+    /// Re-evaluated on a timer because it depends on how long is left, not just on
+    /// the plan: an option that was relaxed a minute ago may be a run now.
+    @ViewBuilder
+    private var advisoryBanner: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            if let advisory = narrator.advisory(for: journey, asOf: context.date) {
+                let tint = advisoryTint(advisory)
+                HStack(spacing: 7) {
+                    Image(systemName: advisorySymbol(advisory))
+                        .font(.caption.weight(.bold))
+                    Text(narrator.advisoryText(advisory))
+                        .font(.caption.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
+                .foregroundStyle(tint)
+            }
+        }
+    }
+
+    private func advisorySymbol(_ advisory: Advisory) -> String {
+        switch advisory {
+        case .run: return "figure.run"
+        case .dontRush: return "figure.walk"
+        case .worthCatching: return "star.fill"
+        case .missed: return "xmark.circle"
+        }
+    }
+
+    private func advisoryTint(_ advisory: Advisory) -> Color {
+        switch advisory {
+        case .run: return Theme.color(for: .leaveNow)
+        case .dontRush: return Theme.color(for: .relaxed)
+        case .worthCatching: return Theme.accent
+        case .missed: return Theme.color(for: .missed)
         }
     }
 

@@ -147,6 +147,15 @@ public struct JourneyPlanner: Sendable {
 
         var ranked = rank(candidates)
 
+        // What each option costs to miss, measured against every alternative the
+        // search found — not just the handful that survived ranking, since the
+        // realistic fallback is often a plain slower train that got filtered out.
+        ranked = ranked.map { journey in
+            var withCost = journey
+            withCost.missedCost = missedCost(for: journey, among: candidates)
+            return withCost
+        }
+
         // A walk that beats every train is worth saying out loud, not burying
         // at position four.
         if let walkOnly = ranked.first(where: { $0.isWalkOnly }),
@@ -493,6 +502,30 @@ public struct JourneyPlanner: Sendable {
             departureTime: leaveBy,
             arrivalTime: arrival,
             urgency: Urgency(leaveBy: leaveBy, boardingDeparture: first.departure, slack: slack)
+        )
+    }
+
+    /// The best option still available to a rider who misses this one's first train.
+    private func missedCost(for journey: Journey, among candidates: [Journey]) -> MissedTrainCost? {
+        guard let firstRide = journey.rides.first else { return nil }
+
+        let alternatives = candidates.filter { other in
+            guard let otherFirst = other.rides.first else {
+                // Walking is always still available, and is genuinely the fallback
+                // late at night.
+                return !other.isWalkOnly ? false : true
+            }
+            return otherFirst.departure > firstRide.departure
+        }
+
+        guard let fallback = alternatives.min(by: { $0.arrivalTime < $1.arrivalTime }) else { return nil }
+        let penalty = fallback.arrivalTime.timeIntervalSince(journey.arrivalTime)
+        guard penalty > 0 else { return nil }
+
+        return MissedTrainCost(
+            fallbackArrival: fallback.arrivalTime,
+            fallbackBoarding: fallback.rides.first?.departure,
+            penalty: penalty
         )
     }
 

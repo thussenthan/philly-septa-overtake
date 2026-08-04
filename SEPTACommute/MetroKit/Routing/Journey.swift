@@ -278,6 +278,29 @@ public struct Urgency: Sendable, Hashable {
     }
 }
 
+/// What missing this train actually costs.
+///
+/// Urgency alone cannot tell a rider whether to run. Two minutes of slack means
+/// nothing if the next train is three minutes behind, and means everything if the
+/// one you are looking at is the last express before the midday gap. This is the
+/// second half of that sentence.
+public struct MissedTrainCost: Sendable, Hashable {
+    /// When you would arrive on the best option still open to you.
+    public var fallbackArrival: Date
+    /// When that option leaves, or `nil` if it is walking.
+    public var fallbackBoarding: Date?
+    /// How much later than this journey that is. Always positive.
+    public var penalty: TimeInterval
+    /// True when the fallback involves no train at all.
+    public var fallbackIsWalking: Bool { fallbackBoarding == nil }
+
+    public init(fallbackArrival: Date, fallbackBoarding: Date?, penalty: TimeInterval) {
+        self.fallbackArrival = fallbackArrival
+        self.fallbackBoarding = fallbackBoarding
+        self.penalty = penalty
+    }
+}
+
 /// One complete door-to-door option.
 public struct Journey: Identifiable, Sendable, Hashable {
     public var legs: [JourneyLeg]
@@ -286,12 +309,21 @@ public struct Journey: Identifiable, Sendable, Hashable {
     /// When the rider reaches the destination.
     public var arrivalTime: Date
     public var urgency: Urgency
+    /// Filled in after ranking, once every alternative is known.
+    public var missedCost: MissedTrainCost?
 
-    public init(legs: [JourneyLeg], departureTime: Date, arrivalTime: Date, urgency: Urgency) {
+    public init(
+        legs: [JourneyLeg],
+        departureTime: Date,
+        arrivalTime: Date,
+        urgency: Urgency,
+        missedCost: MissedTrainCost? = nil
+    ) {
         self.legs = legs
         self.departureTime = departureTime
         self.arrivalTime = arrivalTime
         self.urgency = urgency
+        self.missedCost = missedCost
     }
 
     /// Stable across replans as long as the underlying trips are the same, so
