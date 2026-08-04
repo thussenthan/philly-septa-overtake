@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// Light, dark, or whatever the phone is set to.
 enum AppearanceChoice: String, Codable, CaseIterable, Identifiable {
@@ -420,6 +421,40 @@ final class CommuteModel: ObservableObject {
             self.plan = result
             self.advice = narrator.advice(for: result, asOf: request.departAt)
             self.lastPlannedAt = request.departAt
+            self.publishSnapshot(for: request)
+        }
+    }
+
+    /// Hand the widget the trip, not the answer.
+    ///
+    /// The widget has the same timetable and can work out departures for itself; what
+    /// it cannot do is get a location fix or guess where the rider is going. So only
+    /// the endpoints cross the boundary, and the widget re-plans them for whatever
+    /// moment it is being looked at — which is why its countdown is live rather than
+    /// a picture of whatever the app last computed.
+    private func publishSnapshot(for request: PlanRequest) {
+        let snapshot = CommuteSnapshot(
+            origin: SnapshotEndpoint(request.origin, name: originName),
+            destination: SnapshotEndpoint(request.destination, name: targetName),
+            reason: targetReason,
+            savedAt: request.departAt
+        )
+        // Only nudge WidgetKit when the trip itself changed: this runs every thirty
+        // seconds, and a reload budget spent re-answering the same question is a
+        // reload not available when the answer actually moves.
+        guard SharedStore.save(snapshot) else { return }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// What to call the origin on screen and in the widget.
+    var originName: String {
+        switch source {
+        case .currentLocation:
+            return currentStation?.displayName ?? "Where I am"
+        case .station(let id):
+            return network.station(id)?.displayName ?? id.rawValue
+        case .saved(let place):
+            return place.name
         }
     }
 

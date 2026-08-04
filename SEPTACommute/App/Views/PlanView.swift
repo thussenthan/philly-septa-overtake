@@ -141,16 +141,13 @@ struct PlanView: View {
         }
     }
 
+    /// `model.originName` names a *resolved* origin, which is what the widget needs.
+    /// On screen there is one more case: location that hasn't arrived yet.
     private var originDescription: String {
-        switch model.source {
-        case .currentLocation:
-            if let station = model.currentStation { return station.displayName }
+        if case .currentLocation = model.source, model.currentStation == nil {
             return model.locationStatusSummary ?? "Current location"
-        case .station(let id):
-            return model.network.station(id)?.displayName ?? id.rawValue
-        case .saved(let place):
-            return place.name
         }
+        return model.originName
     }
 
     // MARK: - The answer

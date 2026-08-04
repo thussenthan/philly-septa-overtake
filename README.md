@@ -160,11 +160,13 @@ SEPTACommute/
 │   ├── Schedule/      service calendar, timetable, trip generation
 │   ├── Routing/       the planner, journeys, walking model, prose
 │   ├── Alerts/        SEPTA's alert feed: model and decoding, no networking
+│   ├── Widget/        the shared snapshot and the widget's timeline logic
 │   └── Data/          GeneratedSEPTAData.swift  ← regenerate, don't edit
 └── App/               SwiftUI, CoreLocation, MapKit
     ├── Model/         saved places, preferences, the view model
     ├── Services/      location, walking directions, address search, alert fetching
     └── Views/
+SEPTACommuteWidget/    WidgetKit extension — views only, no logic
 Tests/MetroKitTests/   run with `swift test`
 tools/build_schedule.py
 ```
@@ -331,6 +333,42 @@ What `--report` still shows as imperfect, at the current feed:
 
 Buses (131 routes) and Regional Rail (a separate feed) are out of scope. Buses in
 particular would need a different search strategy, not just a faster one.
+
+## The widget
+
+Small, medium, and a lock-screen rectangle: the line badges, a live countdown to the
+last moment you can leave, and when you'd arrive.
+
+It doesn't ask the app what the answer is. Widget extensions have no reliable
+location fix, get throttled on the network, and are killed if they take too long —
+but they have the same bundled timetable, which is enough to compute exact
+departures for any moment. So the app writes only *which trip* to answer
+(`CommuteSnapshot`: two endpoints and a name for each) into a shared App Group, and
+the extension re-plans it for the moment it is being looked at.
+
+The timeline is built from the answers rather than from a guessed refresh interval:
+each entry begins at the exact instant the option the previous one recommended stops
+being catchable. Between those instants nothing the widget could say changes, which
+is why the countdown is a self-updating `Text(_:style:.timer)` instead of an entry
+per minute. The widget states what missing the train *costs* ("Miss it: +12m") and
+never tells you to run — whether to run depends on how much time is left, and an
+entry rendered ten minutes after it was computed can't know that.
+
+Two manual steps in Xcode, both unavoidable:
+
+1. **Share the code.** Select the `MetroKit` folder in the navigator, and in the File
+   inspector add `SEPTACommuteWidget` to its Target Membership. The extension needs
+   the timetable, the planner and `CommuteSnapshot`.
+2. **Share the container.** Both targets → Signing & Capabilities → + Capability →
+   App Groups → add the same identifier, then set it in
+   `SharedStore.appGroupID` (it ships as `group.com.example.septacommute`). Until
+   that matches, `UserDefaults(suiteName:)` returns nil; the app falls back to its
+   own defaults and keeps working, and the widget simply has nothing to read.
+
+The template files Xcode generates for a Live Activity, a Control widget and a
+configuration intent aren't used — delete `SEPTACommuteWidgetLiveActivity.swift`,
+`SEPTACommuteWidgetControl.swift` and `AppIntent.swift` if your template created
+them.
 
 ## Wiring up real-time
 
