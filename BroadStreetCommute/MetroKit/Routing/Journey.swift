@@ -116,22 +116,74 @@ public struct RideLeg: Sendable, Hashable {
     }
 }
 
+/// Evidence that a rider was overtaken: they boarded one train, got off, and
+/// caught a faster one that had been *behind* them.
+///
+/// This is checked against the timetable rather than inferred from the shape of
+/// the itinerary. Two trains on the same line in the same direction is not
+/// enough — riding the express to Girard and finishing on a local looks
+/// identical structurally, but nothing overtook anybody. Claiming otherwise puts
+/// a sentence on screen ("a faster train catches up with you here") that is
+/// simply false.
+/// The test is not "did the second train leave the boarding station later" — on
+/// this line the fast train usually doesn't call at the boarding station at all,
+/// which is exactly why the rider is on the slow one. What makes it an overtake
+/// is simpler and observable: the train they got *off* also goes where they are
+/// going, and gets there later than the train they got *on*. It was ahead of them
+/// at the platform where they switched, and it loses.
+public struct Overtake: Sendable, Hashable {
+    /// Where the rider first got on.
+    public var boardedAt: StationID
+    /// Where they stepped off to let the faster train take over.
+    public var switchedAt: StationID
+    /// The station the two trains are compared at — where the rider finally gets
+    /// off. Recorded so the saving is never measured against a different stop.
+    public var comparedAt: StationID
+    /// When the train they abandoned reaches `comparedAt`.
+    public var arrivalIfTheyHadStayedPut: Date
+    /// When they actually get there.
+    public var arrival: Date
+
+    public init(
+        boardedAt: StationID,
+        switchedAt: StationID,
+        comparedAt: StationID,
+        arrivalIfTheyHadStayedPut: Date,
+        arrival: Date
+    ) {
+        self.boardedAt = boardedAt
+        self.switchedAt = switchedAt
+        self.comparedAt = comparedAt
+        self.arrivalIfTheyHadStayedPut = arrivalIfTheyHadStayedPut
+        self.arrival = arrival
+    }
+
+    /// What the switch is worth. Positive by construction — an overtake that
+    /// saved nothing is not an overtake.
+    public var timeSaved: TimeInterval {
+        arrivalIfTheyHadStayedPut.timeIntervalSince(arrival)
+    }
+}
+
 /// Time spent on a platform waiting for a train.
 public struct WaitLeg: Sendable, Hashable {
     public var stationID: StationID
     public var startTime: Date
     public var duration: TimeInterval
-    /// True when this wait is a deliberate "let the express pass you" hold
-    /// rather than the unavoidable wait for your first train.
-    public var isStrategicHold: Bool
+    /// Set when the rider got off to let a verified faster train take over.
+    public var overtake: Overtake?
 
     public var endTime: Date { startTime.addingTimeInterval(duration) }
 
-    public init(stationID: StationID, startTime: Date, duration: TimeInterval, isStrategicHold: Bool) {
+    /// True only when a faster train genuinely caught the rider up here, as
+    /// opposed to any wait that happens to follow a ride.
+    public var isStrategicHold: Bool { overtake != nil }
+
+    public init(stationID: StationID, startTime: Date, duration: TimeInterval, overtake: Overtake? = nil) {
         self.stationID = stationID
         self.startTime = startTime
         self.duration = duration
-        self.isStrategicHold = isStrategicHold
+        self.overtake = overtake
     }
 }
 
@@ -279,11 +331,28 @@ public struct Journey: Identifiable, Sendable, Hashable {
 
     /// True when any leg rides an express pattern.
     public var usesExpress: Bool { rides.contains { $0.kind == .express } }
-    /// True when the rider gets off one train to catch a faster one.
-    public var hasStrategicHold: Bool {
-        legs.contains { leg in
-            if case .wait(let wait) = leg { return wait.isStrategicHold }
-            return false
+
+    /// The verified overtake on this journey, if a faster train caught the rider
+    /// up partway along.
+    public var overtake: Overtake? {
+        for leg in legs {
+            if case .wait(let wait) = leg, let overtake = wait.overtake { return overtake }
         }
+        return nil
+    }
+
+    /// True when the rider gets off one train specifically to catch a faster one
+    /// that was running behind them.
+    public var hasStrategicHold: Bool { overtake != nil }
+
+    /// How much the overtake saves against staying on the slower train.
+    public var overtakeSaving: TimeInterval? { overtake?.timeSaved }
+
+    /// The platform wait where the overtake happens.
+    public var overtakeWait: WaitLeg? {
+        for leg in legs {
+            if case .wait(let wait) = leg, wait.overtake != nil { return wait }
+        }
+        return nil
     }
 }

@@ -5,9 +5,11 @@ final class JourneyPlannerTests: XCTestCase {
 
     // MARK: - The headline decision
 
-    /// Standing at A at 07:58, the 08:00 local reaches F at 08:10 but the 08:04
-    /// express reaches it at 08:08. Waiting is correct, and the plan should say so.
-    func testWaitingForTheExpressWinsWhenItArrivesFirst() throws {
+    /// Standing at A at 07:58, the 08:00 local reaches F at 08:10 and the 08:04
+    /// express reaches it at 08:08. The express leaves *later* and arrives
+    /// *sooner*, so there is no tradeoff to present — the local is strictly worse
+    /// and showing it would only invite a rider to make a mistake.
+    func testTheLocalIsNotOfferedWhenTheExpressBeatsItOnBothCounts() throws {
         let plan = Fixture.planner().plan(PlanRequest(
             origin: .station("a"),
             destination: .station("f"),
@@ -17,12 +19,37 @@ final class JourneyPlannerTests: XCTestCase {
         let best = try XCTUnwrap(plan.best)
         XCTAssertTrue(best.usesExpress, "expected the express to win, got \(best.trace)")
         XCTAssertEqual(best.arrivalTime, Fixture.date(8, 8))
+        XCTAssertEqual(best.urgency.boardingDeparture, Fixture.date(8, 4))
 
-        // The slower local must still be offered: it leaves sooner, which some
-        // riders will prefer, and the whole point is to show the tradeoff.
-        let local = plan.journeys.first { !$0.usesExpress && !$0.isWalkOnly }
-        let localJourney = try XCTUnwrap(local, "the local option should still be listed")
-        XCTAssertEqual(localJourney.arrivalTime, Fixture.date(8, 10))
+        XCTAssertNil(
+            plan.journeys.first { !$0.usesExpress && !$0.isWalkOnly },
+            "the local leaves earlier AND arrives later, so it should be filtered: "
+                + "\(plan.journeys.map(\.trace))"
+        )
+    }
+
+    /// The genuine version of "wait or go now": a rider who has just missed the
+    /// 08:00 local. The express leaves at 08:04 and arrives 08:08; the next local
+    /// leaves at 08:10 and arrives 08:20. Now the express demands they move
+    /// *sooner*, so both belong on screen — miss the express and it costs 12 min.
+    func testBothAreOfferedWhenCatchingTheFasterTrainMeansLeavingSooner() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .station("a"),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 1)
+        ))
+
+        XCTAssertEqual(plan.journeys.count, 2, "got \(plan.journeys.map(\.trace))")
+
+        let express = try XCTUnwrap(plan.journeys.first)
+        XCTAssertTrue(express.usesExpress)
+        XCTAssertEqual(express.arrivalTime, Fixture.date(8, 8))
+        XCTAssertEqual(express.urgency.boardingDeparture, Fixture.date(8, 4))
+
+        let local = try XCTUnwrap(plan.journeys.last)
+        XCTAssertFalse(local.usesExpress)
+        XCTAssertEqual(local.arrivalTime, Fixture.date(8, 20))
+        XCTAssertEqual(local.urgency.boardingDeparture, Fixture.date(8, 10))
     }
 
     /// The express skips E, so for a trip to E the earlier local is simply right.
@@ -64,20 +91,62 @@ final class JourneyPlannerTests: XCTestCase {
     }
 
     /// The wait at C is the rider deliberately letting a faster train catch up,
-    /// which reads very differently from waiting for your first train.
-    func testTheHoldAtTheTransferIsMarkedStrategic() throws {
+    /// which reads very differently from waiting for your first train — and the
+    /// numbers behind that claim have to hold up.
+    func testTheOvertakeIsVerifiedAgainstTheTimetable() throws {
         let plan = Fixture.planner().plan(PlanRequest(
             origin: .station("b"),
             destination: .station("f"),
             departAt: Fixture.date(8, 0)
         ))
         let best = try XCTUnwrap(plan.best)
-        let holds = best.legs.compactMap { leg -> WaitLeg? in
-            if case .wait(let wait) = leg { return wait }
-            return nil
-        }
-        XCTAssertEqual(holds.filter(\.isStrategicHold).count, 1)
-        XCTAssertEqual(holds.first(where: \.isStrategicHold)?.stationID, "c")
+
+        let overtake = try XCTUnwrap(best.overtake, "expected a verified overtake in \(best.trace)")
+        XCTAssertEqual(overtake.boardedAt, "b")
+        XCTAssertEqual(overtake.switchedAt, "c")
+        XCTAssertEqual(best.overtakeWait?.stationID, "c")
+
+        // The local they stepped off carries on to F and gets there at 08:10.
+        // The express they stepped onto gets there at 08:08. That two-minute gap
+        // is the overtake, and it is the only thing that makes the change worth
+        // making.
+        XCTAssertEqual(overtake.comparedAt, "f")
+        XCTAssertEqual(overtake.arrivalIfTheyHadStayedPut, Fixture.date(8, 10))
+        XCTAssertEqual(overtake.arrival, Fixture.date(8, 8))
+        XCTAssertEqual(overtake.timeSaved, 120, accuracy: 1)
+
+        let narrator = JourneyNarrator(network: Fixture.network)
+        XCTAssertTrue(narrator.strategy(for: best).isOvertake)
+    }
+
+    /// Changing trains is not the same thing as being overtaken. Riding the
+    /// express past a station it skips and finishing on a local has the identical
+    /// shape — same line, same direction, one change — but nothing passed the
+    /// rider, and the app must not claim it did.
+    func testChangingTrainsWithoutBeingOvertakenIsNotCalledAnOvertake() throws {
+        // A → E: the express skips E, so the only way to use it is to ride to F
+        // and come back on a northbound local.
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .station("a"),
+            destination: .station("e"),
+            departAt: Fixture.date(7, 58)
+        ))
+
+        let viaExpress = try XCTUnwrap(
+            plan.journeys.first { $0.rides.count == 2 && $0.usesExpress },
+            "expected an express-then-local option; got \(plan.journeys.map(\.trace))"
+        )
+        XCTAssertNil(
+            viaExpress.overtake,
+            "no train overtook anybody in \(viaExpress.trace)"
+        )
+        XCTAssertFalse(viaExpress.hasStrategicHold)
+
+        let narrator = JourneyNarrator(network: Fixture.network)
+        XCTAssertFalse(
+            narrator.strategy(for: viaExpress).isOvertake,
+            "this is a connection, not an overtake"
+        )
     }
 
     // MARK: - Feasibility

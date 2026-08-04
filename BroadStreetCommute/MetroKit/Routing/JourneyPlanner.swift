@@ -442,9 +442,9 @@ public struct JourneyPlanner: Sendable {
                     startTime: cursor,
                     duration: wait,
                     // A wait before the first train is unavoidable. A wait after
-                    // getting off one is a choice: you are letting a faster train
-                    // catch up with you.
-                    isStrategicHold: index > 0
+                    // getting off one *might* be a rider letting a faster train
+                    // catch them up — but only the timetable can say so.
+                    overtake: index > 0 ? overtake(switchingTo: ride, from: rides[index - 1]) : nil
                 )))
             }
             legs.append(.ride(RideLeg(
@@ -484,6 +484,36 @@ public struct JourneyPlanner: Sendable {
 
     private func stationName(_ id: StationID) -> String {
         network.station(id)?.displayName ?? id.rawValue
+    }
+
+    /// Decides whether changing from `previous` to `next` is genuinely an
+    /// overtake, by asking the timetable rather than reading the shape of the
+    /// itinerary.
+    ///
+    /// The train the rider steps off must (a) also serve where they are going,
+    /// and (b) get there later than the train they step onto. Both conditions are
+    /// necessary. Drop (a) and every branch connection becomes an "overtake";
+    /// drop (b) and so does every change onto a slower train.
+    private func overtake(switchingTo next: PartialRide, from previous: PartialRide) -> Overtake? {
+        guard let pattern = network.pattern(previous.pattern.id),
+              let boardIndex = pattern.stopIndex(of: previous.board),
+              let destinationIndex = pattern.stopIndex(of: next.alight),
+              // The abandoned train has to reach the destination *onward* from
+              // where the rider got on, not somewhere behind them.
+              destinationIndex > boardIndex,
+              let stayedPut = timetable.arrival(of: previous.trip, at: next.alight)
+        else { return nil }
+
+        // Switching has to actually gain time, or nothing overtook anybody.
+        guard stayedPut > next.arrival else { return nil }
+
+        return Overtake(
+            boardedAt: previous.board,
+            switchedAt: previous.alight,
+            comparedAt: next.alight,
+            arrivalIfTheyHadStayedPut: stayedPut,
+            arrival: next.arrival
+        )
     }
 
     // MARK: - Ranking

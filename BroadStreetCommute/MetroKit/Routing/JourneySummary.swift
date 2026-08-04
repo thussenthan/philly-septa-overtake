@@ -75,11 +75,11 @@ public struct JourneyNarrator: Sendable {
             return .direct(rides[0].kind)
         case 2:
             let at = rides[0].alightStation
-            // If both trains run the same way on the same line, the rider changed
-            // trains to go faster, not to go somewhere else.
-            let sameLine = rides[0].lineID == rides[1].lineID
-            let sameDirection = rides[0].direction == rides[1].direction
-            if sameLine, sameDirection {
+            // Only call it an overtake if the planner verified one against the
+            // timetable. Same line, same direction is *not* evidence: riding the
+            // express to Girard and finishing on a local has exactly that shape
+            // and overtakes nothing.
+            if journey.overtake != nil {
                 return .overtake(first: rides[0].kind, second: rides[1].kind, at: at)
             }
             return .connect(first: rides[0].kind, second: rides[1].kind, at: at)
@@ -143,7 +143,18 @@ public struct JourneyNarrator: Sendable {
     }
 
     private func footnote(for journey: Journey, strategy: JourneyStrategy) -> String? {
-        // The most useful nuance on this line is which stations a fast train skips,
+        // When a faster train really did catch the rider up, say what that is
+        // worth. This is the one number that justifies the whole manoeuvre, and
+        // it now comes from a timetable comparison rather than an assumption.
+        if let overtake = journey.overtake, let wait = journey.overtakeWait {
+            if overtake.timeSaved >= 60 {
+                return "Saves \(Format.minutes(overtake.timeSaved)) over staying on, after a "
+                    + "\(Format.minutes(wait.duration)) wait at \(name(wait.stationID))"
+            }
+            return "Your first train gets passed at \(name(overtake.switchedAt))"
+        }
+
+        // Otherwise the most useful nuance is which stations a fast train skips,
         // because that is exactly what makes riders distrust the express.
         if let ride = journey.rides.first(where: { $0.kind == .express || $0.kind == .spur }) {
             let skipped = skippedStations(on: ride)
@@ -152,12 +163,6 @@ public struct JourneyNarrator: Sendable {
                 let suffix = skipped.count > 3 ? " +\(skipped.count - 3) more" : ""
                 return "Skips \(names.joined(separator: ", "))\(suffix)"
             }
-        }
-        if case .overtake = strategy, let hold = journey.legs.compactMap({ leg -> WaitLeg? in
-            if case .wait(let wait) = leg, wait.isStrategicHold { return wait }
-            return nil
-        }).first {
-            return "\(Format.minutes(hold.duration)) on the platform at \(name(hold.stationID))"
         }
         return nil
     }

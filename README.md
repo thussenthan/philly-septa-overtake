@@ -131,10 +131,21 @@ imports need adding.
 
 The search is exhaustive rather than heuristic. On a 24-station line with a couple
 of dozen stopping patterns that costs microseconds, and in exchange the interesting
-strategies fall out on their own instead of being special-cased. There is no
-"check whether the express overtakes the local" rule anywhere in the code — the
-planner enumerates walk → ride → (change → ride)* → walk and scores each by when
-the rider reaches the door.
+strategies fall out on their own instead of being special-cased. Nothing tells the
+planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
+walk and scores each by when the rider reaches the door.
+
+*Describing* those routes is a different job, and it does need an explicit check.
+An itinerary is only called an overtake when the timetable says one happened: the
+train the rider steps **off** must also serve their destination, and must get there
+**later** than the train they step **onto**. Both conditions matter. Without the
+first, every branch connection looks like an overtake; without the second, so does
+every change onto a slower train. Inferring it from shape instead — same line, same
+direction, one change — mislabels three of the five multi-train itineraries on this
+line, because "express to Girard, then the local" is structurally identical to a
+real overtake and overtakes nothing. The check also can't be "did the faster train
+leave your boarding station later", because the express usually doesn't stop there
+at all — which is precisely why the rider is on the local.
 
 1. **Access and egress candidates.** The nearest few stations to each end, not just
    the closest one. This is what makes "walk three extra minutes to a station the
@@ -173,10 +184,14 @@ stub — turn measured walks off in Settings and everything still works with no 
 
 `swift test` covers the engine and the shipped data:
 
-- The **express-versus-local decision** in both directions: waiting wins when the
-  express arrives first, the local wins when the express skips your destination.
+- The **express-versus-local decision** in both directions: the local is dropped
+  when the express both leaves later and arrives sooner (no tradeoff to present),
+  and both are shown when catching the express means leaving *sooner*.
 - The **half-and-half case**, asserting the planner finds it and describes it as
   "Local now, switch to the express at C".
+- **Overtake verification**, both ways round: local-to-express at Olney is a real
+  overtake with a measured saving, while every change onto a train that simply goes
+  further is not one and must not be described as one.
 - **Feasibility**: no offered train has already left, and no plan asks for a walk
   that finishes after its train departs.
 - **Contiguity**: every journey's legs form one unbroken chain in time.

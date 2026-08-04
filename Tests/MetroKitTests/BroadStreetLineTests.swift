@@ -303,6 +303,57 @@ final class BroadStreetLineTests: XCTestCase {
         XCTAssertFalse(skipped.contains("girard"), "the express does stop at Girard")
     }
 
+    /// Boarding the local at Fern Rock and changing to the express at Olney is a
+    /// real overtake: the local you step off carries on to Walnut-Locust and gets
+    /// there later than the express you step onto.
+    func testLocalToExpressAtOlneyIsAVerifiedOvertake() throws {
+        let plan = planner.plan(PlanRequest(
+            origin: .station("fern-rock"),
+            destination: .station("walnut-locust"),
+            departAt: weekday(8, 22)
+        ))
+
+        let halfAndHalf = try XCTUnwrap(
+            plan.journeys.first { $0.rides.count == 2 },
+            "expected a local-then-express option; got \(plan.journeys.map(\.trace))"
+        )
+        let overtake = try XCTUnwrap(halfAndHalf.overtake, "should be a verified overtake")
+        XCTAssertEqual(overtake.boardedAt, "fern-rock")
+        XCTAssertEqual(overtake.switchedAt, "olney")
+        XCTAssertEqual(overtake.comparedAt, "walnut-locust")
+        XCTAssertGreaterThan(overtake.timeSaved, 60, "the switch has to actually gain time")
+        XCTAssertLessThan(overtake.arrival, overtake.arrivalIfTheyHadStayedPut)
+
+        XCTAssertTrue(narrator.strategy(for: halfAndHalf).isOvertake)
+    }
+
+    /// Changing trains because the first one doesn't go where you're going is not
+    /// an overtake, and must not be described as one.
+    ///
+    /// Every one of these has the same shape as a real overtake — same line, one
+    /// change — but in each case the train being abandoned never reaches the
+    /// destination, so nothing passed the rider.
+    func testConnectionsOntoTrainsThatGoFurtherAreNotOvertakes() {
+        let cases: [(StationID, StationID, Date)] = [
+            ("erie", "8th-and-market", weekday(9, 5)),     // express stops short of the Spur
+            ("olney", "tasker-morris", weekday(9, 5)),     // express terminates at Walnut-Locust
+        ]
+        for (from, to, when) in cases {
+            let plan = planner.plan(PlanRequest(origin: .station(from), destination: .station(to), departAt: when))
+            for journey in plan.journeys where journey.rides.count > 1 {
+                let firstRide = journey.rides[0]
+                let firstPattern = network.pattern(firstRide.patternID)
+                // Precondition for the case being interesting at all.
+                guard firstPattern?.serves(to) != true else { continue }
+                XCTAssertNil(
+                    journey.overtake,
+                    "\(from) → \(to): \(journey.trace) is a connection, not an overtake"
+                )
+                XCTAssertFalse(narrator.strategy(for: journey).isOvertake, journey.trace)
+            }
+        }
+    }
+
     /// Riding away from your destination and doubling back is never worth showing
     /// on a single line, however much extra slack it appears to buy.
     func testNoPointlessBacktracking() {

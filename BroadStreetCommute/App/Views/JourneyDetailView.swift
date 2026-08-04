@@ -117,14 +117,19 @@ struct JourneyDetailView: View {
                 .foregroundStyle(.secondary)
 
         case .wait(let wait):
-            Text(wait.isStrategicHold
+            Text(wait.overtake != nil
                  ? "Get off and wait \(Format.minutes(wait.duration)) at \(stationName(wait.stationID))"
                  : "Wait \(Format.minutes(wait.duration)) on the platform")
                 .font(.subheadline.weight(.medium))
-            if wait.isStrategicHold {
-                Text("A faster train catches up with you here.")
+            if let overtake = wait.overtake {
+                // Both numbers were checked against the timetable, so they can be
+                // stated as fact rather than hedged.
+                Text("A faster train catches you up here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("Staying on your first train would reach \(stationName(overtake.comparedAt)) at \(Format.clock(overtake.arrivalIfTheyHadStayedPut)) — \(Format.minutes(overtake.timeSaved)) later.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.color(for: .relaxed))
             }
 
         case .ride(let ride):
