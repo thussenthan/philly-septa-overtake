@@ -454,6 +454,49 @@ final class SEPTANetworkTests: XCTestCase {
         )
     }
 
+    /// The data is text parsed at runtime, so a decoder bug would not fail to
+    /// compile — it would quietly yield a smaller network and route over less of
+    /// the city. The generator writes down what it emitted; this checks it survived.
+    func testTheDecodedNetworkMatchesWhatWasGenerated() {
+        XCTAssertEqual(network.stations.count, SEPTAData.expectedStationCount)
+        XCTAssertEqual(network.patterns.count, SEPTAData.expectedPatternCount)
+
+        let departures = network.patterns.reduce(0) { total, pattern in
+            total + DayType.allCases.reduce(0) { $0 + pattern.schedule.startTimes(on: $1).count }
+        }
+        XCTAssertEqual(departures, SEPTAData.expectedDepartureCount)
+
+        // Nothing half-parsed: every pattern has stops, a schedule, and real stations.
+        for pattern in network.patterns {
+            XCTAssertGreaterThanOrEqual(pattern.stops.count, 2, "\(pattern.id) has too few stops")
+            XCTAssertFalse(pattern.activeDays.isEmpty, "\(pattern.id) runs on no day")
+            XCTAssertFalse(pattern.headsign.isEmpty, "\(pattern.id) has no headsign")
+            for stop in pattern.stops {
+                XCTAssertNotNil(network.station(stop.station), "\(pattern.id) stops at unknown \(stop.station)")
+            }
+            // Offsets must increase along the pattern, or arrival times go backwards.
+            for (earlier, later) in zip(pattern.stops, pattern.stops.dropFirst()) {
+                XCTAssertLessThanOrEqual(earlier.departureOffset, later.arrivalOffset, pattern.id.rawValue)
+            }
+        }
+        for station in network.stations {
+            XCTAssertFalse(station.name.isEmpty)
+            XCTAssertNotEqual(station.coordinate.latitude, 0)
+            XCTAssertNotEqual(station.coordinate.longitude, 0)
+        }
+    }
+
+    /// Every day of the week carries service, which is the whole point of modelling
+    /// the week day by day rather than as weekday/Saturday/Sunday.
+    func testEveryDayOfTheWeekHasService() {
+        for day in DayType.allCases {
+            XCTAssertTrue(
+                network.patterns.contains { $0.schedule.runs(on: day) },
+                "nothing runs on \(day)"
+            )
+        }
+    }
+
     func testBundledDataDeclaresItsProvenance() {
         XCTAssertEqual(network.provenance.fidelity, .official)
         XCTAssertFalse(network.provenance.isEstimate)

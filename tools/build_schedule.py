@@ -683,6 +683,44 @@ def compress_starts(starts: list[int]) -> str:
     return ", ".join(blocks)
 
 
+def encode_field(value) -> str:
+    """One field of the text format. `|` is the field separator, so it cannot appear."""
+    if value is None:
+        return ""
+    return str(value).replace("|", "/").replace("\n", " ")
+
+
+def encode_blocks(starts: list[int]) -> str:
+    """Departure times as `f:from:until:every` and `t:a,b,c` blocks joined by `;`."""
+    pieces: list[str] = []
+    index = 0
+    literal: list[int] = []
+
+    def flush():
+        if literal:
+            pieces.append("t:" + ",".join(str(v) for v in literal))
+            literal.clear()
+
+    while index < len(starts):
+        best_length, best_step = 1, 0
+        if index + 2 < len(starts):
+            step = starts[index + 1] - starts[index]
+            if step > 0:
+                length = 2
+                while index + length < len(starts) and starts[index + length] - starts[index + length - 1] == step:
+                    length += 1
+                best_length, best_step = length, step
+        if best_length >= 6 and best_step > 0:
+            flush()
+            pieces.append(f"f:{starts[index]}:{starts[index + best_length - 1]}:{best_step}")
+            index += best_length
+        else:
+            literal.append(starts[index])
+            index += 1
+    flush()
+    return ";".join(pieces)
+
+
 def emit_swift(data: dict) -> str:
     stations = data["stations"]
     info = data["feed_info"]
@@ -691,52 +729,11 @@ def emit_swift(data: dict) -> str:
         key=lambda p: (p.key.route_id, p.key.direction_id, -p.trip_count, p.key.stops),
     )
 
-    lines: list[str] = []
-    add = lines.append
-
-    add("// swiftlint:disable all")
-    add("// -----------------------------------------------------------------------------")
-    add("// GENERATED FILE — do not edit by hand.")
-    add("//")
-    add("// Produced by tools/build_schedule.py from SEPTA's official GTFS feed:")
-    add(f"//   {GTFS_URL}")
-    add(f"//   feed_version {info['feed_version']}  "
-        f"valid {info['feed_start_date']}–{info['feed_end_date']}")
-    add("//")
-    add("// Timetables are sampled from one ordinary date per day type so that")
-    add("// single-date extras (special-event trips) do not leak into the schedule:")
-    for label, date in sorted(data["representative_dates"].items()):
-        add(f"//   {label}: {date}")
-    add("//")
-    add("// Re-run `python3 tools/build_schedule.py` when SEPTA publishes a new feed.")
-    add("// -----------------------------------------------------------------------------")
-    add("")
-    add("import Foundation")
-    add("")
-    add("public enum SEPTAData {")
-    add("")
-    add(f"    /// GTFS `feed_version` this file was generated from.")
-    add(f"    public static let feedVersion = {swift_string(info['feed_version'])}")
-    add("    /// Last date SEPTA declares this timetable valid, `yyyyMMdd`.")
-    add(f"    public static let feedEndDate = {swift_string(info['feed_end_date'])}")
-    add(f"    public static let feedStartDate = {swift_string(info['feed_start_date'])}")
-    add("")
-    add("    public static let provenance = DataProvenance(")
-    add("        fidelity: .official,")
-    add(f"        source: {swift_string('SEPTA GTFS ' + info['feed_version'])},")
-    add(f"        generated: {swift_string(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d'))},")
-    add(f"        validUntil: {swift_string(info['feed_end_date'])},")
-    add(f"        notes: {swift_string('Sampled from SEPTA GTFS; regenerate with tools/build_schedule.py')}")
-    add("    )")
-    add("")
-
-    # Lines
     # One Line per map letter, coloured and named from the feed itself.
     line_rows: dict[str, dict] = {}
     for route_id in data["route_ids"]:
         line_id = line_id_for(route_id)
         route = data["routes"][route_id]
-        existing = line_rows.get(line_id)
         name = route["route_long_name"] or route["route_short_name"]
         if route_id in NIGHT_ROUTES:
             name = "Broad Street Owl Bus"
@@ -753,15 +750,11 @@ def emit_swift(data: dict) -> str:
         elif line_id == "D":
             name = "Media-Sharon Hill Trolleys"
         elif line_id.isdigit():
-            # The trackless trolleys are branded by number, not by the long
-            # terminal-to-terminal description the feed carries.
             name = f"Route {line_id}"
-        # Keep the first route's colour; SEPTA colours agree within a line. Some
-        # routes carry white or black, which is unusable as a badge fill.
         colour = (route["route_color"] or "").upper()
         if colour in ("", "FFFFFF", "FFF", "000000", "000"):
             colour = "6B7280"
-        if existing is None:
+        if line_id not in line_rows:
             line_rows[line_id] = {
                 "id": line_id,
                 "badge": line_id.split("-")[0],
@@ -769,37 +762,35 @@ def emit_swift(data: dict) -> str:
                 "color": colour,
             }
 
-    add("    public static let lines: [Line] = [")
-    for line in line_rows.values():
-        add(f'        Line(id: "{line["id"]}", badge: {swift_string(line["badge"])}, '
-            f'name: {swift_string(line["name"])}, colorHex: {swift_string(line["color"])}),')
-    add("    ]")
-    add("")
-
-    # Which lines serve each station.
     station_lines: dict[str, set[str]] = defaultdict(set)
     for pattern in patterns:
         line_id = line_id_for(pattern.key.route_id)
         for station_id in pattern.key.stops:
             station_lines[station_id].add(line_id)
 
-    add("    public static let stations: [Station] = [")
+    # ---- the data itself, as text records ----
+    records: list[str] = []
+    records.append("|".join([
+        "M", encode_field(info["feed_version"]), encode_field(info["feed_start_date"]),
+        encode_field(info["feed_end_date"]),
+        encode_field(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")),
+        encode_field("SEPTA GTFS " + info["feed_version"]),
+    ]))
+    for line in line_rows.values():
+        records.append("|".join(["L", encode_field(line["id"]), encode_field(line["badge"]),
+                                 encode_field(line["name"]), encode_field(line["color"])]))
     for station in stations.values():
-        line_list = ", ".join(f'"{l}"' for l in sorted(station_lines.get(station["id"], set())))
-        add("        Station(")
-        add(f'            id: "{station["id"]}",')
-        add(f"            name: {swift_string(station['name'])},")
-        add(f"            subtitle: {swift_optional_string(station['subtitle'])},")
-        add(f"            intersection: {swift_optional_string(station['intersection'])},")
-        add(f"            coordinate: Coordinate(latitude: {station['latitude']}, longitude: {station['longitude']}),")
-        add(f"            lines: [{line_list}],")
-        add(f"            isAccessible: {swift_bool(station['accessible'])}")
-        add("        ),")
-    add("    ]")
-    add("")
+        accessible = "-" if station["accessible"] is None else ("1" if station["accessible"] else "0")
+        records.append("|".join([
+            "S", encode_field(station["id"]), encode_field(station["name"]),
+            encode_field(station["subtitle"]), encode_field(station["intersection"]),
+            f"{station['latitude']:.6f}", f"{station['longitude']:.6f}",
+            ",".join(sorted(station_lines.get(station["id"], set()))),
+            accessible,
+        ]))
 
-    add("    public static let patterns: [ServicePattern] = [")
     seen_ids: set[str] = set()
+    total_departures = 0
     for pattern in patterns:
         route_id = pattern.key.route_id
         station_ids = list(pattern.key.stops)
@@ -808,8 +799,7 @@ def emit_swift(data: dict) -> str:
         line_id = line_id_for(route_id)
 
         base = f"{route_id}-{direction}-{station_ids[0]}-{station_ids[-1]}-{len(station_ids)}"
-        pattern_id = base
-        suffix = 2
+        pattern_id, suffix = base, 2
         while pattern_id in seen_ids:
             pattern_id = f"{base}-v{suffix}"
             suffix += 1
@@ -819,51 +809,80 @@ def emit_swift(data: dict) -> str:
         if not headsign:
             headsign = stations[station_ids[-1]]["name"]
 
-        total_trips = sum(len(v) for v in pattern.starts.values())
-        add(f"        // {route_id} {direction}: {stations[station_ids[0]]['name']} → "
-            f"{stations[station_ids[-1]]['name']}, {len(station_ids)} stops, "
-            f"{pattern.key.offsets[-1] / 60:.2f} min, {total_trips} trips")
-        add("        ServicePattern(")
-        add(f"            id: {swift_string(pattern_id)},")
-        add(f'            lineID: "{line_id}",')
-        add(f'            routeID: "{route_id}",')
-        add(f"            kind: .{kind},")
-        add(f"            direction: .{direction},")
-        add(f"            headsign: {swift_string(headsign)},")
-        add("            stops: [")
-        for station_id, offset, dwell in zip(station_ids, pattern.key.offsets, pattern.key.dwells):
-            if dwell:
-                add(f'                PatternStop(station: "{station_id}", offset: {offset}, dwell: {dwell}),')
-            else:
-                add(f'                PatternStop(station: "{station_id}", offset: {offset}),')
-        add("            ],")
-        # Days sharing an identical timetable are emitted once. Rail patterns run
-        # the same timetable Monday to Friday, so this keeps the generated file
-        # about the size it was before the week was modelled day by day.
+        records.append("|".join(["P", encode_field(pattern_id), encode_field(line_id),
+                                 encode_field(route_id), kind, direction, encode_field(headsign)]))
+        records.append("O|" + ",".join(
+            f"{sid}:{offset}:{dwell}" if dwell else f"{sid}:{offset}"
+            for sid, offset, dwell in zip(station_ids, pattern.key.offsets, pattern.key.dwells)
+        ))
+
         by_timetable: dict[tuple[int, ...], list[str]] = {}
         for label in DAY_TYPES:
             starts = pattern.starts.get(label) or []
             if not starts:
                 continue
             by_timetable.setdefault(tuple(starts), []).append(label)
-
-        add("            schedule: Schedule([")
         for starts, labels in by_timetable.items():
-            days = ", ".join(f".{label}" for label in labels)
-            add(f"                ([{days}], [{compress_starts(list(starts))}]),")
-        add("            ])")
-        add("        ),")
-    add("    ]")
+            total_departures += len(starts) * len(labels)
+            records.append(f"D|{','.join(labels)}|{encode_blocks(list(starts))}")
+
+    # ---- wrap it in Swift ----
+    # Chunked so no single string literal is enormous, and so the array literal
+    # holding them stays small and homogeneous. Both keep the type checker cheap:
+    # emitting this data as nested Swift literals needed more memory to compile
+    # than a laptop has.
+    CHUNK = 400
+    chunks = ["\n".join(records[i:i + CHUNK]) for i in range(0, len(records), CHUNK)]
+
+    out: list[str] = []
+    add = out.append
+    add("// swiftlint:disable all")
+    add("// -----------------------------------------------------------------------------")
+    add("// GENERATED FILE — do not edit by hand.")
+    add("//")
+    add("// Produced by tools/build_schedule.py from SEPTA's official GTFS feed:")
+    add(f"//   {GTFS_URL}")
+    add(f"//   feed_version {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}")
+    add("//")
+    add("// Timetables are sampled from one real date per day of the week, taking the")
+    add("// latest occurrence of each inside the feed's validity window so a superseded")
+    add("// revision is not what gets baked in:")
+    for label in DAY_TYPES:
+        if label in data["representative_dates"]:
+            add(f"//   {label}: {data['representative_dates'][label]}")
+    add("//")
+    add("// Stored as text and parsed by NetworkDecoder rather than as Swift literals —")
+    add("// see that file for why.")
+    add("//")
+    add("// Re-run `python3 tools/build_schedule.py` when SEPTA publishes a new feed.")
+    add("// -----------------------------------------------------------------------------")
     add("")
-    add("    public static let network = Network(")
-    add("        lines: lines,")
-    add("        stations: stations,")
-    add("        patterns: patterns,")
-    add("        provenance: provenance")
-    add("    )")
+    add("import Foundation")
+    add("")
+    add("public enum SEPTAData {")
+    add("")
+    add(f"    public static let feedVersion = {swift_string(info['feed_version'])}")
+    add(f"    public static let feedStartDate = {swift_string(info['feed_start_date'])}")
+    add(f"    public static let feedEndDate = {swift_string(info['feed_end_date'])}")
+    add("")
+    add("    /// Counts asserted by the test suite, so a truncated or half-parsed")
+    add("    /// blob fails loudly instead of quietly routing over less of the city.")
+    add(f"    public static let expectedStationCount = {len(stations)}")
+    add(f"    public static let expectedPatternCount = {len(patterns)}")
+    add(f"    public static let expectedDepartureCount = {total_departures}")
+    add("")
+    add("    /// Decoded once, on first use.")
+    add("    public static let network: Network = NetworkDecoder.decode(parts)")
+    add("")
+    add("    static let parts: [String] = [")
+    for chunk in chunks:
+        add('        """')
+        add(chunk)
+        add('        """,')
+    add("    ]")
     add("}")
     add("")
-    return "\n".join(lines)
+    return "\n".join(out)
 
 
 # --------------------------------------------------------------------------
