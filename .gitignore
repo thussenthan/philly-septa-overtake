@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/contents.xcworkspacedata
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Fastlane / provisioning
+*.mobileprovision
+*.certSigningRequest
+
+# Python (tools/)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local data downloads (GTFS feeds are large and regenerable)
+tools/.cache/
+*.gtfs.zip

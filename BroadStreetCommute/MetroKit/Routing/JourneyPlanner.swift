@@ -1,0 +1,599 @@
+import Foundation
+
+public struct PlannerOptions: Sendable {
+    /// Longest access or egress walk to consider.
+    public var maxWalkSeconds: TimeInterval = 22 * 60
+    /// How many candidate boarding stations to try.
+    ///
+    /// More than one matters: the nearest station is not always the right one.
+    /// Walking an extra three minutes to a station the express actually stops at
+    /// routinely beats boarding the local next door.
+    public var maxAccessStations: Int = 4
+    /// How many candidate alighting stations to try.
+    ///
+    /// This is what lets the planner say "ride the express past your stop to
+    /// Girard and walk back" — the express skips Fairmount, so the only way to
+    /// use it is to get off somewhere else.
+    public var maxEgressStations: Int = 4
+    /// Maximum number of train-to-train changes.
+    public var maxTransfers: Int = 2
+    /// Time needed to get from one platform to another at the same station.
+    ///
+    /// At Olney and City Hall the express uses separate center tracks, so this is
+    /// a real platform change, not a step across.
+    public var minTransferSeconds: TimeInterval = 75
+    /// Padding added before every boarding, so a plan that is only theoretically
+    /// catchable is not presented as catchable.
+    public var boardingBufferSeconds: TimeInterval = 30
+    /// How far ahead to look for departures.
+    public var searchHorizon: TimeInterval = 100 * 60
+    /// How many options to return.
+    public var maxResults: Int = 6
+    /// Options arriving more than this much later than the best are dropped:
+    /// nobody wants a fifth-best option that loses twenty minutes.
+    public var arrivalTolerance: TimeInterval = 12 * 60
+    public var walking = WalkingModel()
+
+    public init() {}
+}
+
+/// What the rider asked for.
+public struct PlanRequest: Sendable {
+    public var origin: Endpoint
+    public var destination: Endpoint
+    /// When the rider can start moving. Usually "now".
+    public var departAt: Date
+    /// Real walking times, when the app has measured them.
+    public var walkOverrides: WalkTimeOverrides
+
+    public init(
+        origin: Endpoint,
+        destination: Endpoint,
+        departAt: Date,
+        walkOverrides: WalkTimeOverrides = .none
+    ) {
+        self.origin = origin
+        self.destination = destination
+        self.departAt = departAt
+        self.walkOverrides = walkOverrides
+    }
+}
+
+/// Something worth telling the rider that is not itself a route.
+public enum PlanNote: Sendable, Hashable {
+    /// The whole trip is shorter on foot than waiting for a train.
+    case walkingIsFaster(saving: TimeInterval)
+    /// Express exists on this line but is not running at the requested time.
+    case expressNotRunningNow(nextDeparture: Date?)
+    /// The bundled timetable has passed its published validity date.
+    case scheduleOutOfDate(feedEndDate: String)
+    /// Trains have stopped for the night; a replacement bus is running.
+    case nightServiceOnly
+    /// No station was close enough to walk to.
+    case originTooFarFromLine(nearest: StationID, meters: Double)
+    case destinationTooFarFromLine(nearest: StationID, meters: Double)
+    /// Nothing at all could be built.
+    case noServiceFound
+}
+
+/// The answer: ranked options, plus why the top one wins.
+public struct Plan: Sendable {
+    public var request: PlanRequest
+    public var journeys: [Journey]
+    public var notes: [PlanNote]
+    public var generatedAt: Date
+
+    public init(request: PlanRequest, journeys: [Journey], notes: [PlanNote], generatedAt: Date) {
+        self.request = request
+        self.journeys = journeys
+        self.notes = notes
+        self.generatedAt = generatedAt
+    }
+
+    public var best: Journey? { journeys.first }
+
+    /// The fastest option that leaves late enough to still be catchable, given
+    /// how long the rider has already spent staring at the screen.
+    public func bestCatchable(asOf now: Date) -> Journey? {
+        journeys.first { $0.urgency.leaveBy >= now.addingTimeInterval(-30) }
+    }
+}
+
+/// Builds door-to-door options across a small rapid-transit network.
+///
+/// The search is exhaustive rather than heuristic. On a 24-station line with a
+/// handful of stopping patterns that costs microseconds, and in exchange the
+/// interesting strategies fall out on their own instead of being special-cased:
+///
+/// * ride the local the whole way;
+/// * wait for the express and ride it the whole way;
+/// * board the local now, hop off where the express stops, and let it overtake you;
+/// * ride the express past a station it skips, then walk back;
+/// * walk further to a station the express actually serves.
+///
+/// None of those are coded as rules. They are all just paths the enumeration
+/// finds, scored by when the rider actually reaches the door.
+public struct JourneyPlanner: Sendable {
+    public let network: Network
+    public let timetable: Timetable
+    public var options: PlannerOptions
+
+    public init(network: Network, calendar: ServiceCalendar = ServiceCalendar(), options: PlannerOptions = PlannerOptions()) {
+        self.network = network
+        self.timetable = Timetable(network: network, calendar: calendar)
+        self.options = options
+    }
+
+    // MARK: - Entry point
+
+    public func plan(_ request: PlanRequest) -> Plan {
+        var notes: [PlanNote] = []
+
+        let access = terminalLegs(for: request.origin, role: .access, overrides: request.walkOverrides)
+        let egress = terminalLegs(for: request.destination, role: .egress, overrides: request.walkOverrides)
+
+        if access.isEmpty, let nearest = nearestStationNote(to: request.origin) {
+            notes.append(.originTooFarFromLine(nearest: nearest.0, meters: nearest.1))
+        }
+        if egress.isEmpty, let nearest = nearestStationNote(to: request.destination) {
+            notes.append(.destinationTooFarFromLine(nearest: nearest.0, meters: nearest.1))
+        }
+
+        var candidates = enumerateJourneys(request: request, access: access, egress: egress)
+
+        if let walkOnly = directWalk(request: request) {
+            candidates.append(walkOnly)
+        }
+
+        var ranked = rank(candidates)
+
+        // A walk that beats every train is worth saying out loud, not burying
+        // at position four.
+        if let walkOnly = ranked.first(where: { $0.isWalkOnly }),
+           let fastestRide = ranked.first(where: { !$0.isWalkOnly }),
+           walkOnly.arrivalTime < fastestRide.arrivalTime {
+            notes.append(.walkingIsFaster(saving: fastestRide.arrivalTime.timeIntervalSince(walkOnly.arrivalTime)))
+        }
+
+        notes.append(contentsOf: serviceNotes(request: request, journeys: ranked, access: access))
+
+        if ranked.isEmpty {
+            notes.append(.noServiceFound)
+        }
+        if ranked.count > options.maxResults {
+            ranked = Array(ranked.prefix(options.maxResults))
+        }
+
+        return Plan(request: request, journeys: ranked, notes: notes, generatedAt: request.departAt)
+    }
+
+    // MARK: - Terminal (walking) legs
+
+    private enum Role {
+        case access
+        case egress
+    }
+
+    private struct TerminalLeg {
+        var station: Station
+        var straightLineMeters: Double
+        var seconds: TimeInterval
+        var isMeasured: Bool
+    }
+
+    private func terminalLegs(for endpoint: Endpoint, role: Role, overrides: WalkTimeOverrides) -> [TerminalLeg] {
+        switch endpoint {
+        case .station(let id):
+            guard let station = network.station(id) else { return [] }
+            // Already inside the station: no walk, but still a moment to reach
+            // the platform when boarding.
+            let seconds: TimeInterval = role == .access ? options.walking.stationEntrySeconds * 0.5 : 0
+            return [TerminalLeg(station: station, straightLineMeters: 0, seconds: seconds, isMeasured: true)]
+
+        case .place(_, let coordinate):
+            let limit = options.maxWalkSeconds
+            let searchRadius = options.walking.metersPerSecond * limit / options.walking.circuityFactor
+            let nearby = network.stations(near: coordinate, within: max(searchRadius, 400))
+            let cap = role == .access ? options.maxAccessStations : options.maxEgressStations
+
+            var legs: [TerminalLeg] = []
+            for candidate in nearby {
+                let key: WalkTimeOverrides.Kind = role == .access
+                    ? .access(candidate.station.id)
+                    : .egress(candidate.station.id)
+                let measured = overrides[key]
+                let seconds = measured ?? (role == .access
+                    ? options.walking.accessSeconds(straightLineMeters: candidate.meters)
+                    : options.walking.egressSeconds(straightLineMeters: candidate.meters))
+                guard seconds <= limit else { continue }
+                legs.append(TerminalLeg(
+                    station: candidate.station,
+                    straightLineMeters: candidate.meters,
+                    seconds: seconds,
+                    isMeasured: measured != nil
+                ))
+            }
+            // Keep the closest few by walking time, not by distance: a measured
+            // walk can reorder them.
+            return Array(legs.sorted { $0.seconds < $1.seconds }.prefix(cap))
+        }
+    }
+
+    private func nearestStationNote(to endpoint: Endpoint) -> (StationID, Double)? {
+        guard let coordinate = endpoint.coordinate,
+              let nearest = network.nearestStation(to: coordinate) else { return nil }
+        return (nearest.station.id, nearest.meters)
+    }
+
+    private func walkLeg(_ leg: TerminalLeg, purpose: WalkLeg.Purpose, from: String, to: String, startingAt: Date) -> WalkLeg {
+        WalkLeg(
+            purpose: purpose,
+            fromName: from,
+            toName: to,
+            straightLineMeters: leg.straightLineMeters,
+            routedMeters: options.walking.routedMeters(straightLine: leg.straightLineMeters),
+            duration: leg.seconds,
+            startTime: startingAt,
+            isMeasured: leg.isMeasured
+        )
+    }
+
+    // MARK: - Walk-only option
+
+    private func directWalk(request: PlanRequest) -> Journey? {
+        guard let from = request.origin.coordinate, let to = request.destination.coordinate else { return nil }
+        let meters = from.distance(to: to)
+        let seconds = options.walking.startupSeconds + options.walking.walkSeconds(straightLineMeters: meters)
+        guard seconds <= options.maxWalkSeconds * 1.5 else { return nil }
+
+        let arrival = request.departAt.addingTimeInterval(seconds)
+        let leg = WalkLeg(
+            purpose: .direct,
+            fromName: request.origin.displayName,
+            toName: request.destination.displayName,
+            straightLineMeters: meters,
+            routedMeters: options.walking.routedMeters(straightLine: meters),
+            duration: seconds,
+            startTime: request.departAt,
+            isMeasured: false
+        )
+        return Journey(
+            legs: [.walk(leg)],
+            departureTime: request.departAt,
+            arrivalTime: arrival,
+            // A walk has no timetable, so there is nothing to be late for.
+            urgency: .unconstrained(from: request.departAt)
+        )
+    }
+
+    // MARK: - Enumeration
+
+    /// One partial itinerary during the search.
+    private struct PartialRide {
+        var trip: Trip
+        var pattern: ServicePattern
+        var board: StationID
+        var alight: StationID
+        var departure: Date
+        var arrival: Date
+        var stations: [StationID]
+    }
+
+    private func enumerateJourneys(
+        request: PlanRequest,
+        access: [TerminalLeg],
+        egress: [TerminalLeg]
+    ) -> [Journey] {
+        guard !access.isEmpty, !egress.isEmpty else { return [] }
+
+        let egressByStation = Dictionary(
+            egress.map { ($0.station.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let horizonEnd = request.departAt.addingTimeInterval(options.searchHorizon)
+
+        var results: [Journey] = []
+        // Best arrival found so far, used to prune hopeless branches.
+        var bestArrival = Date.distantFuture
+
+        for accessLeg in access {
+            let readyAt = request.departAt.addingTimeInterval(accessLeg.seconds)
+            guard readyAt <= horizonEnd else { continue }
+
+            var rides: [PartialRide] = []
+            explore(
+                from: accessLeg.station.id,
+                readyAt: readyAt,
+                rides: &rides,
+                accessLeg: accessLeg,
+                egressByStation: egressByStation,
+                request: request,
+                horizonEnd: horizonEnd,
+                bestArrival: &bestArrival,
+                results: &results
+            )
+        }
+        return results
+    }
+
+    private func explore(
+        from station: StationID,
+        readyAt: Date,
+        rides: inout [PartialRide],
+        accessLeg: TerminalLeg,
+        egressByStation: [StationID: TerminalLeg],
+        request: PlanRequest,
+        horizonEnd: Date,
+        bestArrival: inout Date,
+        results: inout [Journey]
+    ) {
+        guard rides.count <= options.maxTransfers else { return }
+
+        for pattern in network.patterns(serving: station) {
+            // Boarding the same pattern again is never an improvement: the next
+            // trip of a pattern is by definition later than the one you are on.
+            if let last = rides.last, last.pattern.id == pattern.id { continue }
+
+            let earliest = readyAt.addingTimeInterval(options.boardingBufferSeconds)
+            guard earliest <= horizonEnd,
+                  let trip = timetable.nextTrip(
+                      of: pattern,
+                      departingFrom: station,
+                      atOrAfter: earliest,
+                      within: options.searchHorizon
+                  ),
+                  let departure = timetable.departure(of: trip, at: station),
+                  departure <= horizonEnd,
+                  let boardIndex = pattern.stopIndex(of: station)
+            else { continue }
+
+            // Never re-board the trip we just stepped off.
+            if let last = rides.last, last.trip.id == trip.id { continue }
+
+            for index in (boardIndex + 1)..<pattern.stops.count {
+                let stop = pattern.stops[index]
+                let arrival = trip.departure(atOffset: stop.arrivalOffset)
+
+                // Any continuation of this branch arrives at or after `arrival`,
+                // so once it is hopeless the rest of the branch is too.
+                if arrival > bestArrival.addingTimeInterval(options.arrivalTolerance) { break }
+
+                let ride = PartialRide(
+                    trip: trip,
+                    pattern: pattern,
+                    board: station,
+                    alight: stop.station,
+                    departure: departure,
+                    arrival: arrival,
+                    stations: pattern.stops[boardIndex...index].map(\.station)
+                )
+                rides.append(ride)
+
+                if let egressLeg = egressByStation[stop.station],
+                   let journey = assemble(
+                       rides: rides,
+                       accessLeg: accessLeg,
+                       egressLeg: egressLeg,
+                       request: request
+                   ) {
+                    if journey.arrivalTime < bestArrival { bestArrival = journey.arrivalTime }
+                    results.append(journey)
+                }
+
+                if rides.count <= options.maxTransfers {
+                    explore(
+                        from: stop.station,
+                        readyAt: arrival.addingTimeInterval(options.minTransferSeconds),
+                        rides: &rides,
+                        accessLeg: accessLeg,
+                        egressByStation: egressByStation,
+                        request: request,
+                        horizonEnd: horizonEnd,
+                        bestArrival: &bestArrival,
+                        results: &results
+                    )
+                }
+
+                rides.removeLast()
+            }
+        }
+    }
+
+    // MARK: - Assembly
+
+    private func assemble(
+        rides: [PartialRide],
+        accessLeg: TerminalLeg,
+        egressLeg: TerminalLeg,
+        request: PlanRequest
+    ) -> Journey? {
+        guard let first = rides.first, let last = rides.last else { return nil }
+
+        // The rider does not need to leave when the planner started searching —
+        // they need to leave in time to catch the first train. Reporting that
+        // instant, rather than "now", is what makes the countdown honest.
+        let leaveBy = first.departure.addingTimeInterval(-accessLeg.seconds - options.boardingBufferSeconds)
+        let slack = leaveBy.timeIntervalSince(request.departAt)
+        guard slack >= -30 else { return nil }
+
+        var legs: [JourneyLeg] = []
+        var cursor = leaveBy
+
+        // A rider already standing in the station is not "walking to" it; that
+        // time belongs to the platform wait instead.
+        if accessLeg.straightLineMeters > 20 {
+            legs.append(.walk(walkLeg(
+                accessLeg,
+                purpose: .access,
+                from: request.origin.displayName,
+                to: stationName(accessLeg.station.id),
+                startingAt: cursor
+            )))
+            cursor = cursor.addingTimeInterval(accessLeg.seconds)
+        }
+
+        for (index, ride) in rides.enumerated() {
+            let wait = ride.departure.timeIntervalSince(cursor)
+            // Every positive gap becomes a leg, so the itinerary is contiguous in
+            // time. The UI hides trivially short ones.
+            if wait > 0 {
+                legs.append(.wait(WaitLeg(
+                    stationID: ride.board,
+                    startTime: cursor,
+                    duration: wait,
+                    // A wait before the first train is unavoidable. A wait after
+                    // getting off one is a choice: you are letting a faster train
+                    // catch up with you.
+                    isStrategicHold: index > 0
+                )))
+            }
+            legs.append(.ride(RideLeg(
+                trip: ride.trip,
+                patternID: ride.pattern.id,
+                lineID: ride.pattern.lineID,
+                kind: ride.pattern.kind,
+                direction: ride.pattern.direction,
+                headsign: ride.pattern.headsign,
+                boardStation: ride.board,
+                alightStation: ride.alight,
+                departure: ride.departure,
+                arrival: ride.arrival,
+                stationsServed: ride.stations
+            )))
+            cursor = ride.arrival
+        }
+
+        if egressLeg.seconds > 0 {
+            legs.append(.walk(walkLeg(
+                egressLeg,
+                purpose: .egress,
+                from: stationName(egressLeg.station.id),
+                to: request.destination.displayName,
+                startingAt: cursor
+            )))
+        }
+        let arrival = cursor.addingTimeInterval(egressLeg.seconds)
+
+        return Journey(
+            legs: legs,
+            departureTime: leaveBy,
+            arrivalTime: arrival,
+            urgency: Urgency(leaveBy: leaveBy, boardingDeparture: first.departure, slack: slack)
+        )
+    }
+
+    private func stationName(_ id: StationID) -> String {
+        network.station(id)?.displayName ?? id.rawValue
+    }
+
+    // MARK: - Ranking
+
+    /// Keep only options a rider might reasonably prefer, best arrival first.
+    func rank(_ journeys: [Journey]) -> [Journey] {
+        var unique: [String: Journey] = [:]
+        for journey in journeys {
+            // Riding the same two trains between the same two places is one
+            // option, not five, even when there are five stations where the
+            // change is technically possible. Keep the version with the least
+            // time on a platform — that is the one worth telling a rider about.
+            let key = collapseKey(journey)
+            if let existing = unique[key], existing.waitingTime <= journey.waitingTime { continue }
+            unique[key] = journey
+        }
+
+        let all = Array(unique.values)
+        guard let bestArrival = all.map(\.arrivalTime).min() else { return [] }
+        let cutoff = bestArrival.addingTimeInterval(options.arrivalTolerance)
+
+        let viable = all.filter { $0.arrivalTime <= cutoff }
+        let pareto = viable.filter { candidate in
+            !viable.contains { other in
+                other.id != candidate.id && dominates(other, candidate)
+            }
+        }
+
+        return pareto.sorted { lhs, rhs in
+            if lhs.arrivalTime != rhs.arrivalTime { return lhs.arrivalTime < rhs.arrivalTime }
+            if lhs.transferCount != rhs.transferCount { return lhs.transferCount < rhs.transferCount }
+            if lhs.walkingTime != rhs.walkingTime { return lhs.walkingTime < rhs.walkingTime }
+            return lhs.departureTime > rhs.departureTime
+        }
+    }
+
+    /// Identifies journeys that are "the same plan" from a rider's point of view:
+    /// same trains, boarded at the same place, ending at the same place.
+    private func collapseKey(_ journey: Journey) -> String {
+        let trips = journey.rides.map(\.trip.id).joined(separator: ">")
+        let board = journey.boardStation?.rawValue ?? "-"
+        let alight = journey.alightStation?.rawValue ?? "-"
+        return "\(board)|\(trips)|\(alight)"
+    }
+
+    /// `a` dominates `b` when it is at least as good on every axis a rider cares
+    /// about and strictly better on one.
+    ///
+    /// Leaving *later* counts as better — a plan you can start in ten minutes
+    /// beats an identical one you must start now — but the indifference band on
+    /// that axis has to be wide. At thirty seconds, riding two stops the wrong
+    /// way and doubling back survives the filter purely because it buys a minute
+    /// and a half of extra slack while arriving seven minutes later. Two minutes
+    /// matches how much extra slack a rider actually notices.
+    private func dominates(_ a: Journey, _ b: Journey) -> Bool {
+        let arrivalOK = a.arrivalTime <= b.arrivalTime
+        let transfersOK = a.transferCount <= b.transferCount
+        // Sub-minute walking differences are noise from the distance model.
+        let walkOK = a.walkingTime <= b.walkingTime + 60
+        let departureOK = a.departureTime >= b.departureTime.addingTimeInterval(-120)
+        guard arrivalOK, transfersOK, walkOK, departureOK else { return false }
+
+        let strictlyBetter =
+            a.arrivalTime < b.arrivalTime.addingTimeInterval(-30) ||
+            a.transferCount < b.transferCount ||
+            a.walkingTime + 120 < b.walkingTime ||
+            a.departureTime > b.departureTime.addingTimeInterval(180)
+        return strictlyBetter
+    }
+
+    // MARK: - Notes
+
+    private func serviceNotes(request: PlanRequest, journeys: [Journey], access: [TerminalLeg]) -> [PlanNote] {
+        var notes: [PlanNote] = []
+
+        let ridesExist = journeys.contains { !$0.isWalkOnly }
+        let usesExpress = journeys.contains(where: \.usesExpress)
+        let expressPatterns = network.patterns.filter { $0.kind == .express }
+
+        if ridesExist, !usesExpress, !expressPatterns.isEmpty {
+            // Only mention express if it could actually have served this trip —
+            // telling a rider in South Philadelphia that they missed the express
+            // is noise, because it never goes there.
+            let boardStations = Set(journeys.compactMap(\.boardStation))
+            let alightStations = Set(journeys.compactMap(\.alightStation))
+            let relevant = expressPatterns.filter { pattern in
+                boardStations.contains(where: pattern.serves) && alightStations.contains(where: pattern.serves)
+            }
+            if !relevant.isEmpty {
+                let next = relevant.compactMap { pattern -> Date? in
+                    guard let board = boardStations.first(where: pattern.serves) else { return nil }
+                    return timetable.nextTrip(
+                        of: pattern,
+                        departingFrom: board,
+                        atOrAfter: request.departAt,
+                        within: 14 * 3600
+                    ).flatMap { timetable.departure(of: $0, at: board) }
+                }.min()
+                notes.append(.expressNotRunningNow(nextDeparture: next))
+            }
+        }
+
+        if ridesExist, journeys.allSatisfy({ $0.isWalkOnly || $0.rides.allSatisfy { $0.kind == .nightBus } }) {
+            notes.append(.nightServiceOnly)
+        }
+
+        if network.provenance.isStale(asOf: request.departAt) {
+            notes.append(.scheduleOutOfDate(feedEndDate: network.provenance.validUntil ?? ""))
+        }
+
+        return notes
+    }
+}
