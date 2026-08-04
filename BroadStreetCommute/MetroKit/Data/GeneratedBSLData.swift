@@ -424,9 +424,46 @@ public enum BSLData {
                 .sunday: [.departures([87315])],
             ])
         ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 39.82 min, 21 trips
+        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 41.82 min, 22 trips
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22",
+            lineID: "B-OWL",
+            kind: .nightBus,
+            direction: .southbound,
+            headsign: "NRG Station",
+            stops: [
+                PatternStop(station: "fern-rock", offset: 0),
+                PatternStop(station: "olney", offset: 180),
+                PatternStop(station: "logan", offset: 299),
+                PatternStop(station: "wyoming", offset: 380),
+                PatternStop(station: "hunting-park", offset: 486),
+                PatternStop(station: "erie", offset: 600),
+                PatternStop(station: "allegheny", offset: 705),
+                PatternStop(station: "north-philadelphia", offset: 771),
+                PatternStop(station: "susquehanna-dauphin", offset: 892),
+                PatternStop(station: "cecil-b-moore", offset: 1020),
+                PatternStop(station: "girard", offset: 1080),
+                PatternStop(station: "fairmount", offset: 1169),
+                PatternStop(station: "spring-garden", offset: 1240),
+                PatternStop(station: "race-vine", offset: 1318),
+                PatternStop(station: "city-hall", offset: 1440, dwell: 300),
+                PatternStop(station: "walnut-locust", offset: 1800),
+                PatternStop(station: "lombard-south", offset: 1866),
+                PatternStop(station: "ellsworth-federal", offset: 1980),
+                PatternStop(station: "tasker-morris", offset: 2072),
+                PatternStop(station: "snyder", offset: 2160),
+                PatternStop(station: "oregon", offset: 2279),
+                PatternStop(station: "nrg", offset: 2509),
+            ],
+            schedule: Schedule(blocks: [
+                .weekday: [.departures([6060, 6960, 7860, 8760, 9720, 16380, 16920, 17520])],
+                .saturday: [.departures([6060, 6960, 7860, 8760, 9720, 16920, 17520])],
+                .sunday: [.departures([6060, 6960, 7860, 8760, 9720, 16920, 17520])],
+            ])
+        ),
+        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 39.82 min, 21 trips
+        ServicePattern(
+            id: "B1_OWL-southbound-fern-rock-nrg-22-v2",
             lineID: "B-OWL",
             kind: .nightBus,
             direction: .southbound,
@@ -463,7 +500,7 @@ public enum BSLData {
         ),
         // B1_OWL southbound: Fern Rock → NRG, 22 stops, 43.82 min, 13 trips
         ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v2",
+            id: "B1_OWL-southbound-fern-rock-nrg-22-v3",
             lineID: "B-OWL",
             kind: .nightBus,
             direction: .southbound,
@@ -498,83 +535,9 @@ public enum BSLData {
                 .sunday: [.departures([2400, 3300, 4200, 5096])],
             ])
         ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 41.82 min, 12 trips
-        ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v3",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .southbound,
-            headsign: "NRG Station",
-            stops: [
-                PatternStop(station: "fern-rock", offset: 0),
-                PatternStop(station: "olney", offset: 180),
-                PatternStop(station: "logan", offset: 299),
-                PatternStop(station: "wyoming", offset: 380),
-                PatternStop(station: "hunting-park", offset: 486),
-                PatternStop(station: "erie", offset: 600),
-                PatternStop(station: "allegheny", offset: 705),
-                PatternStop(station: "north-philadelphia", offset: 771),
-                PatternStop(station: "susquehanna-dauphin", offset: 892),
-                PatternStop(station: "cecil-b-moore", offset: 1020),
-                PatternStop(station: "girard", offset: 1080),
-                PatternStop(station: "fairmount", offset: 1169),
-                PatternStop(station: "spring-garden", offset: 1240),
-                PatternStop(station: "race-vine", offset: 1318),
-                PatternStop(station: "city-hall", offset: 1440, dwell: 300),
-                PatternStop(station: "walnut-locust", offset: 1800),
-                PatternStop(station: "lombard-south", offset: 1866),
-                PatternStop(station: "ellsworth-federal", offset: 1980),
-                PatternStop(station: "tasker-morris", offset: 2072),
-                PatternStop(station: "snyder", offset: 2160),
-                PatternStop(station: "oregon", offset: 2279),
-                PatternStop(station: "nrg", offset: 2509),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([6060, 6960, 7860, 8760])],
-                .saturday: [.departures([6060, 6960, 7860, 8760])],
-                .sunday: [.departures([6060, 6960, 7860, 8760])],
-            ])
-        ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 41.82 min, 6 trips
+        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 45.80 min, 6 trips
         ServicePattern(
             id: "B1_OWL-southbound-fern-rock-nrg-22-v4",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .southbound,
-            headsign: "NRG Station",
-            stops: [
-                PatternStop(station: "fern-rock", offset: 0),
-                PatternStop(station: "olney", offset: 120),
-                PatternStop(station: "logan", offset: 239),
-                PatternStop(station: "wyoming", offset: 320),
-                PatternStop(station: "hunting-park", offset: 426),
-                PatternStop(station: "erie", offset: 540),
-                PatternStop(station: "allegheny", offset: 645),
-                PatternStop(station: "north-philadelphia", offset: 711),
-                PatternStop(station: "susquehanna-dauphin", offset: 832),
-                PatternStop(station: "cecil-b-moore", offset: 960),
-                PatternStop(station: "girard", offset: 1020),
-                PatternStop(station: "fairmount", offset: 1109),
-                PatternStop(station: "spring-garden", offset: 1180),
-                PatternStop(station: "race-vine", offset: 1258),
-                PatternStop(station: "city-hall", offset: 1380, dwell: 300),
-                PatternStop(station: "walnut-locust", offset: 1740),
-                PatternStop(station: "lombard-south", offset: 1828),
-                PatternStop(station: "ellsworth-federal", offset: 1980),
-                PatternStop(station: "tasker-morris", offset: 2072),
-                PatternStop(station: "snyder", offset: 2160),
-                PatternStop(station: "oregon", offset: 2279),
-                PatternStop(station: "nrg", offset: 2509),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([16920, 17520])],
-                .saturday: [.departures([16920, 17520])],
-                .sunday: [.departures([16920, 17520])],
-            ])
-        ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 45.80 min, 4 trips
-        ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v5",
             lineID: "B-OWL",
             kind: .nightBus,
             direction: .southbound,
@@ -605,8 +568,8 @@ public enum BSLData {
             ],
             schedule: Schedule(blocks: [
                 .weekday: [.departures([840, 1200])],
-                .saturday: [.departures([840])],
-                .sunday: [.departures([840])],
+                .saturday: [.departures([840, 1500])],
+                .sunday: [.departures([840, 1500])],
             ])
         ),
         // B1_OWL southbound: City Hall → NRG, 8 stops, 15.80 min, 3 trips
@@ -632,79 +595,6 @@ public enum BSLData {
                 .sunday: [.departures([1800])],
             ])
         ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 40.82 min, 3 trips
-        ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v6",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .southbound,
-            headsign: "NRG Station",
-            stops: [
-                PatternStop(station: "fern-rock", offset: 0),
-                PatternStop(station: "olney", offset: 180),
-                PatternStop(station: "logan", offset: 299),
-                PatternStop(station: "wyoming", offset: 380),
-                PatternStop(station: "hunting-park", offset: 486),
-                PatternStop(station: "erie", offset: 600),
-                PatternStop(station: "allegheny", offset: 705),
-                PatternStop(station: "north-philadelphia", offset: 771),
-                PatternStop(station: "susquehanna-dauphin", offset: 892),
-                PatternStop(station: "cecil-b-moore", offset: 1020),
-                PatternStop(station: "girard", offset: 1080),
-                PatternStop(station: "fairmount", offset: 1154),
-                PatternStop(station: "spring-garden", offset: 1213),
-                PatternStop(station: "race-vine", offset: 1278),
-                PatternStop(station: "city-hall", offset: 1380, dwell: 300),
-                PatternStop(station: "walnut-locust", offset: 1740),
-                PatternStop(station: "lombard-south", offset: 1806),
-                PatternStop(station: "ellsworth-federal", offset: 1920),
-                PatternStop(station: "tasker-morris", offset: 2012),
-                PatternStop(station: "snyder", offset: 2100),
-                PatternStop(station: "oregon", offset: 2219),
-                PatternStop(station: "nrg", offset: 2449),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([9720])],
-                .saturday: [.departures([9720])],
-                .sunday: [.departures([9720])],
-            ])
-        ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 44.82 min, 2 trips
-        ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v7",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .southbound,
-            headsign: "NRG Station",
-            stops: [
-                PatternStop(station: "fern-rock", offset: 0),
-                PatternStop(station: "olney", offset: 180),
-                PatternStop(station: "logan", offset: 299),
-                PatternStop(station: "wyoming", offset: 380),
-                PatternStop(station: "hunting-park", offset: 486),
-                PatternStop(station: "erie", offset: 600),
-                PatternStop(station: "allegheny", offset: 705),
-                PatternStop(station: "north-philadelphia", offset: 771),
-                PatternStop(station: "susquehanna-dauphin", offset: 892),
-                PatternStop(station: "cecil-b-moore", offset: 1020),
-                PatternStop(station: "girard", offset: 1080),
-                PatternStop(station: "fairmount", offset: 1184),
-                PatternStop(station: "spring-garden", offset: 1267),
-                PatternStop(station: "race-vine", offset: 1359),
-                PatternStop(station: "city-hall", offset: 1500, dwell: 300),
-                PatternStop(station: "walnut-locust", offset: 1920),
-                PatternStop(station: "lombard-south", offset: 2008),
-                PatternStop(station: "ellsworth-federal", offset: 2160),
-                PatternStop(station: "tasker-morris", offset: 2252),
-                PatternStop(station: "snyder", offset: 2340),
-                PatternStop(station: "oregon", offset: 2459),
-                PatternStop(station: "nrg", offset: 2689),
-            ],
-            schedule: Schedule(blocks: [
-                .saturday: [.departures([1500])],
-                .sunday: [.departures([1500])],
-            ])
-        ),
         // B1_OWL southbound: Erie → City Hall, 10 stops, 14.00 min, 1 trips
         ServicePattern(
             id: "B1_OWL-southbound-erie-city-hall-10",
@@ -728,42 +618,7 @@ public enum BSLData {
                 .weekday: [.departures([17280])],
             ])
         ),
-        // B1_OWL southbound: Fern Rock → NRG, 22 stops, 40.82 min, 1 trips
-        ServicePattern(
-            id: "B1_OWL-southbound-fern-rock-nrg-22-v8",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .southbound,
-            headsign: "NRG Station",
-            stops: [
-                PatternStop(station: "fern-rock", offset: 0),
-                PatternStop(station: "olney", offset: 120),
-                PatternStop(station: "logan", offset: 239),
-                PatternStop(station: "wyoming", offset: 320),
-                PatternStop(station: "hunting-park", offset: 426),
-                PatternStop(station: "erie", offset: 540),
-                PatternStop(station: "allegheny", offset: 645),
-                PatternStop(station: "north-philadelphia", offset: 711),
-                PatternStop(station: "susquehanna-dauphin", offset: 832),
-                PatternStop(station: "cecil-b-moore", offset: 960),
-                PatternStop(station: "girard", offset: 1020),
-                PatternStop(station: "fairmount", offset: 1094),
-                PatternStop(station: "spring-garden", offset: 1153),
-                PatternStop(station: "race-vine", offset: 1218),
-                PatternStop(station: "city-hall", offset: 1320, dwell: 300),
-                PatternStop(station: "walnut-locust", offset: 1680),
-                PatternStop(station: "lombard-south", offset: 1768),
-                PatternStop(station: "ellsworth-federal", offset: 1920),
-                PatternStop(station: "tasker-morris", offset: 2012),
-                PatternStop(station: "snyder", offset: 2100),
-                PatternStop(station: "oregon", offset: 2219),
-                PatternStop(station: "nrg", offset: 2449),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([16380])],
-            ])
-        ),
-        // B1_OWL northbound: NRG → Fern Rock, 22 stops, 43.00 min, 33 trips
+        // B1_OWL northbound: NRG → Fern Rock, 22 stops, 43.00 min, 58 trips
         ServicePattern(
             id: "B1_OWL-northbound-nrg-fern-rock-22",
             lineID: "B-OWL",
@@ -795,46 +650,9 @@ public enum BSLData {
                 PatternStop(station: "fern-rock", offset: 2580),
             ],
             schedule: Schedule(blocks: [
-                .weekday: [.frequency(from: 9420, until: 15720, every: 900), .departures([16320, 16920, 17520])],
-                .saturday: [.frequency(from: 9420, until: 17520, every: 900), .departures([17880])],
-                .sunday: [.frequency(from: 9420, until: 17520, every: 900), .departures([17880])],
-            ])
-        ),
-        // B1_OWL northbound: NRG → Fern Rock, 22 stops, 42.00 min, 24 trips
-        ServicePattern(
-            id: "B1_OWL-northbound-nrg-fern-rock-22-v2",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .northbound,
-            headsign: "Fern Rock Transit Center",
-            stops: [
-                PatternStop(station: "nrg", offset: 0),
-                PatternStop(station: "oregon", offset: 120),
-                PatternStop(station: "snyder", offset: 258),
-                PatternStop(station: "tasker-morris", offset: 345),
-                PatternStop(station: "ellsworth-federal", offset: 460),
-                PatternStop(station: "lombard-south", offset: 611),
-                PatternStop(station: "walnut-locust", offset: 696),
-                PatternStop(station: "city-hall", offset: 763),
-                PatternStop(station: "race-vine", offset: 1200),
-                PatternStop(station: "spring-garden", offset: 1292),
-                PatternStop(station: "fairmount", offset: 1359),
-                PatternStop(station: "girard", offset: 1440),
-                PatternStop(station: "cecil-b-moore", offset: 1560),
-                PatternStop(station: "susquehanna-dauphin", offset: 1663),
-                PatternStop(station: "north-philadelphia", offset: 1765),
-                PatternStop(station: "allegheny", offset: 1869),
-                PatternStop(station: "erie", offset: 1980),
-                PatternStop(station: "hunting-park", offset: 2103),
-                PatternStop(station: "wyoming", offset: 2198),
-                PatternStop(station: "logan", offset: 2286),
-                PatternStop(station: "olney", offset: 2400),
-                PatternStop(station: "fern-rock", offset: 2520),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([2520]), .frequency(from: 3120, until: 8520, every: 900)],
-                .saturday: [.frequency(from: 2220, until: 8520, every: 900)],
-                .sunday: [.frequency(from: 2220, until: 8520, every: 900)],
+                .weekday: [.departures([1920, 2520]), .frequency(from: 3120, until: 15720, every: 900), .departures([16320, 16920, 17520])],
+                .saturday: [.frequency(from: 2220, until: 17520, every: 900), .departures([17880])],
+                .sunday: [.frequency(from: 2220, until: 17520, every: 900), .departures([17880])],
             ])
         ),
         // B1_OWL northbound: City Hall → Fern Rock, 15 stops, 27.00 min, 3 trips
@@ -869,7 +687,7 @@ public enum BSLData {
         ),
         // B1_OWL northbound: NRG → Fern Rock, 22 stops, 44.00 min, 3 trips
         ServicePattern(
-            id: "B1_OWL-northbound-nrg-fern-rock-22-v3",
+            id: "B1_OWL-northbound-nrg-fern-rock-22-v2",
             lineID: "B-OWL",
             kind: .nightBus,
             direction: .northbound,
@@ -904,7 +722,7 @@ public enum BSLData {
                 .sunday: [.departures([1320])],
             ])
         ),
-        // B1_OWL northbound: Oregon → Fern Rock, 21 stops, 41.00 min, 2 trips
+        // B1_OWL northbound: Oregon → Fern Rock, 21 stops, 41.00 min, 3 trips
         ServicePattern(
             id: "B1_OWL-northbound-oregon-fern-rock-21",
             lineID: "B-OWL",
@@ -935,76 +753,7 @@ public enum BSLData {
                 PatternStop(station: "fern-rock", offset: 2460),
             ],
             schedule: Schedule(blocks: [
-                .weekday: [.departures([11160, 14880])],
-            ])
-        ),
-        // B1_OWL northbound: NRG → Fern Rock, 22 stops, 43.00 min, 1 trips
-        ServicePattern(
-            id: "B1_OWL-northbound-nrg-fern-rock-22-v4",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .northbound,
-            headsign: "Fern Rock Transit Center",
-            stops: [
-                PatternStop(station: "nrg", offset: 0),
-                PatternStop(station: "oregon", offset: 120),
-                PatternStop(station: "snyder", offset: 258),
-                PatternStop(station: "tasker-morris", offset: 345),
-                PatternStop(station: "ellsworth-federal", offset: 460),
-                PatternStop(station: "lombard-south", offset: 611),
-                PatternStop(station: "walnut-locust", offset: 696),
-                PatternStop(station: "city-hall", offset: 763),
-                PatternStop(station: "race-vine", offset: 1200),
-                PatternStop(station: "spring-garden", offset: 1292),
-                PatternStop(station: "fairmount", offset: 1359),
-                PatternStop(station: "girard", offset: 1440),
-                PatternStop(station: "cecil-b-moore", offset: 1560),
-                PatternStop(station: "susquehanna-dauphin", offset: 1678),
-                PatternStop(station: "north-philadelphia", offset: 1796),
-                PatternStop(station: "allegheny", offset: 1915),
-                PatternStop(station: "erie", offset: 2040),
-                PatternStop(station: "hunting-park", offset: 2163),
-                PatternStop(station: "wyoming", offset: 2258),
-                PatternStop(station: "logan", offset: 2346),
-                PatternStop(station: "olney", offset: 2460),
-                PatternStop(station: "fern-rock", offset: 2580),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([1920])],
-            ])
-        ),
-        // B1_OWL northbound: Oregon → Fern Rock, 21 stops, 40.00 min, 1 trips
-        ServicePattern(
-            id: "B1_OWL-northbound-oregon-fern-rock-21-v2",
-            lineID: "B-OWL",
-            kind: .nightBus,
-            direction: .northbound,
-            headsign: "Fern Rock Transit Center",
-            stops: [
-                PatternStop(station: "oregon", offset: 0),
-                PatternStop(station: "snyder", offset: 138),
-                PatternStop(station: "tasker-morris", offset: 225),
-                PatternStop(station: "ellsworth-federal", offset: 340),
-                PatternStop(station: "lombard-south", offset: 491),
-                PatternStop(station: "walnut-locust", offset: 576),
-                PatternStop(station: "city-hall", offset: 643),
-                PatternStop(station: "race-vine", offset: 1080),
-                PatternStop(station: "spring-garden", offset: 1172),
-                PatternStop(station: "fairmount", offset: 1239),
-                PatternStop(station: "girard", offset: 1320),
-                PatternStop(station: "cecil-b-moore", offset: 1440),
-                PatternStop(station: "susquehanna-dauphin", offset: 1543),
-                PatternStop(station: "north-philadelphia", offset: 1645),
-                PatternStop(station: "allegheny", offset: 1749),
-                PatternStop(station: "erie", offset: 1860),
-                PatternStop(station: "hunting-park", offset: 1983),
-                PatternStop(station: "wyoming", offset: 2078),
-                PatternStop(station: "logan", offset: 2166),
-                PatternStop(station: "olney", offset: 2280),
-                PatternStop(station: "fern-rock", offset: 2400),
-            ],
-            schedule: Schedule(blocks: [
-                .weekday: [.departures([7560])],
+                .weekday: [.departures([7560, 11160, 14880])],
             ])
         ),
         // B2 southbound: Fern Rock → Walnut-Locust, 8 stops, 19.75 min, 59 trips

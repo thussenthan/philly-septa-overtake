@@ -206,6 +206,63 @@ The planner fixtures use a synthetic six-station line with times chosen by hand,
 those assertions don't move when SEPTA changes its timetable. The data assertions
 deliberately do — that's the point of them.
 
+## Beyond the Broad Street Line
+
+The generator can already emit the whole SEPTA Metro rail map, and the planner
+routes across it correctly with **no changes to the routing code**:
+
+```sh
+python3 tools/build_schedule.py --scope metro
+```
+
+That covers 16 routes — B1/B2/B3, L1 Market-Frankford, M1 Norristown High Speed,
+T1–T5 subway-surface trolleys, G1 Girard, D1/D2 Media-Sharon Hill, and the three
+trackless trolleys — as 590 stations and 307 stopping patterns.
+
+The reason no routing changes were needed is a happy accident of the feed: the
+lines meet at stations that *already share a name*. `15th St/City Hall` is served
+by B1, B2, L1 and all five trolleys; `69th St Transit Center` by L1, M1, D1 and D2;
+`13th St` and `30th St` by L1 and the trolleys. Because station identity is derived
+from the name, those merge into single stations and the interchanges exist for free.
+Verified end to end: Temple → 40th St changes onto the L at City Hall, Erie → 69th St
+finds three routings, and Penn Med → Erie comes in on a trolley and changes to the
+Broad St express.
+
+**It is not switched on yet, because it is too slow.** Measured in the Python
+cross-check harness (so treat the absolute numbers as a shape, not a benchmark):
+
+| Query | Broad only | Whole Metro |
+|---|---|---|
+| Erie → near Fairmount | 30 ms | 2,300 ms |
+| Erie → 69th St | — | 3,500 ms |
+| Penn Med → Erie | — | 41,000 ms |
+
+Two things stand between that and shipping:
+
+1. **The timetable lookup is a linear scan.** `Timetable.nextTrip` walks every
+   departure of a pattern across three service days, and the search calls it once
+   per pattern per station per round. Precomputing sorted per-station departure
+   arrays and binary-searching them fixes the dominant cost. Restricting changes to
+   the 69 stations served by more than one route helps too, but only bought about
+   40% on its own — the scan is the real problem.
+2. **`CommuteModel.replan()` is synchronous and on the main actor.** Fine at
+   Broad St's microseconds; a visible hitch every 30 seconds at anything slower.
+   Planning needs to move off the main actor regardless.
+
+Two caveats specific to the wider scope, both visible in `--report`:
+
+- 435 of 7,163 trips are dropped because their service isn't in effect on any of
+  the three sampled dates. On Broad St that number is 1. Day-of-week-specific
+  trolley services need sampling per weekday rather than one representative
+  Wednesday.
+- `40th St` on the L and `40th-Market` on the trolleys are 13 m apart under
+  different names and do *not* merge, so that interchange is currently missing.
+  Proximity-based transfer footpaths would close it; the major interchanges don't
+  need them.
+
+Buses (131 routes) and Regional Rail (a separate feed) are out of scope. Buses in
+particular would need a different search strategy, not just a faster one.
+
 ## Wiring up real-time
 
 The pieces are in place if you want to add it. `Timetable` is the only thing that

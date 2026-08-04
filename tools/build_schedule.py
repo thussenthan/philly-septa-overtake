@@ -10,9 +10,10 @@ parsing at runtime, and the compiler checks the shape for us.
 
 Usage
 -----
-    python3 tools/build_schedule.py                 # download, then generate
-    python3 tools/build_schedule.py --feed path.zip # use a local feed
-    python3 tools/build_schedule.py --report        # print a human summary only
+    python3 tools/build_schedule.py                  # download, then generate
+    python3 tools/build_schedule.py --feed path.zip  # use a local feed
+    python3 tools/build_schedule.py --report         # print a human summary only
+    python3 tools/build_schedule.py --scope metro    # the whole Metro rail map
 
 The feed only declares two weeks of validity, so this is re-run whenever the
 timetable changes. ``BSLData.feedEndDate`` lets the app warn a rider when the
@@ -38,10 +39,22 @@ from pathlib import Path
 GTFS_URL = "https://github.com/septadev/GTFS/releases/latest/download/gtfs_public.zip"
 INNER_ZIP = "google_bus.zip"
 
-# The Broad Street Line and its night-bus replacement.
-SUBWAY_ROUTES = ["B1", "B2", "B3"]
+# GTFS route_types that count as rail rapid transit / trolley for our purposes.
+#   0 = tram/streetcar (T1-T5 subway-surface, G1 Girard, D1/D2 Media-Sharon Hill)
+#   1 = metro/subway   (B1/B2/B3 Broad St, L1 Market-Frankford, M1 Norristown)
+#  11 = trolleybus     (the trackless trolleys, routes 59/66/75)
+RAIL_ROUTE_TYPES = {"0", "1", "11"}
+
+# Night service that replaces a rail line at street level.
 NIGHT_ROUTES = ["B1_OWL"]
-ROUTES = SUBWAY_ROUTES + NIGHT_ROUTES
+
+# Scope presets, selected with --scope.
+#   broad  — the Broad Street Line alone, as originally shipped
+#   metro  — everything on the SEPTA Metro rail map
+SCOPES = {
+    "broad": {"B1", "B2", "B3"},
+    "metro": None,  # resolved from RAIL_ROUTE_TYPES against the feed
+}
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = REPO_ROOT / "BroadStreetCommute" / "MetroKit" / "Data" / "GeneratedBSLData.swift"
@@ -94,6 +107,21 @@ STATION_INTERSECTIONS = {
 # --------------------------------------------------------------------------
 # Feed loading
 # --------------------------------------------------------------------------
+
+def resolve_routes(feed: "Feed", scope: str) -> list[str]:
+    """The route IDs to include, for a named scope."""
+    rows = feed.table("routes.txt")
+    if SCOPES.get(scope) is not None:
+        wanted = SCOPES[scope]
+        found = {r["route_id"] for r in rows} & wanted
+        missing = wanted - found
+        if missing:
+            raise SystemExit(f"feed is missing routes {sorted(missing)}")
+        rail = sorted(found)
+    else:
+        rail = sorted(r["route_id"] for r in rows if r["route_type"] in RAIL_ROUTE_TYPES)
+    return rail + [r for r in NIGHT_ROUTES if any(x["route_id"] == r for x in rows)]
+
 
 def download_feed(destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -222,6 +250,17 @@ def parse_gtfs_time(value: str) -> int:
     return hours * 3600 + minutes * 60 + seconds
 
 
+# Two trips over the same stops whose end-to-end running times differ by less
+# than this are treated as one pattern, timed by the median of the group.
+#
+# Rail running times in this feed are identical to the second on every trip, so
+# for the subway this changes nothing. Street-running trolleys are different:
+# their scheduled times flex with traffic, and keying patterns on exact offsets
+# turned 81 real stopping patterns into 829 near-duplicates — which is both
+# meaningless to a rider and a needless multiplier on the planner's search.
+RUNTIME_VARIANT_TOLERANCE = 120
+
+
 @dataclass
 class PatternKey:
     route_id: str
@@ -243,11 +282,10 @@ class Pattern:
     trip_count: int = 0
 
 
-def extract(feed: Feed) -> dict:
+def extract(feed: Feed, scope: str = "broad") -> dict:
+    route_ids = resolve_routes(feed, scope)
+    ROUTES = set(route_ids)
     routes = {r["route_id"]: r for r in feed.table("routes.txt") if r["route_id"] in ROUTES}
-    missing = set(ROUTES) - set(routes)
-    if missing:
-        raise SystemExit(f"feed is missing routes {sorted(missing)}")
 
     directions: dict[tuple[str, str], str] = {}
     for row in feed.table("directions.txt"):
@@ -295,6 +333,8 @@ def extract(feed: Feed) -> dict:
     )
 
     patterns: dict[tuple, Pattern] = {}
+    raw_groups: dict[tuple, list] = defaultdict(list)
+    group_trips: dict[tuple, list] = defaultdict(list)
     skipped_no_service = 0
     skipped_rare = 0
     dropped_stops = 0
@@ -331,21 +371,37 @@ def extract(feed: Feed) -> dict:
         if len(station_ids) < 2:
             continue
 
-        key = PatternKey(
-            trip["route_id"], trip["direction_id"],
-            tuple(station_ids), tuple(arrivals), tuple(dwells),
-        )
-        pattern = patterns.get(key.as_tuple())
-        if pattern is None:
-            pattern = Pattern(key=key, headsign=trip.get("trip_headsign", "").strip())
-            patterns[key.as_tuple()] = pattern
-        for label in day_types:
-            pattern.starts[label].append(origin_departure)
-        pattern.trip_count += 1
+        # Bucket by end-to-end running time so genuinely different speeds stay
+        # separate (a peak express run vs. a slow one) while jitter collapses.
+        bucket = arrivals[-1] // RUNTIME_VARIANT_TOLERANCE
+        group = (trip["route_id"], trip["direction_id"], tuple(station_ids), bucket)
+        raw_groups[group].append((tuple(arrivals), tuple(dwells)))
+        group_trips[group].append((origin_departure, day_types, trip.get("trip_headsign", "").strip()))
+
+    # Collapse each group into one pattern timed by the median of its trips.
+    runtime_spread: list[tuple[int, str]] = []
+    for group, timings in raw_groups.items():
+        route_id, direction_id, station_ids, _bucket = group
+        columns = list(zip(*[t[0] for t in timings]))
+        offsets = tuple(int(statistics.median(col)) for col in columns)
+        dwell_columns = list(zip(*[t[1] for t in timings]))
+        dwells = tuple(int(statistics.median(col)) for col in dwell_columns)
+        spread = max(t[0][-1] for t in timings) - min(t[0][-1] for t in timings)
+        runtime_spread.append((spread, f"{route_id} {direction_id} {len(station_ids)} stops"))
+
+        key = PatternKey(route_id, direction_id, station_ids, offsets, dwells)
+        headsign = next((t[2] for t in group_trips[group] if t[2]), "")
+        pattern = Pattern(key=key, headsign=headsign)
+        for origin_departure, day_types, _ in group_trips[group]:
+            for label in day_types:
+                pattern.starts[label].append(origin_departure)
+        pattern.trip_count = len(group_trips[group])
+        patterns[key.as_tuple()] = pattern
 
     for pattern in patterns.values():
         for label in list(pattern.starts):
             pattern.starts[label] = sorted(set(pattern.starts[label]))
+    runtime_spread.sort(reverse=True)
 
     return {
         "routes": routes,
@@ -355,6 +411,8 @@ def extract(feed: Feed) -> dict:
         "unsnapped_surface_stops": unsnapped,
         "surface_snaps": snap_report,
         "dropped_stop_times": dropped_stops,
+        "route_ids": route_ids,
+        "runtime_spread": runtime_spread[:6],
         "feed_info": feed.table("feed_info.txt")[0],
         "representative_dates": {k: v.isoformat() for k, v in dates.items()},
         "skipped_no_service": skipped_no_service,
@@ -707,6 +765,8 @@ def report(data: dict) -> None:
     print(f"stations: {len(stations)}   patterns: {len(data['patterns'])}")
     print(f"trips skipped: {data['skipped_rare']} special-event, "
           f"{data['skipped_no_service']} not in effect on a sampled date")
+    print(f"widest running-time spread collapsed into one pattern: "
+          f"{[(f'{s}s', label) for s, label in data['runtime_spread']]}")
     print(f"surface stop-times dropped (no station within "
           f"{OWL_SNAP_METERS:.0f} m): {data['dropped_stop_times']}")
     if data["surface_snaps"]:
@@ -727,7 +787,7 @@ def report(data: dict) -> None:
     by_route: dict[str, list[Pattern]] = defaultdict(list)
     for pattern in data["patterns"]:
         by_route[pattern.key.route_id].append(pattern)
-    for route_id in ROUTES:
+    for route_id in data["route_ids"]:
         print(f"=== {route_id} ===")
         for pattern in sorted(by_route[route_id], key=lambda p: (p.key.direction_id, -p.trip_count)):
             ids = list(pattern.key.stops)
@@ -746,6 +806,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--report", action="store_true", help="print a summary and do not write Swift")
     parser.add_argument("--json", type=Path, help="also dump the extracted data as JSON")
+    # Defaults to the Broad Street Line. "metro" generates the whole rail map and
+    # routes correctly across it, but the planner needs an indexed timetable
+    # lookup before that is fast enough to run on every location update — see
+    # README, "Beyond the Broad Street Line".
+    parser.add_argument("--scope", choices=sorted(SCOPES), default="broad",
+                        help="which routes to include (default: the Broad Street Line)")
     args = parser.parse_args()
 
     feed_path = args.feed
@@ -757,7 +823,7 @@ def main() -> int:
             print(f"using cached {feed_path}", file=sys.stderr)
 
     feed = Feed(feed_path)
-    data = extract(feed)
+    data = extract(feed, args.scope)
 
     if args.json:
         args.json.write_text(json.dumps({
