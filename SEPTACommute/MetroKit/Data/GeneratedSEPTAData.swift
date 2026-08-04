@@ -41,7 +41,7 @@ public enum SEPTAData {
     public static let network: Network = NetworkDecoder.decode(parts)
 
     static let parts: [String] = [
-        """
+"""
 M|v202607261|20260726|20260808|2026-08-04|SEPTA GTFS v202607261
 L|59|59|Route 59|6B7280
 L|66|66|Route 66|6B7280
@@ -442,8 +442,8 @@ S|lancaster-av-and-49th-st|Lancaster Av & 49th St|||39.973703|-75.219464|T|0
 S|lancaster-av-and-50th-st|Lancaster Av & 50th St|||39.975220|-75.222489|T|0
 S|lancaster-av-and-52nd-st|Lancaster Av & 52nd St|||39.977186|-75.226600|T|0
 S|lancaster-av-and-bible-way|Lancaster Av & Bible Way|||39.976855|-75.226176|T|0
-        """,
-        """
+""",
+"""
 S|lancaster-av-and-haverford-av|Lancaster Av & Haverford Av|||39.962900|-75.201826|T|0
 S|lancaster-av-and-ogden-st|Lancaster Av & Ogden St|||39.968565|-75.210998|T|0
 S|lancaster-av-and-parrish-st|Lancaster Av & Parrish St|||39.967670|-75.209560|T|0
@@ -546,7 +546,7 @@ S|scenic-rd|Scenic Rd|||39.940743|-75.325996|D|1
 S|school-ln|School Ln|||39.948671|-75.299835|D|1
 S|snyder|Snyder||Broad St & Snyder Ave|39.924375|-75.169705|B,B-OWL|0
 S|somerset|Somerset|||39.991456|-75.122518|L|1
-S|spring-garden|Spring Garden|||39.961462|-75.150916|B,L|-
+S|spring-garden|Spring Garden||Broad St & Spring Garden St|39.961462|-75.150916|B,L|-
 S|springfield-madison|Springfield-Madison|||39.927288|-75.292601|D|1
 S|springfield-mall|Springfield Mall|||39.918144|-75.348939|D|1
 S|spruce-st-and-38th-st|Spruce St & 38th St|||39.951231|-75.199490|T|1
@@ -844,8 +844,8 @@ D|saturday,sunday|t:2400,3300,4200,5096
 P|B1_OWL-southbound-fern-rock-nrg-21-v4|B-OWL|B1_OWL|nightBus|southbound|NRG Station
 O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,race-vine:1359,city-hall:1500:300,walnut-locust:1920,lombard-south:2008,ellsworth-federal:2160,tasker-morris:2261,snyder:2359,oregon:2492,nrg:2748
 D|monday,tuesday,wednesday,thursday,friday|t:840,1200
-        """,
-        """
+""",
+"""
 D|saturday,sunday|t:840,1500
 P|B1_OWL-southbound-city-hall-nrg-8|B-OWL|B1_OWL|nightBus|southbound|NRG Station
 O|city-hall:0,walnut-locust:120,lombard-south:208,ellsworth-federal:360,tasker-morris:461,snyder:559,oregon:692,nrg:948
@@ -1246,8 +1246,8 @@ O|69th-st-transit-center:0,parkview:113,township-line-rd:180,penfield:230,beechw
 D|monday,tuesday,wednesday,thursday,friday|f:20400:32100:900;t:33180;f:34800:52800:1800;t:53700,54600,55500,56400
 P|M1-northbound-norristown-transit-center-69th-st-transit-center-22|M|M1|local|northbound|69th St Transit Center
 O|norristown-transit-center:0,bridgeport:120,dekalb-st:187,hughes-park:360,gulph-mills:420,matsonford:490,county-line:547,radnor-south:600,villanova-south:707,stadium:731,garrett-hill:778,roberts-rd:844,bryn-mawr-south:900,haverford-south:997,ardmore-av:1098,ardmore-junction:1151,wynnewood-rd:1200,beechwood-brookline:1266,penfield:1329,township-line-rd:1380,parkview:1511,69th-st-transit-center:1740
-        """,
-        """
+""",
+"""
 D|monday,tuesday,wednesday,thursday,friday|t:16740,18300,68160,69120,70020,71100,72300;f:73560:80760:1200;t:81900,83760,84960,87060,88920,91440,94320
 D|saturday|t:19200,21480;f:22800:68400:1200;t:70080;f:71160:81960:1800;t:83700,85260,87840,90600,94560
 D|sunday|t:19200,22200;f:24780:69780:1800;f:71100:83700:1800;t:85260,87900,90600,94500
@@ -1648,8 +1648,8 @@ D|monday,tuesday,wednesday,thursday,friday|t:51960;f:52560:56400:480;f:56940:617
 D|saturday|t:42480,43380,44280;f:45120:58800:720;t:59640,60540,61440,62340,63240
 P|T4-southbound-darby-transit-center-13th-st-47-v3|T|T4|local|southbound|13th-Market
 O|darby-transit-center:0,main-st-and-mill-st:42,main-st-and-summit-st:81,main-st-and-6th-st:101,main-st-and-5th-st:118,main-st-and-4th-st:140,main-st-and-3rd-st:157,main-st-and-2nd-st:175,main-st-and-front-st:194,woodland-av-and-island-av:240,woodland-av-and-72nd-st:284,woodland-av-and-71st-st:314,woodland-av-and-70th-st:350,woodland-av-and-69th-st:382,woodland-av-and-68th-st:420,woodland-av-and-67th-st:455,woodland-av-and-66th-st:484,woodland-av-and-65th-st:512,woodland-av-and-64th-st:540,woodland-av-and-63rd-st:571,woodland-av-and-62nd-st:600,woodland-av-and-61st-st:631,woodland-av-and-60th-st:666,woodland-av-and-58th-st:729,woodland-av-and-57th-st:758,woodland-av-and-56th-st:789,woodland-av-and-55th-st:817,woodland-av-and-54th-st:846,woodland-av-and-53rd-st:875,woodland-av-and-52nd-st:904,woodland-av-and-51st-st:927,woodland-av-and-50th-st:960,woodland-av-and-49th-st:990,woodland-av-and-48th-st:1022,woodland-av-and-47th-st:1056,woodland-av-and-46th-st:1087,woodland-av-and-45th-st:1120,woodland-av-and-42nd-st:1159,40th-st-portal:1260,37th-spruce:1356,36th-sansom:1422,33rd-st:1516,drexel-station-at-30th-st:1600,22nd-st:1694,19th-st:1764,city-hall:1854,13th-st:1920
-        """,
-        """
+""",
+"""
 D|monday|f:18840:23340:900;t:24120,67800,68700,69600,70500,71460,72360,73260,74460,75660,76980
 D|tuesday,wednesday,thursday,friday|f:18840:23340:900;t:24120,67800,68700,69600,70500,71460,72360,73260,74460,75660,76980,78480,79980,81480,82980
 D|saturday|t:27480,75600,76920,78480,79980,81480,82980
@@ -1854,6 +1854,6 @@ D|monday,sunday|t:88140
 P|T5-northbound-40th-st-80th-st-eastwick-41-v4|T|T5|local|northbound|Eastwick
 O|40th-st:0,40th-st-and-chestnut-st:49,40th-st-and-walnut-st-fs:101,40th-st-and-locust-st:141,spruce-st-and-41st-st:248,spruce-st-and-42nd-st:282,42nd-st-and-pine-st:318,42nd-st-and-baltimore-av:364,42nd-st-and-chester-av:407,woodland-av-and-43rd-st:517,woodland-av-and-46th-st:571,woodland-av-and-48th-st:666,woodland-av-and-49th-st:720,49th-st-and-paschall-av:744,grays-av-and-51st-st:818,grays-av-and-lindbergh-blvd:847,lindbergh-blvd-and-grays-av-fs:866,lindbergh-blvd-and-54th-st:903,elmwood-av-and-56th-st:961,elmwood-av-and-57th-st:991,elmwood-av-and-58th-st:1018,elmwood-av-and-59th-st:1045,elmwood-av-and-edgewood-av:1082,elmwood-av-and-61st-st:1102,elmwood-av-and-62nd-st:1140,elmwood-av-and-63rd-st:1164,elmwood-av-and-64th-st:1191,elmwood-av-and-65th-st:1215,elmwood-av-and-66th-st:1239,elmwood-av-and-67th-st:1264,elmwood-av-and-68th-st:1294,elmwood-av-and-69th-st:1326,elmwood-av-and-70th-st:1353,elmwood-av-and-71st-st:1383,elmwood-av-and-72nd-st:1409,elmwood-av-and-73rd-st:1440,elmwood-av-and-island-av:1471,island-av-and-tanager-st:1563,island-av-and-lindbergh-blvd-fs:1679,island-av-and-suffolk-av-mbfs:1773,80th-st-eastwick:1800
 D|monday,tuesday|t:18300
-        """,
+""",
     ]
 }

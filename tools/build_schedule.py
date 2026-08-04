@@ -876,9 +876,13 @@ def emit_swift(data: dict) -> str:
     add("")
     add("    static let parts: [String] = [")
     for chunk in chunks:
-        add('        """')
+        # Delimiters sit at column 0 so the data lines need no indentation. Swift
+        # requires every line of a multi-line literal to be indented at least as
+        # far as its *closing* delimiter, and indenting 1,800 data lines to match
+        # an indented delimiter would just pad the file for nothing.
+        add('"""')
         add(chunk)
-        add('        """,')
+        add('""",')
     add("    ]")
     add("}")
     add("")
