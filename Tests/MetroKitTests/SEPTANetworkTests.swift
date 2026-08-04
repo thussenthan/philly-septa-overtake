@@ -469,7 +469,7 @@ final class SEPTANetworkTests: XCTestCase {
         // Nothing half-parsed: every pattern has stops, a schedule, and real stations.
         for pattern in network.patterns {
             XCTAssertGreaterThanOrEqual(pattern.stops.count, 2, "\(pattern.id) has too few stops")
-            XCTAssertFalse(pattern.activeDays.isEmpty, "\(pattern.id) runs on no day")
+            XCTAssertFalse(pattern.schedule.activeDays.isEmpty, "\(pattern.id) runs on no day")
             XCTAssertFalse(pattern.headsign.isEmpty, "\(pattern.id) has no headsign")
             for stop in pattern.stops {
                 XCTAssertNotNil(network.station(stop.station), "\(pattern.id) stops at unknown \(stop.station)")

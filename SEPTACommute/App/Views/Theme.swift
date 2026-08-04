@@ -28,7 +28,7 @@ enum Theme {
     static func color(for kind: PatternKind) -> Color {
         switch kind {
         case .express: return Color(hex: "0B7285")
-        case .local: return broadStreet
+        case .local: return accent
         case .spur: return Color(hex: "6A4C93")
         case .nightBus: return Color(hex: "495057")
         }

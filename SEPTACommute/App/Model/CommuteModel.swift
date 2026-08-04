@@ -122,12 +122,14 @@ final class CommuteModel: ObservableObject {
 
         target = Self.automaticTarget(places: places, location: nil, nearHomeMeters: 1609.34)
 
-        locationService.$status
+        // `self.` is load-bearing: the initialiser parameter of the same name is
+        // optional, and would shadow the stored property here.
+        self.locationService.$status
             .removeDuplicates()
             .sink { [weak self] _ in self?.locationChanged() }
             .store(in: &cancellables)
 
-        places.$places
+        self.places.$places
             .sink { [weak self] updated in self?.placesChanged(updated) }
             .store(in: &cancellables)
     }
