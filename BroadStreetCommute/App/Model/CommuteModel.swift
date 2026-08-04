@@ -226,11 +226,11 @@ final class CommuteModel: ObservableObject {
 
     /// Recompute the plan.
     ///
-    /// The search itself runs off the main actor. On the Broad Street Line alone
-    /// it takes microseconds and this would not matter, but the engine also
-    /// handles the whole Metro rail map, where a plan is closer to a tenth of a
-    /// second — and a tenth of a second on the main actor, every thirty seconds
-    /// and again on every location update, is a visible stutter.
+    /// The search itself runs off the main actor. Measured on a Mac, a door-to-door
+    /// plan over the Broad Street Line is about 13 ms and the whole Metro rail map
+    /// is closer to a tenth of a second — both slower on a phone. Either figure,
+    /// on the main actor, every thirty seconds and again on every location update,
+    /// is a visible stutter.
     func replan() {
         guard let origin = resolvedOrigin, let destination = resolvedTarget else {
             planTask?.cancel()

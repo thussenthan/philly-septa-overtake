@@ -69,15 +69,16 @@ public enum Format {
 
     /// Whether the rider's locale wants metres or feet.
     ///
-    /// `measurementSystem` is the modern spelling but is Darwin-and-recent-only;
-    /// the fallback keeps `swift test` working on Linux.
+    /// `measurementSystem` is available unconditionally at this package's minimum
+    /// platforms, so no availability check is needed. The `usesMetricSystem`
+    /// fallback exists only for non-Darwin Foundation, where the modern spelling
+    /// is absent — and is compiled out on Apple platforms, where it is deprecated.
     static var prefersMetric: Bool {
         #if canImport(Darwin)
-        if #available(iOS 16, macOS 13, tvOS 16, watchOS 9, *) {
-            return Locale.autoupdatingCurrent.measurementSystem != .us
-        }
-        #endif
+        return Locale.autoupdatingCurrent.measurementSystem != .us
+        #else
         return Locale.autoupdatingCurrent.usesMetricSystem
+        #endif
     }
 
     /// Uses the unit the rider's locale expects.

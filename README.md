@@ -129,10 +129,10 @@ imports need adding.
 
 ### The routing algorithm
 
-The search is exhaustive rather than heuristic. On a 24-station line with a couple
-of dozen stopping patterns that costs microseconds, and in exchange the interesting
-strategies fall out on their own instead of being special-cased. Nothing tells the
-planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
+The search is exhaustive rather than heuristic. A door-to-door plan over the Broad
+Street Line measures at about 13 ms (`testPlanningIsFastEnoughToRunOnEveryLocationUpdate`),
+and in exchange the interesting strategies fall out on their own instead of being
+special-cased. Nothing tells the planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
 walk and scores each by when the rider reaches the door.
 
 *Describing* those routes is a different job, and it does need an explicit check.
