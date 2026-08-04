@@ -180,10 +180,10 @@ imports need adding.
 
 ### The routing algorithm
 
-The search is exhaustive rather than heuristic. A door-to-door plan over the Broad
-Street Line measures at about 13 ms (`testPlanningIsFastEnoughToRunOnEveryLocationUpdate`),
-and in exchange the interesting strategies fall out on their own instead of being
-special-cased. Nothing tells the planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
+The search is exhaustive rather than heuristic. A door-to-door plan across the whole
+Metro map measures at about 31 ms on an Apple silicon Mac
+(`testPlanningIsFastEnoughToRunOnEveryLocationUpdate`), and in exchange the
+interesting strategies fall out on their own instead of being special-cased. Nothing tells the planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
 walk and scores each by when the rider reaches the door.
 
 *Describing* those routes is a different job, and it does need an explicit check.
