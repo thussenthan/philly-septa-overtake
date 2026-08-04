@@ -83,8 +83,20 @@ final class CommuteModel: ObservableObject {
     /// How close counts as "you are at this station".
     private let atStationMeters: Double = 160
 
+    /// Within this far of home, the app assumes you are setting out for the day.
+    ///
+    /// The point of the app is to open it and have the answer already there, so the
+    /// destination is guessed from where you are standing: near home means you are
+    /// heading to work or school, anywhere else means you are heading home.
+    private let nearHomeMeters: Double = 1609.34   // one mile
+
+    /// Set once the rider picks a destination by hand, so the guess stops
+    /// overriding them. Deliberately not persisted — every launch starts by
+    /// guessing again, which is the behaviour that makes the app useful at a glance.
+    @Published private(set) var hasManualTarget = false
+
     init(
-        network: Network = BSLData.network,
+        network: Network = SEPTAData.network,
         places: PlaceStore,
         locationService: LocationService = LocationService(),
         walkTimes: WalkTimeService = WalkTimeService(),
@@ -102,7 +114,7 @@ final class CommuteModel: ObservableObject {
             preferences = saved
         }
 
-        target = places.home.map(Target.saved) ?? places.school.map(Target.saved)
+        target = Self.automaticTarget(places: places, location: nil, nearHomeMeters: 1609.34)
 
         locationService.$status
             .removeDuplicates()
@@ -152,10 +164,67 @@ final class CommuteModel: ObservableObject {
 
     private func locationChanged() {
         updateCurrentStation()
+        updateAutomaticTarget()
         replan()
     }
 
+    /// Guess where the rider is going, unless they have already said.
+    private func updateAutomaticTarget() {
+        guard !hasManualTarget else { return }
+        let guess = Self.automaticTarget(
+            places: places,
+            location: locationService.coordinate,
+            nearHomeMeters: nearHomeMeters
+        )
+        guard guess != target else { return }
+        target = guess
+    }
+
+    private static func automaticTarget(
+        places: PlaceStore,
+        location: Coordinate?,
+        nearHomeMeters: Double
+    ) -> Target? {
+        let home = places.home
+        let school = places.school
+        // With only one anchor there is nothing to choose between.
+        guard let home else { return school.map(Target.saved) }
+        guard let school else { return .saved(home) }
+        guard let location else { return .saved(home) }
+
+        let distanceFromHome = location.distance(to: home.coordinate)
+        return .saved(distanceFromHome <= nearHomeMeters ? school : home)
+    }
+
+    /// The rider picked a destination themselves; stop guessing for this session.
+    func chooseTarget(_ chosen: Target?) {
+        hasManualTarget = chosen != nil
+        target = chosen
+        replan()
+    }
+
+    /// Hand the choice back to the app.
+    func resumeAutomaticTarget() {
+        hasManualTarget = false
+        updateAutomaticTarget()
+        replan()
+    }
+
+    /// Why the current destination was chosen, for the "To" row.
+    var targetReason: String? {
+        guard !hasManualTarget, let home = places.home, places.school != nil else { return nil }
+        guard let location = locationService.coordinate else { return nil }
+        return location.distance(to: home.coordinate) <= nearHomeMeters
+            ? "You're near home — heading out"
+            : "Heading home"
+    }
+
     private func placesChanged(_ updated: [SavedPlace]) {
+        guard hasManualTarget else {
+            updateAutomaticTarget()
+            replan()
+            return
+        }
         // Keep pointing at the same role if its address was edited.
         if case .saved(let place) = target {
             if let refreshed = updated.first(where: { $0.id == place.id }) {

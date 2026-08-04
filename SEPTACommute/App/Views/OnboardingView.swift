@@ -31,7 +31,7 @@ struct OnboardingView: View {
                     Text("Which train, right now")
                         .font(.largeTitle.weight(.bold))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("The Broad Street Line runs local trains, express trains that skip half the stops, and the Broad-Ridge Spur. Which one gets you home fastest changes minute by minute.")
+                    Text("SEPTA runs local trains, express trains that skip half the stops, trolleys and the Broad-Ridge Spur, often over the same tracks. Which one gets you where you're going fastest changes minute by minute.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -47,6 +47,9 @@ struct OnboardingView: View {
                     bullet("figure.walk",
                            "Door to door",
                            "Counts the walk at both ends, so \"faster train\" doesn't mean \"longer trip\".")
+                    bullet("wand.and.stars",
+                           "Open it and you're done",
+                           "It guesses where you're going from where you are — near home means you're heading out, anywhere else means you're heading home.")
                     bullet("hand.raised.fill",
                            "Stays on your phone",
                            "Timetables are built in. Your addresses never leave the device.")
@@ -62,7 +65,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your two ends of the day")
                         .font(.title2.weight(.bold))
-                    Text("Add at least one. You can change these any time in Settings, and add more places later.")
+                    Text("Add both and the app can guess which way you're going the moment you open it. You can change these any time in Settings.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -111,7 +114,7 @@ struct OnboardingView: View {
 
     private func nearestStationBlurb(for place: SavedPlace) -> String {
         guard let nearest = model.network.nearestStation(to: place.coordinate) else {
-            return "No Broad Street Line station nearby"
+            return "No SEPTA Metro station nearby"
         }
         let walk = WalkingModel().egressSeconds(straightLineMeters: nearest.meters)
         return "Nearest station: \(nearest.station.name), about \(Format.minutes(walk)) on foot"
@@ -121,7 +124,7 @@ struct OnboardingView: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
-                .foregroundStyle(Theme.broadStreet)
+                .foregroundStyle(Theme.accent)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
@@ -146,7 +149,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.broadStreet)
+                .tint(Theme.accent)
                 .controlSize(.large)
             } else {
                 Button {
@@ -157,7 +160,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.broadStreet)
+                .tint(Theme.accent)
                 .controlSize(.large)
                 .disabled(!places.isConfigured)
 

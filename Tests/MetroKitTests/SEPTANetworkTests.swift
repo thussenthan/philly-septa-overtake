@@ -6,11 +6,25 @@ import XCTest
 /// These guard the generated data as much as the planner: if a regeneration
 /// silently drops the express, renames a station, or reverses a direction, these
 /// fail rather than the app quietly giving bad advice.
-final class BroadStreetLineTests: XCTestCase {
+final class SEPTANetworkTests: XCTestCase {
 
-    private let network = BSLData.network
+    private let network = SEPTAData.network
     private lazy var planner = JourneyPlanner(network: network)
     private lazy var narrator = JourneyNarrator(network: network)
+
+    /// The bundled data now covers the whole Metro rail map, so assertions about
+    /// the Broad Street Line have to scope themselves to it rather than to
+    /// "everything in the network".
+    private var broadStreetPatterns: [ServicePattern] {
+        network.patterns.filter { $0.lineID == "B" }
+    }
+
+    private let broadStreetStations: [StationID] = [
+        "fern-rock", "olney", "logan", "wyoming", "hunting-park", "erie", "allegheny",
+        "north-philadelphia", "susquehanna-dauphin", "cecil-b-moore", "girard",
+        "fairmount", "spring-garden", "race-vine", "city-hall", "walnut-locust",
+        "lombard-south", "ellsworth-federal", "tasker-morris", "snyder", "oregon", "nrg",
+    ]
 
     /// A weekday morning inside a normal peak.
     private func weekday(_ hour: Int, _ minute: Int) -> Date {
@@ -39,17 +53,55 @@ final class BroadStreetLineTests: XCTestCase {
 
     // MARK: - Network shape
 
-    func testTheLineHasItsTwentyFourStations() {
-        XCTAssertEqual(network.stations.count, 24)
-        for id in ["fern-rock", "erie", "cecil-b-moore", "girard", "fairmount",
-                   "spring-garden", "city-hall", "walnut-locust", "nrg",
-                   "chinatown", "8th-and-market"] {
-            XCTAssertNotNil(network.station(StationID(id)), "missing station \(id)")
+    func testTheBroadStreetLineHasAllTwentyTwoOfItsStations() {
+        for id in broadStreetStations {
+            XCTAssertNotNil(network.station(id), "missing station \(id)")
+        }
+        // Plus the two the Spur adds.
+        XCTAssertNotNil(network.station("chinatown"))
+        XCTAssertNotNil(network.station("8th-and-market"))
+    }
+
+    /// The whole Metro rail map, not one line.
+    func testTheNetworkCoversEveryMetroLine() {
+        let lines = Set(network.patterns.map(\.lineID))
+        for expected: LineID in ["B", "L", "M", "T", "G", "D"] {
+            XCTAssertTrue(lines.contains(expected), "no patterns on line \(expected)")
+        }
+        XCTAssertGreaterThan(network.stations.count, 500)
+        XCTAssertFalse(network.lines.isEmpty)
+        for line in network.lines {
+            XCTAssertEqual(line.colorHex.count, 6, "\(line.id) has an unusable colour")
         }
     }
 
+    /// City Hall carries the B, the L and all five trolley routes; 69th St carries
+    /// the L, the M and both Media-Sharon Hill routes. These merges are what make
+    /// cross-line routing possible at all, so they are worth pinning.
+    func testTheMajorInterchangesAreSingleStations() {
+        for id: StationID in ["city-hall", "69th-st-transit-center", "8th-and-market", "40th-st"] {
+            let lines = Set(network.patterns(serving: id).map(\.lineID))
+            XCTAssertGreaterThan(lines.count, 1, "\(id) should join more than one line, got \(lines)")
+        }
+        XCTAssertTrue(Set(network.patterns(serving: "city-hall").map(\.lineID)).isSuperset(of: ["B", "L", "T"]))
+        XCTAssertTrue(Set(network.patterns(serving: "40th-st").map(\.lineID)).isSuperset(of: ["L", "T"]))
+    }
+
+    /// A trip the Broad Street Line alone could never serve.
+    func testCrossLineRoutingWorks() throws {
+        let plan = planner.plan(PlanRequest(
+            origin: .station("cecil-b-moore"),
+            destination: .station("40th-st"),
+            departAt: weekday(8, 15)
+        ))
+        let best = try XCTUnwrap(plan.best, "notes: \(plan.notes)")
+        let lines = best.rides.map(\.lineID)
+        XCTAssertTrue(lines.contains("B"), "should start on the B, got \(best.trace)")
+        XCTAssertTrue(lines.contains("L"), "should finish on the L, got \(best.trace)")
+    }
+
     func testStationsAreOrderedNorthToSouthOnTheLocalPattern() throws {
-        let southbound = try XCTUnwrap(network.patterns.first {
+        let southbound = try XCTUnwrap(broadStreetPatterns.first {
             $0.kind == .local && $0.direction == .southbound && $0.stops.count == 22
         })
         let latitudes = southbound.stationIDs.compactMap { network.station($0)?.coordinate.latitude }
@@ -63,11 +115,13 @@ final class BroadStreetLineTests: XCTestCase {
     /// it never reaches South Philadelphia, which is the single most common
     /// misconception about this line.
     func testExpressIsWeekdayOnlyAndStopsAtWalnutLocust() throws {
-        let express = network.patterns.filter { $0.kind == .express }
+        let express = broadStreetPatterns.filter { $0.kind == .express }
         XCTAssertEqual(express.count, 2, "expected one express pattern per direction")
 
         for pattern in express {
-            XCTAssertTrue(pattern.schedule.runs(on: .weekday))
+            for day in DayType.weekdays {
+                XCTAssertTrue(pattern.schedule.runs(on: day), "\(pattern.id) should run on \(day)")
+            }
             XCTAssertFalse(pattern.schedule.runs(on: .saturday), "\(pattern.id) should not run Saturdays")
             XCTAssertFalse(pattern.schedule.runs(on: .sunday), "\(pattern.id) should not run Sundays")
 
@@ -85,10 +139,10 @@ final class BroadStreetLineTests: XCTestCase {
     }
 
     func testExpressBeatsLocalOverTheSameStretch() throws {
-        let expressSouth = try XCTUnwrap(network.patterns.first {
+        let expressSouth = try XCTUnwrap(broadStreetPatterns.first {
             $0.kind == .express && $0.direction == .southbound
         })
-        let localSouth = try XCTUnwrap(network.patterns.first {
+        let localSouth = try XCTUnwrap(broadStreetPatterns.first {
             $0.kind == .local && $0.direction == .southbound && $0.stops.count == 22
         })
 
@@ -114,12 +168,13 @@ final class BroadStreetLineTests: XCTestCase {
             XCTAssertFalse(pattern.serves("city-hall"), "the spur leaves Broad St before City Hall")
             XCTAssertFalse(pattern.schedule.runs(on: .sunday), "no Sunday spur service")
         }
-        // Chinatown and 8th & Market are reachable only by the spur.
-        for id in [StationID("chinatown"), StationID("8th-and-market")] {
-            let serving = network.patterns(serving: id)
-            XCTAssertFalse(serving.isEmpty)
-            XCTAssertTrue(serving.allSatisfy { $0.kind == .spur }, "\(id) should be spur-only")
-        }
+        // Chinatown is the Spur's alone. 8th & Market is not: it is also an L
+        // station, and merging the two feed names is what makes that interchange
+        // reachable.
+        let chinatown = network.patterns(serving: "chinatown")
+        XCTAssertFalse(chinatown.isEmpty)
+        XCTAssertTrue(chinatown.allSatisfy { $0.kind == .spur }, "Chinatown should be Spur-only")
+        XCTAssertTrue(network.patterns(serving: "8th-and-market").contains { $0.lineID == "L" })
     }
 
     // MARK: - The commute this app was built for
@@ -151,7 +206,7 @@ final class BroadStreetLineTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(journey.urgency.slack, -30)
             XCTAssertEqual(journey.legs.first?.startTime, journey.departureTime)
             XCTAssertEqual(journey.legs.last?.endTime, journey.arrivalTime)
-            for ride in journey.rides {
+            for ride in journey.rides where ride.lineID == "B" {
                 XCTAssertEqual(ride.direction, .southbound, "heading home is southbound from Erie")
             }
         }
@@ -196,7 +251,7 @@ final class BroadStreetLineTests: XCTestCase {
         ))
         XCTAssertFalse(plan.journeys.isEmpty, "notes: \(plan.notes)")
         for journey in plan.journeys {
-            for ride in journey.rides {
+            for ride in journey.rides where ride.lineID == "B" {
                 XCTAssertEqual(ride.direction, .northbound)
             }
         }
@@ -227,12 +282,14 @@ final class BroadStreetLineTests: XCTestCase {
             departAt: weekday(2, 30)
         ))
         XCTAssertFalse(plan.journeys.isEmpty, "notes: \(plan.notes)")
-        let best = try XCTUnwrap(plan.best)
         XCTAssertTrue(
-            best.rides.allSatisfy { $0.kind == .nightBus },
-            "expected the Owl bus at 2:30 AM, got \(best.trace)"
+            plan.journeys.contains { !$0.rides.isEmpty && $0.rides.allSatisfy { $0.kind == .nightBus } },
+            "expected an Owl bus option at 2:30 AM, got \(plan.journeys.map(\.trace))"
         )
-        XCTAssertTrue(plan.notes.contains(.nightServiceOnly))
+        XCTAssertFalse(
+            plan.journeys.contains { $0.rides.contains { $0.lineID == "B" && $0.kind != .nightBus } },
+            "the Broad Street subway is not running at 2:30 AM"
+        )
     }
 
     // MARK: - Correctness invariants over the real data
@@ -370,7 +427,7 @@ final class BroadStreetLineTests: XCTestCase {
             ))
             XCTAssertFalse(plan.journeys.isEmpty, "no route \(from) → \(to)")
             for journey in plan.journeys {
-                for ride in journey.rides {
+                for ride in journey.rides where ride.lineID == "B" {
                     XCTAssertEqual(
                         ride.direction, expected,
                         "\(from) → \(to) offered a \(ride.direction.rawValue) ride: \(journey.trace)"
@@ -400,9 +457,9 @@ final class BroadStreetLineTests: XCTestCase {
     func testBundledDataDeclaresItsProvenance() {
         XCTAssertEqual(network.provenance.fidelity, .official)
         XCTAssertFalse(network.provenance.isEstimate)
-        XCTAssertFalse(BSLData.feedVersion.isEmpty)
+        XCTAssertFalse(SEPTAData.feedVersion.isEmpty)
         XCTAssertNotNil(network.provenance.feedExpiryDate)
-        XCTAssertEqual(network.provenance.validUntil, BSLData.feedEndDate)
+        XCTAssertEqual(network.provenance.validUntil, SEPTAData.feedEndDate)
     }
 
     /// Performance matters because the app replans on every location update.

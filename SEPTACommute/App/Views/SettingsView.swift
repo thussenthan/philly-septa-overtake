@@ -37,7 +37,7 @@ struct SettingsView: View {
             }
             ForEach(places.custom) { place in
                 HStack {
-                    Image(systemName: place.role.symbol).foregroundStyle(Theme.broadStreet)
+                    Image(systemName: place.role.symbol).foregroundStyle(Theme.accent)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(place.name)
                         Text(place.address).font(.caption).foregroundStyle(.secondary)
@@ -71,7 +71,7 @@ struct SettingsView: View {
             addingRole = role
         } label: {
             HStack {
-                Image(systemName: role.symbol).foregroundStyle(Theme.broadStreet)
+                Image(systemName: role.symbol).foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(role.title).foregroundStyle(.primary)
                     Text(places.place(for: role)?.address ?? "Not set")
@@ -182,7 +182,7 @@ struct RankingExplainerView: View {
                 paragraph("Every option shown is one you can still catch. If the walk to the station is longer than the time until the train leaves, it isn't listed.")
                 paragraph("An option is hidden only when another is at least as good on all of: arrival time, number of train changes, walking time, and how late you can leave. That last one is why a slower train sometimes still appears — it may let you leave ten minutes later.")
                 paragraph("\"Leave in …\" counts down to the last moment you can set off and still make the train, including the walk and a safety margin you can adjust.")
-                paragraph("The express skips fourteen of the line's twenty-two stations and only runs weekday peaks between Fern Rock and Walnut-Locust. It never goes to South Philadelphia, so for anything south of Walnut-Locust the local is the only train.")
+                paragraph("On the Broad Street Line, the express skips fourteen of the line's twenty-two stations and only runs weekday peaks between Fern Rock and Walnut-Locust. It never goes to South Philadelphia, so for anything south of Walnut-Locust the local is the only train.")
                 paragraph("The Broad-Ridge Spur also runs fast on Broad St and stops at Fairmount, which the express skips — so for some trips the Spur beats both.")
                 paragraph("Between about midnight and 5 AM the trains stop and SEPTA runs the B1 Owl bus along Broad St at street level. Those trips are shown too, boarding at the curb rather than in the station.")
             }

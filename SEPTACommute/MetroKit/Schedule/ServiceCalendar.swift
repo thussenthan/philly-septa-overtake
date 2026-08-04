@@ -64,12 +64,7 @@ public struct ServiceCalendar: Sendable {
         if usesHolidaySchedule, HolidayCalendar.isMajorHoliday(date, in: timeZone) {
             return holidayDayType
         }
-        // Calendar weekday: 1 = Sunday ... 7 = Saturday.
-        switch calendar.component(.weekday, from: date) {
-        case 1: return .sunday
-        case 7: return .saturday
-        default: return .weekday
-        }
+        return DayType.from(calendarWeekday: calendar.component(.weekday, from: date))
     }
 
     /// Noon on the calendar day containing `date`.

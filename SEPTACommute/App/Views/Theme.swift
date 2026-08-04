@@ -15,8 +15,15 @@ extension Color {
 }
 
 enum Theme {
-    /// SEPTA's published Broad Street Line orange.
-    static let broadStreet = Color(hex: "F26100")
+    /// SEPTA's published Broad Street Line orange, used as the app accent.
+    static let accent = Color(hex: "F26100")
+
+    /// A line's own published colour. Every line in the bundled data carries one,
+    /// so a B trip is orange, an L trip blue, a trolley trip green.
+    static func color(for line: Line?) -> Color {
+        guard let line else { return accent }
+        return Color(hex: line.colorHex)
+    }
 
     static func color(for kind: PatternKind) -> Color {
         switch kind {
@@ -49,7 +56,7 @@ enum Theme {
 /// The line badge SEPTA puts on maps and station signs.
 struct LineBadge: View {
     var text: String
-    var color: Color = Theme.broadStreet
+    var color: Color = Theme.accent
     var size: CGFloat = 26
 
     var body: some View {

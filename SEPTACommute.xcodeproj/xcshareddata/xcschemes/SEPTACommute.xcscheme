@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "AA0000000000000000000030"
-               BuildableName = "BroadStreetCommute.app"
-               BlueprintName = "BroadStreetCommute"
-               ReferencedContainer = "container:BroadStreetCommute.xcodeproj">
+               BuildableName = "SEPTACommute.app"
+               BlueprintName = "SEPTACommute"
+               ReferencedContainer = "container:SEPTACommute.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000030"
-            BuildableName = "BroadStreetCommute.app"
-            BlueprintName = "BroadStreetCommute"
-            ReferencedContainer = "container:BroadStreetCommute.xcodeproj">
+            BuildableName = "SEPTACommute.app"
+            BlueprintName = "SEPTACommute"
+            ReferencedContainer = "container:SEPTACommute.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000030"
-            BuildableName = "BroadStreetCommute.app"
-            BlueprintName = "BroadStreetCommute"
-            ReferencedContainer = "container:BroadStreetCommute.xcodeproj">
+            BuildableName = "SEPTACommute.app"
+            BlueprintName = "SEPTACommute"
+            ReferencedContainer = "container:SEPTACommute.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

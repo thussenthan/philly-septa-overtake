@@ -1,18 +1,42 @@
 import Foundation
 
-/// The kind of day a transit schedule is keyed on.
+/// The day a transit schedule is keyed on.
+///
+/// Every day of the week, not the usual weekday/Saturday/Sunday triple. Rail
+/// timetables are identical Monday to Friday, so three would be enough for the
+/// subway — but SEPTA's trolley routes carry services scoped to particular
+/// weekdays, and collapsing the week dropped 435 of 7,163 trips from the wider
+/// network. Unioning them instead would be worse: it would promise a rider on a
+/// Monday a trip that only runs on Fridays.
 public enum DayType: String, Codable, Sendable, CaseIterable {
-    case weekday
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
     case saturday
     case sunday
 
     public var label: String {
-        switch self {
-        case .weekday: return "Weekday"
-        case .saturday: return "Saturday"
-        case .sunday: return "Sunday"
+        rawValue.prefix(1).uppercased() + rawValue.dropFirst()
+    }
+
+    public var isWeekend: Bool { self == .saturday || self == .sunday }
+
+    /// From `Calendar`'s weekday component, where 1 is Sunday.
+    public static func from(calendarWeekday: Int) -> DayType {
+        switch calendarWeekday {
+        case 1: return .sunday
+        case 2: return .monday
+        case 3: return .tuesday
+        case 4: return .wednesday
+        case 5: return .thursday
+        case 6: return .friday
+        default: return .saturday
         }
     }
+
+    public static let weekdays: [DayType] = [.monday, .tuesday, .wednesday, .thursday, .friday]
 }
 
 /// One chunk of a day's service for a pattern.
@@ -77,6 +101,25 @@ public struct Schedule: Sendable {
     /// Convenience for service that runs identically every day.
     public init(everyDay: [ScheduleBlock]) {
         self.init(blocks: Dictionary(uniqueKeysWithValues: DayType.allCases.map { ($0, everyDay) }))
+    }
+
+    /// Convenience for the common case: one timetable shared by several days.
+    ///
+    /// Keeps the generated data compact, since a rail pattern usually runs the
+    /// identical timetable Monday to Friday.
+    public init(_ groups: [([DayType], [ScheduleBlock])]) {
+        var blocks: [DayType: [ScheduleBlock]] = [:]
+        for (days, dayBlocks) in groups {
+            for day in days {
+                blocks[day, default: []].append(contentsOf: dayBlocks)
+            }
+        }
+        self.init(blocks: blocks)
+    }
+
+    /// Every day type this pattern runs on, in week order.
+    public var activeDays: [DayType] {
+        DayType.allCases.filter { runs(on: $0) }
     }
 
     public static let never = Schedule(blocks: [:])

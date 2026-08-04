@@ -18,7 +18,7 @@ struct AddressField: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: role.symbol)
-                    .foregroundStyle(Theme.broadStreet)
+                    .foregroundStyle(Theme.accent)
                     .frame(width: 22)
                 TextField(prompt, text: $search.query)
                     .textInputAutocapitalization(.words)

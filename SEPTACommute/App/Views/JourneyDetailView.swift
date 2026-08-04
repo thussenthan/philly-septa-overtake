@@ -134,7 +134,7 @@ struct JourneyDetailView: View {
 
         case .ride(let ride):
             HStack(spacing: 6) {
-                LineBadge(text: badgeText(for: ride), color: Theme.color(for: ride.kind), size: 22)
+                LineBadge(text: badgeText(for: ride), color: Theme.color(for: network.line(ride.lineID)), size: 22)
                 Text("\(ride.kind.label) toward \(ride.headsign)")
                     .font(.subheadline.weight(.medium))
             }
@@ -206,7 +206,7 @@ struct JourneyDetailView: View {
     }
 
     private func badgeText(for ride: RideLeg) -> String {
-        network.line(ride.lineID)?.badge ?? "B"
+        network.line(ride.lineID)?.badge ?? ride.lineID.rawValue
     }
 
     private func tint(for leg: JourneyLeg) -> Color {

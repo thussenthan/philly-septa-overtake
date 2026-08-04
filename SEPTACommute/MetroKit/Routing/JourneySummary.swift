@@ -64,6 +64,11 @@ public struct JourneyNarrator: Sendable {
         network.station(id)?.name ?? id.rawValue
     }
 
+    /// The letter a rider sees on the map and the station signs.
+    private func badge(_ id: LineID) -> String {
+        network.line(id)?.badge ?? id.rawValue
+    }
+
     // MARK: - Strategy
 
     public func strategy(for journey: Journey) -> JourneyStrategy {
@@ -105,11 +110,16 @@ public struct JourneyNarrator: Sendable {
         case .walk:
             return "Walk the whole way"
         case .direct(let kind):
+            let line = journey.rides.first.map { badge($0.lineID) }
             switch kind {
             case .express: return "Express, straight through"
-            case .local: return "Local, straight through"
             case .spur: return "Broad-Ridge Spur"
             case .nightBus: return "Owl bus"
+            case .local:
+                // Name the line. "Local, straight through" reads fine when there is
+                // only one line in the app, and says nothing once there are nine.
+                guard let line else { return "Straight through, no changes" }
+                return "Straight through on the \(line)"
             }
         case .overtake(let first, let second, let at):
             if first == .local, second == .express {
@@ -120,6 +130,13 @@ public struct JourneyNarrator: Sendable {
             }
             return "\(first.label) to \(name(at)), then the \(second.label.lowercased())"
         case .connect(let first, let second, let at):
+            // Changing between lines is the useful thing to say; changing stopping
+            // pattern within one line is the fallback.
+            if let from = journey.rides.first?.lineID,
+               let to = journey.rides.dropFirst().first?.lineID,
+               from != to {
+                return "\(badge(from)) to \(name(at)), change to the \(badge(to))"
+            }
             return "\(first.label) to \(name(at)), change to the \(second.label.lowercased())"
         case .multiLeg(let count):
             return "\(count) trains"

@@ -16,7 +16,7 @@ Usage
     python3 tools/build_schedule.py --scope metro    # the whole Metro rail map
 
 The feed only declares two weeks of validity, so this is re-run whenever the
-timetable changes. ``BSLData.feedEndDate`` lets the app warn a rider when the
+timetable changes. ``SEPTAData.feedEndDate`` lets the app warn a rider when the
 bundled schedule has aged out.
 """
 
@@ -49,15 +49,15 @@ RAIL_ROUTE_TYPES = {"0", "1", "11"}
 NIGHT_ROUTES = ["B1_OWL"]
 
 # Scope presets, selected with --scope.
-#   broad  — the Broad Street Line alone, as originally shipped
-#   metro  — everything on the SEPTA Metro rail map
+#   metro  — everything on the SEPTA Metro rail map (the default)
+#   broad  — the Broad Street Line alone, useful for a smaller test fixture
 SCOPES = {
     "broad": {"B1", "B2", "B3"},
     "metro": None,  # resolved from RAIL_ROUTE_TYPES against the feed
 }
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_OUTPUT = REPO_ROOT / "BroadStreetCommute" / "MetroKit" / "Data" / "GeneratedBSLData.swift"
+DEFAULT_OUTPUT = REPO_ROOT / "SEPTACommute" / "MetroKit" / "Data" / "GeneratedSEPTAData.swift"
 CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 
 # Rider-facing names. SEPTA's GTFS names are inconsistent ("Broad-Girard" but
@@ -215,28 +215,38 @@ def recurring_services(feed: Feed) -> tuple[dict[str, set[dt.date]], set[str]]:
     return dates, rare
 
 
-def representative_dates(feed: Feed, dates: dict[str, set[dt.date]]) -> dict[str, dt.date]:
-    """Pick one ordinary date per day type from inside the feed's validity window.
+# Matches MetroKit's DayType cases.
+DAY_TYPES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
-    Sampling a single real date — rather than unioning every weekday service ID
-    across the feed — avoids stitching together timetable revisions that are
-    never in effect on the same day.
+
+def representative_dates(feed: Feed, dates: dict[str, set[dt.date]]) -> dict[str, dt.date]:
+    """Pick one real date per day of the week from inside the feed's validity window.
+
+    One date per *weekday*, not one per weekday/Saturday/Sunday. Sampling a
+    single midweek date and calling it "the weekday timetable" silently discarded
+    every service scoped to a particular day — 435 trips on the full rail map.
+    Unioning the week instead would have been worse than dropping them: it would
+    promise a rider on a Monday a trip that only runs on Fridays.
+
+    Sampling real dates (rather than unioning service IDs) still avoids stitching
+    together timetable revisions never in effect on the same day.
     """
     info = feed.table("feed_info.txt")[0]
     start, end = parse_date(info["feed_start_date"]), parse_date(info["feed_end_date"])
 
-    # Midweek, so a Monday/Friday variant does not become "the" weekday.
-    wanted = {"weekday": (1, 2, 3), "saturday": (5,), "sunday": (6,)}
+    # The *latest* occurrence of each weekday, not the earliest. SEPTA ships more
+    # than one timetable revision inside a single feed — this one carries services
+    # that only begin part-way through its validity window — so sampling the first
+    # week can generate a timetable that is already superseded.
     chosen: dict[str, dt.date] = {}
-    for label, weekdays in wanted.items():
-        day = start
-        while day <= end:
-            if day.weekday() in weekdays:
-                chosen[label] = day
-                break
-            day += dt.timedelta(days=1)
-        if label not in chosen:
-            raise SystemExit(f"no {label} inside {start}..{end}")
+    day = start
+    while day <= end:
+        chosen[DAY_TYPES[day.weekday()]] = day
+        day += dt.timedelta(days=1)
+
+    missing = [d for d in DAY_TYPES if d not in chosen]
+    if missing:
+        raise SystemExit(f"feed window {start}..{end} does not cover {missing}")
     return chosen
 
 
@@ -327,9 +337,16 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         bucket.update(r[1] for r in rows)
     surface_stop_ids -= rail_stop_ids
 
+    routes_by_stop: dict[str, set[str]] = defaultdict(set)
+    for trip_id, rows in sequences.items():
+        route_id = trip_index[trip_id]["route_id"]
+        for _, stop_id, _, _ in rows:
+            routes_by_stop[stop_id].add(route_id)
+
     stations, stop_to_station, unsnapped, snap_report = build_stations(
         {sid: stops_by_id[sid] for sid in rail_stop_ids if sid in stops_by_id},
         {sid: stops_by_id[sid] for sid in surface_stop_ids if sid in stops_by_id},
+        routes_by_stop,
     )
 
     patterns: dict[tuple, Pattern] = {}
@@ -483,10 +500,18 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
 # is never closer than ~460 m on this line.
 OWL_SNAP_METERS = 350.0
 
+# Two differently-named stops this close together, with no route in common, are
+# one place. SEPTA names the L platform at 40th & Market "40th St" and the trolley
+# platform 13 m away "40th-Market"; without merging them the planner cannot find a
+# change between the L and the trolleys there at all. Requiring no shared route
+# keeps consecutive stops of a single surface route from collapsing into each other.
+STATION_MERGE_METERS = 75.0
+
 
 def build_stations(
     rail_stops: dict[str, dict],
     surface_stops: dict[str, dict],
+    routes_by_stop: dict[str, set[str]] | None = None,
 ) -> tuple[dict[str, dict], dict[str, str], list[str], list[tuple[float, str, str]]]:
     """Merge platforms into stations, then snap surface stops onto them.
 
@@ -525,8 +550,38 @@ def build_stations(
         for m in members:
             stop_to_station[m["stop_id"]] = station_id
 
+    # Merge differently-named stops that sit on top of each other.
+    routes_by_stop = routes_by_stop or {}
+    merges: list[tuple[float, str, str]] = []
+    ids = sorted(stations)
+    for index, left in enumerate(ids):
+        if left not in stations:
+            continue
+        for right in ids[index + 1:]:
+            if right not in stations or left not in stations:
+                continue
+            a, b = stations[left], stations[right]
+            distance = haversine_meters(a["latitude"], a["longitude"], b["latitude"], b["longitude"])
+            if distance > STATION_MERGE_METERS:
+                continue
+            a_routes = {r for sid in a["gtfs_stop_ids"] for r in routes_by_stop.get(sid, ())}
+            b_routes = {r for sid in b["gtfs_stop_ids"] for r in routes_by_stop.get(sid, ())}
+            if a_routes & b_routes:
+                continue
+            merges.append((distance, right, left))
+            # Keep the station with more platforms; it is the better-known name.
+            keep, drop = (left, right) if len(a["gtfs_stop_ids"]) >= len(b["gtfs_stop_ids"]) else (right, left)
+            kept, gone = stations[keep], stations.pop(drop)
+            kept["gtfs_stop_ids"] = sorted(set(kept["gtfs_stop_ids"]) | set(gone["gtfs_stop_ids"]))
+            for stop_id in gone["gtfs_stop_ids"]:
+                stop_to_station[stop_id] = keep
+            for stop_id, mapped in list(stop_to_station.items()):
+                if mapped == drop:
+                    stop_to_station[stop_id] = keep
+
     unsnapped: list[str] = []
     snap_report: list[tuple[float, str, str]] = []
+    snap_report.extend((d, f"MERGED {a}", b) for d, a, b in merges)
     for stop_id, stop in surface_stops.items():
         if stop_id in stop_to_station:
             continue
@@ -658,7 +713,7 @@ def emit_swift(data: dict) -> str:
     add("")
     add("import Foundation")
     add("")
-    add("public enum BSLData {")
+    add("public enum SEPTAData {")
     add("")
     add(f"    /// GTFS `feed_version` this file was generated from.")
     add(f"    public static let feedVersion = {swift_string(info['feed_version'])}")
@@ -697,13 +752,21 @@ def emit_swift(data: dict) -> str:
             name = "Girard Ave Trolley"
         elif line_id == "D":
             name = "Media-Sharon Hill Trolleys"
-        # Keep the first route's colour; SEPTA colours agree within a line.
+        elif line_id.isdigit():
+            # The trackless trolleys are branded by number, not by the long
+            # terminal-to-terminal description the feed carries.
+            name = f"Route {line_id}"
+        # Keep the first route's colour; SEPTA colours agree within a line. Some
+        # routes carry white or black, which is unusable as a badge fill.
+        colour = (route["route_color"] or "").upper()
+        if colour in ("", "FFFFFF", "FFF", "000000", "000"):
+            colour = "6B7280"
         if existing is None:
             line_rows[line_id] = {
                 "id": line_id,
                 "badge": line_id.split("-")[0],
                 "name": name,
-                "color": route["route_color"] or "666666",
+                "color": colour,
             }
 
     add("    public static let lines: [Line] = [")
@@ -774,12 +837,20 @@ def emit_swift(data: dict) -> str:
             else:
                 add(f'                PatternStop(station: "{station_id}", offset: {offset}),')
         add("            ],")
-        add("            schedule: Schedule(blocks: [")
-        for label in ("weekday", "saturday", "sunday"):
+        # Days sharing an identical timetable are emitted once. Rail patterns run
+        # the same timetable Monday to Friday, so this keeps the generated file
+        # about the size it was before the week was modelled day by day.
+        by_timetable: dict[tuple[int, ...], list[str]] = {}
+        for label in DAY_TYPES:
             starts = pattern.starts.get(label) or []
             if not starts:
                 continue
-            add(f"                .{label}: [{compress_starts(starts)}],")
+            by_timetable.setdefault(tuple(starts), []).append(label)
+
+        add("            schedule: Schedule([")
+        for starts, labels in by_timetable.items():
+            days = ", ".join(f".{label}" for label in labels)
+            add(f"                ([{days}], [{compress_starts(list(starts))}]),")
         add("            ])")
         add("        ),")
     add("    ]")
@@ -803,7 +874,9 @@ def report(data: dict) -> None:
     stations = data["stations"]
     info = data["feed_info"]
     print(f"feed {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}")
-    print(f"representative dates: {data['representative_dates']}")
+    print("representative dates: "
+          + ", ".join(f"{k} {v}" for k, v in sorted(data["representative_dates"].items(),
+                                                    key=lambda kv: DAY_TYPES.index(kv[0]))))
     print(f"stations: {len(stations)}   patterns: {len(data['patterns'])}")
     print(f"trips skipped: {data['skipped_rare']} special-event, "
           f"{data['skipped_no_service']} not in effect on a sampled date")
@@ -848,12 +921,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--report", action="store_true", help="print a summary and do not write Swift")
     parser.add_argument("--json", type=Path, help="also dump the extracted data as JSON")
-    # Defaults to the Broad Street Line. "metro" generates the whole rail map and
-    # routes correctly across it, but the planner needs an indexed timetable
-    # lookup before that is fast enough to run on every location update — see
-    # README, "Beyond the Broad Street Line".
-    parser.add_argument("--scope", choices=sorted(SCOPES), default="broad",
-                        help="which routes to include (default: the Broad Street Line)")
+    parser.add_argument("--scope", choices=sorted(SCOPES), default="metro",
+                        help="which routes to include (default: the whole Metro rail map)")
     args = parser.parse_args()
 
     feed_path = args.feed

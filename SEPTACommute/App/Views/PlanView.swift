@@ -25,7 +25,7 @@ struct PlanView: View {
                 .padding(.vertical, 12)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Broad St Line")
+            .navigationTitle("SEPTA")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -45,7 +45,7 @@ struct PlanView: View {
                     title: "Going to",
                     selection: Binding(
                         get: { model.target },
-                        set: { model.target = $0; model.replan() }
+                        set: { model.chooseTarget($0) }
                     )
                 )
             }
@@ -96,7 +96,7 @@ struct PlanView: View {
             Image(systemName: symbol)
                 .font(.body)
                 .frame(width: 22)
-                .foregroundStyle(Theme.broadStreet)
+                .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(label.uppercased())
                     .font(.caption2.weight(.semibold))
@@ -154,9 +154,13 @@ struct PlanView: View {
 
     private var targetDetail: String? {
         switch model.target {
-        case .saved(let place): return place.address
-        case .station(let id): return model.network.station(id)?.intersection
-        case nil: return "Pick a destination to get started"
+        case .saved(let place):
+            // Say why this destination was picked, when the app picked it.
+            return model.targetReason ?? place.address
+        case .station(let id):
+            return model.network.station(id)?.intersection
+        case nil:
+            return "Pick a destination to get started"
         }
     }
 
@@ -165,14 +169,14 @@ struct PlanView: View {
     private func adviceBanner(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "sparkles")
-                .foregroundStyle(Theme.broadStreet)
+                .foregroundStyle(Theme.accent)
             Text(text)
                 .font(.subheadline.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(Theme.broadStreet.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func noteRow(_ text: String) -> some View {
@@ -252,7 +256,7 @@ struct PlanView: View {
                 )
                 Button("Choose a starting station") { showingOriginPicker = true }
                     .buttonStyle(.borderedProminent)
-                    .tint(Theme.broadStreet)
+                    .tint(Theme.accent)
             }
         case .failed(let message):
             MessageCard(
@@ -281,6 +285,12 @@ struct PlanView: View {
             }
             Text(model.scheduleFootnote)
             Text("Scheduled times, not live train positions.")
+            if model.hasManualTarget {
+                Button("Go back to picking my destination automatically") {
+                    model.resumeAutomaticTarget()
+                }
+                .font(.caption2)
+            }
         }
         .font(.caption2)
         .foregroundStyle(.tertiary)

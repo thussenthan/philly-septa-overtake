@@ -19,21 +19,21 @@ final class ScheduleTests: XCTestCase {
 
     func testBlocksAreMergedAndDeduplicated() {
         let schedule = Schedule(blocks: [
-            .weekday: [
+            .wednesday: [
                 .departures([500, 100, 300]),
                 .frequency(from: 300, until: 900, every: 300),
             ],
         ])
-        XCTAssertEqual(schedule.startTimes(on: .weekday), [100, 300, 500, 600, 900])
+        XCTAssertEqual(schedule.startTimes(on: .wednesday), [100, 300, 500, 600, 900])
         XCTAssertEqual(schedule.startTimes(on: .sunday), [])
-        XCTAssertTrue(schedule.runs(on: .weekday))
+        XCTAssertTrue(schedule.runs(on: .wednesday))
         XCTAssertFalse(schedule.runs(on: .sunday))
     }
 
     func testSpanReportsFirstAndLastTrip() {
         let schedule = Schedule(blocks: [.saturday: [.departures([7200, 100, 3600])]])
         XCTAssertEqual(schedule.span(on: .saturday), 100...7200)
-        XCTAssertNil(schedule.span(on: .weekday))
+        XCTAssertNil(schedule.span(on: .wednesday))
     }
 }
 
@@ -54,7 +54,7 @@ final class ServiceCalendarTests: XCTestCase {
     }
 
     func testDayTypeMapping() {
-        XCTAssertEqual(calendar.dayType(for: date(2026, 3, 4)), .weekday)  // Wednesday
+        XCTAssertEqual(calendar.dayType(for: date(2026, 3, 4)), .wednesday)
         XCTAssertEqual(calendar.dayType(for: date(2026, 3, 7)), .saturday)
         XCTAssertEqual(calendar.dayType(for: date(2026, 3, 8)), .sunday)
     }
@@ -67,7 +67,7 @@ final class ServiceCalendarTests: XCTestCase {
         XCTAssertEqual(holidays.dayType(for: date(2026, 5, 25)), .sunday)  // last Monday in May
         XCTAssertEqual(holidays.dayType(for: date(2026, 9, 7)), .sunday)   // first Monday in Sept
         // A Monday in May that is not the last one is an ordinary weekday.
-        XCTAssertEqual(holidays.dayType(for: date(2026, 5, 18)), .weekday)
+        XCTAssertEqual(holidays.dayType(for: date(2026, 5, 18)), .monday)
     }
 
     /// A trip listed at 88,800 s (12:40 AM) belongs to the previous service day.
@@ -79,7 +79,7 @@ final class ServiceCalendarTests: XCTestCase {
             "the previous service day must be in scope near midnight, got \(anchors)"
         )
 
-        let day = ServiceDay(noon: calendar.noon(for: date(2026, 3, 4)), dayType: .weekday)
+        let day = ServiceDay(noon: calendar.noon(for: date(2026, 3, 4)), dayType: .wednesday)
         XCTAssertEqual(day.date(secondsAfterMidnight: 88_800), date(2026, 3, 5, 0, 40))
     }
 

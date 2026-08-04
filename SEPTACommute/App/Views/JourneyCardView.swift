@@ -18,7 +18,7 @@ struct JourneyCardView: View {
         .background(cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .strokeBorder(comparison.isBest ? Theme.broadStreet.opacity(0.55) : Color.clear, lineWidth: 1.5)
+                .strokeBorder(comparison.isBest ? Theme.accent.opacity(0.55) : Color.clear, lineWidth: 1.5)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
@@ -40,7 +40,7 @@ struct JourneyCardView: View {
                             .font(.caption2.weight(.heavy))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Theme.broadStreet, in: Capsule())
+                            .background(Theme.accent, in: Capsule())
                             .foregroundStyle(.white)
                     }
                     ForEach(distinctKinds, id: \.self) { kind in

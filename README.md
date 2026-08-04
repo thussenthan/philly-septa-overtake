@@ -1,15 +1,25 @@
-# Broad St Commute
+# SEPTA Commute
 
-An iOS app that answers one question about SEPTA's Broad Street Line: **do I board
-the train that's about to leave, or wait for the faster one?**
+An iOS app that answers one question about SEPTA: **do I board the train that's
+about to leave, or wait for the faster one?**
 
-The Broad Street Line runs three services over the same tracks — the B1 local, the
-B2 express that skips fourteen of the line's twenty-two stations, and the B3
-Broad-Ridge Spur that also runs fast on Broad St before branching to Chinatown.
-Which one gets you to your door soonest depends on where you're standing, where
-you're going, what time it is, and how far you're willing to walk at the far end.
-That answer changes minute by minute, and it is not what the platform sign tells
-you.
+SEPTA runs several services over the same tracks. The Broad Street Line alone has
+the B1 local, the B2 express that skips fourteen of its twenty-two stations, and
+the B3 Broad-Ridge Spur that also runs fast on Broad St before branching to
+Chinatown. Which one gets you to your door soonest depends on where you're
+standing, where you're going, what time it is, and how far you're willing to walk
+at the far end. That answer changes minute by minute, and it is not what the
+platform sign tells you.
+
+Set it up once, and after that opening the app *is* the interaction — it guesses
+where you're going from where you're standing (within a mile of home means you're
+heading out; anywhere else means you're heading home) and the answer is already on
+screen. You can override it whenever you like.
+
+Coverage is the whole SEPTA Metro rail map: the **B** Broad Street Line, **L**
+Market-Frankford, **M** Norristown High Speed, **T1–T5** subway-surface trolleys,
+**G** Girard, **D** Media-Sharon Hill, the trackless trolleys, and the B1 Owl
+night bus — 585 stations, 309 stopping patterns.
 
 So the app works it out door-to-door, and shows you the tradeoff instead of just a
 single answer:
@@ -36,7 +46,7 @@ Requires **Xcode 16 or newer** and **iOS 17+**. There are no third-party
 dependencies and nothing to install.
 
 ```sh
-open BroadStreetCommute.xcodeproj
+open SEPTACommute.xcodeproj
 ```
 
 Pick a simulator and run. On first launch the app asks for a **Home** and a
@@ -58,8 +68,9 @@ departure times are the real published ones rather than estimates:
 |---|---|
 | Source | `github.com/septadev/GTFS` → `gtfs_public.zip` → `google_bus.zip` |
 | Feed version | `v202607261` (valid 2026-07-26 → 2026-08-08) |
-| Coverage | B1 local, B2 express, B3 Broad-Ridge Spur, B1 Owl night bus |
-| Stations | 24 (22 on Broad St, plus Chinatown and 8th & Market on the Spur) |
+| Coverage | 16 rail routes across 9 Metro lines, plus the B1 Owl night bus |
+| Stations | 585 |
+| Stopping patterns | 309 |
 
 **These are scheduled times, not live train positions.** The app does not know
 about delays, single-tracking, or suspensions. It links to SEPTA's alerts page for
@@ -75,7 +86,7 @@ it has passed. To refresh:
 python3 tools/build_schedule.py     # downloads the current feed and regenerates
 ```
 
-That rewrites `BroadStreetCommute/MetroKit/Data/GeneratedBSLData.swift`, a
+That rewrites `SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift`, a
 generated file of Swift literals — no bundle resources, no runtime parsing, and the
 compiler checks the shape. Use `--report` to see what changed without writing
 anything.
@@ -106,12 +117,12 @@ tests now lock in:
 ## How it's put together
 
 ```
-BroadStreetCommute/
+SEPTACommute/
 ├── MetroKit/          the routing engine — pure Foundation, no UIKit, no CoreLocation
 │   ├── Model/         stations, patterns, the network graph
 │   ├── Schedule/      service calendar, timetable, trip generation
 │   ├── Routing/       the planner, journeys, walking model, prose
-│   └── Data/          GeneratedBSLData.swift  ← regenerate, don't edit
+│   └── Data/          GeneratedSEPTAData.swift  ← regenerate, don't edit
 └── App/               SwiftUI, CoreLocation, MapKit
     ├── Model/         saved places, preferences, the view model
     ├── Services/      location, walking directions, address search

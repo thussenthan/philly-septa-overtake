@@ -17,7 +17,7 @@ let package = Package(
     targets: [
         .target(
             name: "MetroKit",
-            path: "BroadStreetCommute/MetroKit"
+            path: "SEPTACommute/MetroKit"
         ),
         .testTarget(
             name: "MetroKitTests",

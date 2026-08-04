@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct BroadStreetCommuteApp: App {
+struct SEPTACommuteApp: App {
     @StateObject private var places: PlaceStore
     @StateObject private var model: CommuteModel
 
@@ -16,7 +16,7 @@ struct BroadStreetCommuteApp: App {
             RootView()
                 .environmentObject(places)
                 .environmentObject(model)
-                .tint(Theme.broadStreet)
+                .tint(Theme.accent)
         }
     }
 }

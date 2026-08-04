@@ -7,61 +7,61 @@ import XCTest
 final class ScheduleIndexTests: XCTestCase {
 
     private let schedule = Schedule(blocks: [
-        .weekday: [.departures([100, 300, 500, 900])],
+        .wednesday: [.departures([100, 300, 500, 900])],
     ])
 
     func testFirstStartIndexFindsTheEarliestAtOrAfter() {
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 0), 0)
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 100), 0, "at-or-after is inclusive")
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 101), 1)
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 300), 1)
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 899), 3)
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: 900), 3)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 0), 0)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 100), 0, "at-or-after is inclusive")
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 101), 1)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 300), 1)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 899), 3)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: 900), 3)
     }
 
     func testFirstStartIndexIsNilPastTheLastTrip() {
-        XCTAssertNil(schedule.firstStartIndex(on: .weekday, atOrAfter: 901))
+        XCTAssertNil(schedule.firstStartIndex(on: .wednesday, atOrAfter: 901))
         XCTAssertNil(schedule.firstStartIndex(on: .saturday, atOrAfter: 0), "no Saturday service")
     }
 
     func testNegativeThresholdIsHandled() {
         // A station early in the pattern can push the threshold below zero.
-        XCTAssertEqual(schedule.firstStartIndex(on: .weekday, atOrAfter: -5_000), 0)
+        XCTAssertEqual(schedule.firstStartIndex(on: .wednesday, atOrAfter: -5_000), 0)
     }
 
     /// The binary search has to agree with a plain scan over the whole day, at
     /// every second where the answer could change.
     func testBinarySearchAgreesWithALinearScan() {
         let dense = Schedule(blocks: [
-            .weekday: [
+            .wednesday: [
                 .frequency(from: 5 * 3600, until: 9 * 3600, every: 420),
                 .departures([13 * 3600, 13 * 3600 + 90]),
                 .frequency(from: 16 * 3600, until: 18 * 3600, every: 600),
             ],
         ])
-        let times = dense.startTimes(on: .weekday)
+        let times = dense.startTimes(on: .wednesday)
         XCTAssertFalse(times.isEmpty)
         XCTAssertEqual(times, times.sorted(), "resolved times must be ascending")
         XCTAssertEqual(times.count, Set(times).count, "and de-duplicated")
 
         for threshold in stride(from: -600, through: 20 * 3600, by: 37) {
             let expected = times.firstIndex { $0 >= threshold }
-            let actual = dense.firstStartIndex(on: .weekday, atOrAfter: Double(threshold))
+            let actual = dense.firstStartIndex(on: .wednesday, atOrAfter: Double(threshold))
             XCTAssertEqual(actual, expected, "mismatch at threshold \(threshold)")
         }
     }
 
     func testFrequencyBandsAreResolvedOnceAndReturnedIdentically() {
-        let dense = Schedule(blocks: [.weekday: [.frequency(from: 0, until: 3600, every: 600)]])
-        XCTAssertEqual(dense.startTimes(on: .weekday), dense.startTimes(on: .weekday))
-        XCTAssertEqual(dense.startTimes(on: .weekday), [0, 600, 1200, 1800, 2400, 3000, 3600])
+        let dense = Schedule(blocks: [.wednesday: [.frequency(from: 0, until: 3600, every: 600)]])
+        XCTAssertEqual(dense.startTimes(on: .wednesday), dense.startTimes(on: .wednesday))
+        XCTAssertEqual(dense.startTimes(on: .wednesday), [0, 600, 1200, 1800, 2400, 3000, 3600])
     }
 }
 
 final class PatternIndexTests: XCTestCase {
 
     func testStopIndexMatchesAPlainSearch() {
-        for pattern in BSLData.network.patterns {
+        for pattern in SEPTAData.network.patterns {
             for stop in pattern.stops {
                 XCTAssertEqual(
                     pattern.stopIndex(of: stop.station),
@@ -101,7 +101,7 @@ final class PatternIndexTests: XCTestCase {
 
 final class NetworkIndexTests: XCTestCase {
 
-    private let network = BSLData.network
+    private let network = SEPTAData.network
 
     func testRouteCountsReflectTheOperatorsRoutes() {
         // Olney is where a rider changes between the local, the express and the
@@ -138,7 +138,7 @@ final class NetworkIndexTests: XCTestCase {
 
 final class TimetableIndexTests: XCTestCase {
 
-    private let network = BSLData.network
+    private let network = SEPTAData.network
     private lazy var timetable = Timetable(network: network)
     private let calendar = ServiceCalendar()
 

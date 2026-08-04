@@ -77,7 +77,7 @@ struct DestinationPickerView: View {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .frame(width: 22)
-                    .foregroundStyle(Theme.broadStreet)
+                    .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).foregroundStyle(.primary)
                     if !subtitle.isEmpty {
@@ -96,7 +96,7 @@ struct DestinationPickerView: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.footnote.weight(.bold))
-                        .foregroundStyle(Theme.broadStreet)
+                        .foregroundStyle(Theme.accent)
                 }
             }
         }
@@ -124,7 +124,7 @@ struct OriginPickerView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "location.fill")
                                 .frame(width: 22)
-                                .foregroundStyle(Theme.broadStreet)
+                                .foregroundStyle(Theme.accent)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("Where I am now").foregroundStyle(.primary)
                                 Text(currentLocationSubtitle)
@@ -135,7 +135,7 @@ struct OriginPickerView: View {
                             if selection == .currentLocation {
                                 Image(systemName: "checkmark")
                                     .font(.footnote.weight(.bold))
-                                    .foregroundStyle(Theme.broadStreet)
+                                    .foregroundStyle(Theme.accent)
                             }
                         }
                     }
@@ -207,7 +207,7 @@ struct OriginPickerView: View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .frame(width: 22)
-                .foregroundStyle(Theme.broadStreet)
+                .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).foregroundStyle(.primary)
                 if !subtitle.isEmpty {
@@ -220,7 +220,7 @@ struct OriginPickerView: View {
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.footnote.weight(.bold))
-                    .foregroundStyle(Theme.broadStreet)
+                    .foregroundStyle(Theme.accent)
             }
         }
     }

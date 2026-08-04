@@ -59,9 +59,9 @@ enum Fixture {
             PatternStop(station: "c", offset: 120),
             PatternStop(station: "f", offset: 240),
         ],
-        // Weekday only, mirroring SEPTA's express, so weekend behaviour is testable.
-        schedule: Schedule(blocks: [
-            .weekday: [.frequency(from: sam(8, 4), until: sam(10, 4), every: 1200)],
+        // Weekdays only, mirroring SEPTA's express, so weekend behaviour is testable.
+        schedule: Schedule([
+            (DayType.weekdays, [.frequency(from: sam(8, 4), until: sam(10, 4), every: 1200)]),
         ])
     )
 
