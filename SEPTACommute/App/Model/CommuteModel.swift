@@ -283,6 +283,7 @@ final class CommuteModel: ObservableObject {
     }
 
     private func placesChanged(_ updated: [SavedPlace]) {
+        publishCommuteOnly()
         guard hasManualTarget else {
             updateAutomaticTarget()
             replan()
@@ -458,11 +459,41 @@ final class CommuteModel: ObservableObject {
             origin: SnapshotEndpoint(request.origin, name: originName),
             destination: SnapshotEndpoint(request.destination, name: targetName),
             reason: targetReason,
-            savedAt: request.departAt
+            savedAt: request.departAt,
+            commute: savedCommute()
         )
         // Only nudge WidgetKit when the trip itself changed: this runs every thirty
         // seconds, and a reload budget spent re-answering the same question is a
         // reload not available when the answer actually moves.
+        guard SharedStore.save(snapshot) else { return }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// The rider's two anchors, for the widget to choose between.
+    private func savedCommute() -> SavedCommute? {
+        guard let home = places.home, let away = places.school else { return nil }
+        return SavedCommute(
+            home: SnapshotEndpoint(home.endpoint, name: home.name),
+            away: SnapshotEndpoint(away.endpoint, name: away.name)
+        )
+    }
+
+    /// Give the widget something to answer as soon as the addresses exist.
+    ///
+    /// Without this the widget is empty until the rider opens the plan screen with a
+    /// location fix — which is backwards, since the whole point of a widget is not
+    /// opening the app. Saving an address is enough information to answer the trip,
+    /// so it is enough to publish.
+    private func publishCommuteOnly() {
+        guard let commute = savedCommute() else { return }
+        let outbound = commute.outbound(at: Date())
+        let snapshot = CommuteSnapshot(
+            origin: outbound ? commute.home : commute.away,
+            destination: outbound ? commute.away : commute.home,
+            reason: nil,
+            savedAt: Date(),
+            commute: commute
+        )
         guard SharedStore.save(snapshot) else { return }
         WidgetCenter.shared.reloadAllTimelines()
     }

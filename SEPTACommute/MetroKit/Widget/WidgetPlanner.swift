@@ -96,8 +96,11 @@ public enum WidgetPlanner {
         network: Network = SEPTAData.network,
         options: PlannerOptions? = nil
     ) -> [WidgetPlanStep] {
-        guard let origin = snapshot.origin.endpoint,
-              let destination = snapshot.destination.endpoint else { return [] }
+        // Resolved per moment, not per snapshot: the widget's job is to answer the
+        // trip the rider is making now, which flips at midday.
+        let trip = snapshot.trip(at: now)
+        guard let origin = trip.origin.endpoint,
+              let destination = trip.destination.endpoint else { return [] }
 
         let planner = JourneyPlanner(network: network, options: options ?? Self.options())
         let narrator = JourneyNarrator(network: network)

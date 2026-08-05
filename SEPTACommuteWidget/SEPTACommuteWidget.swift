@@ -15,8 +15,10 @@ import MetroKit
 ///
 /// It plans from the bundled timetable, in the extension, for the moment it is being
 /// looked at — no network call and no location fix, both of which a widget is bad at.
-/// What it takes from the app is only *which* trip to answer, written to the shared
-/// App Group whenever the app plans one.
+/// What it takes from the app is only the rider's two addresses, written to the shared
+/// App Group as soon as they are saved; which way round to read them it works out from
+/// the clock. So it is right from the first launch, without the app being opened to
+/// prime it, which is the whole point of a widget.
 struct SEPTACommuteWidget: Widget {
     let kind = "SEPTACommuteWidget"
 
@@ -26,7 +28,7 @@ struct SEPTACommuteWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Next train")
-        .description("When to leave for the trip you last looked at.")
+        .description("When to leave for your commute — out in the morning, back in the afternoon.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
     }
 }
@@ -74,19 +76,24 @@ struct CommuteTimelineProvider: TimelineProvider {
             CommuteEntry(
                 date: step.validFrom,
                 step: step,
-                destinationName: snapshot.destination.name,
+                // Named per entry, not per snapshot: an entry that takes over after
+                // midday is answering the trip home, and has to say so.
+                destinationName: snapshot.trip(at: step.validFrom).destination.name,
                 placeholder: nil
             )
         }
     }
 
     private func empty(at date: Date) -> CommuteEntry {
-        let hasTrip = SharedStore.snapshot() != nil
+        let snapshot = SharedStore.snapshot()
         return CommuteEntry(
             date: date,
             step: nil,
-            destinationName: SharedStore.snapshot()?.destination.name,
-            placeholder: hasTrip ? "Nothing running" : "Open the app"
+            destinationName: snapshot?.trip(at: date).destination.name,
+            // Two different problems, and a rider can act on one of them: "set your
+            // addresses" is a thing to go and do, whereas nothing running at 3am is
+            // simply the answer.
+            placeholder: snapshot == nil ? "Set your addresses" : "Nothing running"
         )
     }
 }
@@ -254,7 +261,7 @@ struct CommuteWidgetView: View {
                 .foregroundStyle(.secondary)
             Text(entry.placeholder ?? "—")
                 .font(.caption.weight(.medium))
-            Text("Set a trip in the app and it'll appear here.")
+            Text("Add home and work in the app and this fills itself in.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)

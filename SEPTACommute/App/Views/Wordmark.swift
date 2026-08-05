@@ -95,18 +95,32 @@ struct TransitLetter {
 
     var polylines: [[CGPoint]]
 
-    /// Line ends and junctions, deduplicated — two polylines meeting at a corner is
-    /// one stop, not two stacked on top of each other.
+    /// Where the stops go, deduplicated — two polylines meeting at a corner is one
+    /// stop, not two stacked on top of each other.
+    ///
+    /// Open strokes get a stop at each end, which is where a line on a diagram
+    /// terminates. A *closed* stroke has no ends, so endpoints-only left the O with a
+    /// single dot on an otherwise blank ring; it gets one at every vertex instead,
+    /// which is both what the octagon wants and what the app icon draws.
     var stops: [CGPoint] {
         var seen = Set<String>()
         var result: [CGPoint] = []
         for polyline in polylines {
-            for point in [polyline.first, polyline.last].compactMap({ $0 }) {
+            for point in stopPoints(of: polyline) {
                 let key = String(format: "%.2f,%.2f", point.x, point.y)
                 if seen.insert(key).inserted { result.append(point) }
             }
         }
         return result
+    }
+
+    private func stopPoints(of polyline: [CGPoint]) -> [CGPoint] {
+        guard let first = polyline.first, let last = polyline.last else { return [] }
+        let isClosed = polyline.count > 3
+            && abs(first.x - last.x) < 0.001
+            && abs(first.y - last.y) < 0.001
+        // Drop the repeated closing point; it is the same stop as the first.
+        return isClosed ? Array(polyline.dropLast()) : [first, last]
     }
 
     // Columns and rows the letterforms are built from.

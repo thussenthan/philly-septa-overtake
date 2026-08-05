@@ -145,6 +145,100 @@ final class WidgetPlannerTests: XCTestCase {
         XCTAssertGreaterThan(next, step.arrival, "the alternative should be the slower one")
     }
 
+    // MARK: - Which way the rider is facing
+
+    /// The reason the widget is worth having: it works out its own direction, so it
+    /// is right without the app being opened and without a location fix, neither of
+    /// which a widget can rely on.
+    func testTheCommuteFlipsAtMidday() throws {
+        let home = SnapshotEndpoint(.station("a"), name: "Home")
+        let away = SnapshotEndpoint(.station("f"), name: "School")
+        // The stale one-off the app last happened to plan, which must not win.
+        let snapshot = CommuteSnapshot(
+            origin: SnapshotEndpoint(.station("c"), name: "C"),
+            destination: SnapshotEndpoint(.station("e"), name: "E"),
+            savedAt: Fixture.date(8, 0),
+            commute: SavedCommute(home: home, away: away)
+        )
+
+        var eastern = Calendar(identifier: .gregorian)
+        eastern.timeZone = ServiceCalendar.easternTimeZone
+
+        let morning = snapshot.trip(at: Fixture.date(8, 0), calendar: eastern)
+        XCTAssertEqual(morning.origin.name, "Home")
+        XCTAssertEqual(morning.destination.name, "School")
+
+        let evening = snapshot.trip(at: Fixture.date(17, 30), calendar: eastern)
+        XCTAssertEqual(evening.origin.name, "School")
+        XCTAssertEqual(evening.destination.name, "Home", "the commute, not Sunday's lookup")
+
+        // Right at the turnaround, and the minute before it.
+        XCTAssertEqual(snapshot.trip(at: Fixture.date(11, 59), calendar: eastern).destination.name, "School")
+        XCTAssertEqual(snapshot.trip(at: Fixture.date(12, 0), calendar: eastern).destination.name, "Home")
+    }
+
+    /// With no anchors saved there is nothing to flip, so the last planned trip is
+    /// all there is — and it is better than an empty widget.
+    func testWithoutACommuteTheLastTripIsUsed() {
+        let snapshot = CommuteSnapshot(
+            origin: SnapshotEndpoint(.station("a"), name: "A"),
+            destination: SnapshotEndpoint(.station("f"), name: "F"),
+            savedAt: Fixture.date(8, 0)
+        )
+        for hour in [8, 17] {
+            let trip = snapshot.trip(at: Fixture.date(hour, 0))
+            XCTAssertEqual(trip.origin.name, "A")
+            XCTAssertEqual(trip.destination.name, "F")
+        }
+    }
+
+    /// The planner has to resolve the direction per moment too, or an evening
+    /// timeline would be planning the morning's trip.
+    func testTheTimelineUsesTheDirectionForItsOwnMoment() throws {
+        let snapshot = CommuteSnapshot(
+            origin: SnapshotEndpoint(.station("a"), name: "A"),
+            destination: SnapshotEndpoint(.station("f"), name: "F"),
+            savedAt: Fixture.date(8, 0),
+            commute: SavedCommute(
+                home: SnapshotEndpoint(.station("f"), name: "Home"),
+                away: SnapshotEndpoint(.station("a"), name: "School")
+            )
+        )
+        // 08:01 is outbound: home is F, so the widget should be planning F -> A,
+        // which on this fixture is the northbound local.
+        let steps = WidgetPlanner.steps(
+            for: snapshot,
+            from: Fixture.date(8, 1),
+            network: Fixture.network,
+            options: widgetOptions()
+        )
+        let first = try XCTUnwrap(steps.first)
+        XCTAssertEqual(first.lines.map(\.badge), ["T1"], "northbound local, not the southbound express")
+    }
+
+    /// A moved house has to reach the widget; a replan that changes nothing must not.
+    func testChangingAnAnchorCountsAsAChangedTrip() {
+        let base = CommuteSnapshot(
+            origin: SnapshotEndpoint(.station("a"), name: "A"),
+            destination: SnapshotEndpoint(.station("f"), name: "F"),
+            savedAt: Fixture.date(8, 0),
+            commute: SavedCommute(
+                home: SnapshotEndpoint(.station("a"), name: "Home"),
+                away: SnapshotEndpoint(.station("f"), name: "School")
+            )
+        )
+        var moved = base
+        moved.commute = SavedCommute(
+            home: SnapshotEndpoint(.station("b"), name: "Home"),
+            away: SnapshotEndpoint(.station("f"), name: "School")
+        )
+        XCTAssertFalse(moved.describesSameTrip(as: base), "a new home address is a new trip")
+
+        var restamped = base
+        restamped.savedAt = Fixture.date(9, 30)
+        XCTAssertTrue(restamped.describesSameTrip(as: base), "same trip, new clock reading")
+    }
+
     // MARK: - The shared record
 
     func testEndpointsSurviveTheRoundTrip() throws {

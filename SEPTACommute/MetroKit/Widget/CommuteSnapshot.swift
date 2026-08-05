@@ -16,27 +16,78 @@ public struct CommuteSnapshot: Codable, Hashable, Sendable {
     public var reason: String?
     /// When the app last planned this. Shown when it is old enough to distrust.
     public var savedAt: Date
+    /// The rider's two anchors, if they have set both.
+    ///
+    /// This is what makes the widget worth having. Without it the widget could only
+    /// repeat the last trip the app happened to plan, which means it shows nothing on
+    /// a fresh install and shows yesterday's one-off lookup after that — a widget you
+    /// have to open the app to prime is not doing its job. With it, the widget picks
+    /// a direction itself and is right from the moment the addresses are saved.
+    public var commute: SavedCommute?
 
     public init(
         origin: SnapshotEndpoint,
         destination: SnapshotEndpoint,
         reason: String? = nil,
-        savedAt: Date
+        savedAt: Date,
+        commute: SavedCommute? = nil
     ) {
         self.origin = origin
         self.destination = destination
         self.reason = reason
         self.savedAt = savedAt
+        self.commute = commute
+    }
+
+    /// The trip to answer at this moment.
+    ///
+    /// Prefers the saved commute, flipped by time of day, over whatever the app last
+    /// looked at. That is deliberate: a widget should show the trip you take twice a
+    /// day, not the one you idly checked on Sunday. The app's own guess is
+    /// location-based and better, but a widget has no usable location fix, and the
+    /// clock is a good enough proxy for which way a commuter is pointing.
+    public func trip(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> (origin: SnapshotEndpoint, destination: SnapshotEndpoint) {
+        guard let commute else { return (origin, destination) }
+        return commute.outbound(at: moment, calendar: calendar)
+            ? (commute.home, commute.away)
+            : (commute.away, commute.home)
     }
 
     /// Whether this describes the same trip, ignoring when it was saved.
     ///
     /// The app replans every thirty seconds; rewriting the snapshot and asking
     /// WidgetKit to reload each time would burn the widget's refresh budget to say
-    /// nothing new.
+    /// nothing new. The commute is part of the comparison because a rider moving house
+    /// is precisely the change the widget must not miss.
     public func describesSameTrip(as other: CommuteSnapshot?) -> Bool {
         guard let other else { return false }
-        return origin == other.origin && destination == other.destination && reason == other.reason
+        return origin == other.origin
+            && destination == other.destination
+            && reason == other.reason
+            && commute == other.commute
+    }
+}
+
+/// Where the rider lives and where they go, so the widget can work out which way
+/// they are facing without asking anything.
+public struct SavedCommute: Codable, Hashable, Sendable {
+    public var home: SnapshotEndpoint
+    /// Work or school — the other end of the trip they make twice a day.
+    public var away: SnapshotEndpoint
+    /// The hour the widget stops assuming they are outbound. Noon by default: a
+    /// commuter leaving at seven and coming back at six is on the right side of it
+    /// both times, and a rider who disagrees can still open the app.
+    public var turnaroundHour: Int
+
+    public init(home: SnapshotEndpoint, away: SnapshotEndpoint, turnaroundHour: Int = 12) {
+        self.home = home
+        self.away = away
+        self.turnaroundHour = turnaroundHour
+    }
+
+    /// True when the rider is presumed to be heading out rather than home.
+    public func outbound(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        calendar.component(.hour, from: moment) < turnaroundHour
     }
 }
 
