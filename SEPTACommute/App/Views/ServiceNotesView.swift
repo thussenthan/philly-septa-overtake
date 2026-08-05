@@ -65,6 +65,11 @@ struct ServiceNotesView: View {
                     Text("Scheduled times, not live train positions.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    if let live = model.liveDataNote {
+                        Text(live)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     if let plannedAt = model.lastPlannedAt {
                         Text("Options worked out at \(Format.clock(plannedAt)).")
                             .font(.footnote)

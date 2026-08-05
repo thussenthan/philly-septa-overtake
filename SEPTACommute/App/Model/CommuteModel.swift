@@ -588,6 +588,32 @@ final class CommuteModel: ObservableObject {
         }
     }
 
+    /// Why these are scheduled times, given SEPTA does publish some live data.
+    ///
+    /// Measured rather than assumed, and it splits by mode: for the B and the L,
+    /// `TransitViewAll` reports `late` as 998 — its no-data sentinel — on every
+    /// vehicle, and the GTFS-Realtime `TripUpdates` feed omits subway trips entirely
+    /// (0 of 32 running subway trips appeared in it against 770 of 819 bus and trolley
+    /// trips at the same moment). For the trolleys, Girard and Norristown, the delay
+    /// *is* published and this app simply doesn't read it yet.
+    ///
+    /// Both sentences are worth saying, and saying the right one: a rider comparing
+    /// this app against one showing a live map deserves to know whether the difference
+    /// is SEPTA's data or this app's ambition.
+    var liveDataNote: String? {
+        let lines = linesInPlan
+        guard !lines.isEmpty else { return nil }
+        let subwayOnly: Set<LineID> = ["B", "B-OWL", "L"]
+        if lines.isSubset(of: subwayOnly) {
+            return "SEPTA publishes where B and L trains are but not whether they're "
+                + "running late, so these are scheduled times — as they are in every "
+                + "other app."
+        }
+        let tracked = lines.subtracting(subwayOnly).map(\.rawValue).sorted()
+        return "SEPTA does publish live delays for the \(tracked.joined(separator: ", ")). "
+            + "This app doesn't read them yet, so these are scheduled times."
+    }
+
     /// SEPTA's fare rules, as sentences. From the feed's own fare tables, so they
     /// change when SEPTA changes them rather than when someone remembers to.
     var fareNotes: [String] {

@@ -515,20 +515,43 @@ B1 11   B2 2   B3 2   L1 14   M1 4   T1 10   T2 8   T3 16   T4 9   T5 24
 G1 21   D1 5   D2 4   59 4   66 9   75 2      (vehicles in motion, one sample)
 ```
 
-Both GTFS-Realtime feeds are live too — `Trip/rtTripUpdates.pb` (540 KB) and
-`Vehicle/rtVehiclePosition.pb` (48 KB). So the gap is entirely on this side.
+Both GTFS-Realtime feeds respond too — `Trip/rtTripUpdates.pb` (540 KB) and
+`Vehicle/rtVehiclePosition.pb` (48 KB).
+
+But positions are not predictions, and the two are split by mode:
+
+| | live position | delay / prediction |
+|---|---|---|
+| G Girard, T trolleys, D, M Norristown | yes | **yes** — `late` populated, −6 to +6 min |
+| **B Broad St, L Market-Frankford** | yes | **no** — `late` is 998 on every vehicle, and `TripUpdates` omits them |
+
+That second row was measured twice, with a control. Of 32 subway trips running live,
+**0** appear in `TripUpdates`; of 819 bus and trolley trips running at the same moment,
+**770** do. A 94% hit rate against 0% is not a sampling artifact.
+
+So for the two subway lines SEPTA publishes where the trains are and nothing about
+whether they are late — which means no app has live predictions for the B or the L,
+and the schedule is the state of the art rather than a compromise. Where this app
+genuinely loses is the trolleys, Girard and Norristown, where `late` is populated and
+it ignores it.
 
 The pieces are in place to close it. `Timetable` is the only thing that turns patterns
 into concrete departures, so a real-time source slots in behind it without touching
 the planner. Two routes in, with different costs:
 
 - **`TransitViewAll`** is plain JSON, no key, no dependency — the same shape as the
-  alerts feed this app already reads. Positions and a per-vehicle lateness, which is
-  enough to say "the B2 you're waiting for is running four minutes down".
-- **`TripUpdates`** carries predicted times per stop, which is what would make a
-  countdown actually true rather than adjusted. It is protobuf, and this project has
-  no dependencies on purpose. A reader for the handful of fields needed is perhaps 200
-  lines of varint decoding — worth writing by hand to keep that property.
+  alerts feed this app already reads, and it carries a `trip` id that joins to a
+  scheduled trip. For the T, G, D and M its `late` field is real, so this is the whole
+  feature for those four lines. For the B and L it offers position only.
+- **`TripUpdates`** carries predicted times per stop and would be the better source —
+  except it excludes the subways, so it buys nothing on the lines this app is mostly
+  used for. It is also protobuf, in a project with no dependencies by design.
+
+The join has a prerequisite either way: **the bundled data discards `trip_id`.** The
+generator collapses trips into 321 patterns and compresses departures into frequency
+bands, so there is nothing for a live `trip` to attach to. Emitting ids per departure
+breaks that compression and adds roughly 130 KB — affordable, but a change to the data
+format rather than a bolt-on.
 
 **Whatever is added, the schedule stays the base.** There is no signal on a Broad
 Street platform, so live data has to be a correction applied to an answer that already
