@@ -27,8 +27,8 @@ struct HeroCard: View {
                 Divider().opacity(0.35).padding(.vertical, 14)
                 instructions
             }
-            // Absorbs whatever height the screen has spare, so the card fills it
-            // instead of floating in the middle of it.
+            // Whatever the screen has spare after the itinerary, which on a short
+            // ride is little — the stop strip is doing the filling now.
             Spacer(minLength: 0)
             if alert != nil, let alertLabel {
                 Divider().opacity(0.35).padding(.vertical, 12)
@@ -151,6 +151,7 @@ struct HeroCard: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.color(for: Urgency.Level.leaveSoon))
                 }
+                stopStrip(for: ride)
             }
             Spacer(minLength: 0)
             Text(Format.clock(ride.departure))
@@ -158,6 +159,126 @@ struct HeroCard: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The stops between boarding and getting off, drawn the way the map draws them.
+    ///
+    /// This is what a rider looks at once they're aboard — "how many more, and is the
+    /// next one mine" — and it's the honest way to use a tall card: space filled with
+    /// the thing you'd otherwise be counting on the wall diagram, rather than with
+    /// nothing. Long rides are compressed in the middle, because twenty stop names is
+    /// a wall of text and the two either end are the ones you watch for.
+    @ViewBuilder
+    private func stopStrip(for ride: RideLeg) -> some View {
+        let stops = stopTimes(for: ride)
+        if stops.count > 1 {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(compress(stops).enumerated()), id: \.offset) { index, entry in
+                    switch entry {
+                    case .stop(let name, let time, let isLast):
+                        stopRow(
+                            name: name,
+                            time: time,
+                            line: network.line(ride.lineID),
+                            isFirst: index == 0,
+                            isLast: isLast
+                        )
+                    case .gap(let count):
+                        gapRow(count: count, line: network.line(ride.lineID))
+                    }
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private func stopRow(name: String, time: Date?, line: Line?, isFirst: Bool, isLast: Bool) -> some View {
+        HStack(spacing: 9) {
+            ZStack {
+                // The line runs through the row; the halves are trimmed at the ends
+                // so it starts and stops at a station rather than in mid-air.
+                VStack(spacing: 0) {
+                    Rectangle().fill(isFirst ? Color.clear : Theme.color(for: line))
+                    Rectangle().fill(isLast ? Color.clear : Theme.color(for: line))
+                }
+                .frame(width: 2.5)
+                Circle()
+                    .fill(isFirst || isLast ? Theme.color(for: line) : Color(.systemBackground))
+                    .frame(width: isFirst || isLast ? 9 : 6)
+                    .overlay(Circle().strokeBorder(Theme.color(for: line), lineWidth: 2))
+            }
+            .frame(width: 12, height: 22)
+
+            Text(name)
+                .font(isLast ? .caption.weight(.semibold) : .caption)
+                .foregroundStyle(isFirst || isLast ? .primary : .secondary)
+                .lineLimit(1)
+            if isLast {
+                Text("get off")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+            Spacer(minLength: 4)
+            if let time {
+                Text(Format.clock(time))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func gapRow(count: Int, line: Line?) -> some View {
+        HStack(spacing: 9) {
+            Rectangle()
+                .fill(Theme.color(for: line))
+                .frame(width: 2.5, height: 18)
+                .frame(width: 12)
+            Text("\(count) more stops")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Every station on this ride with the clock time it is reached.
+    ///
+    /// Offsets are measured from the trip's own start, so the times come out of the
+    /// same timetable the countdown does rather than being re-derived.
+    private func stopTimes(for ride: RideLeg) -> [(name: String, time: Date?)] {
+        guard let pattern = network.pattern(ride.patternID) else {
+            return ride.stationsServed.map { (name: stationName($0), time: Date?.none) }
+        }
+        return ride.stationsServed.map { station in
+            let time: Date? = pattern.stopIndex(of: station).map {
+                ride.trip.startTime.addingTimeInterval(pattern.stops[$0].arrivalOffset)
+            }
+            return (name: stationName(station), time: time)
+        }
+    }
+
+    private enum StripEntry {
+        case stop(name: String, time: Date?, isLast: Bool)
+        case gap(count: Int)
+    }
+
+    /// Keep the ends, compress the middle. Six stops fit; twenty do not, and the ones
+    /// in the middle are exactly the ones nobody is watching for.
+    private func compress(_ stops: [(name: String, time: Date?)]) -> [StripEntry] {
+        let visible = 6
+        guard stops.count > visible else {
+            return stops.enumerated().map { index, stop in
+                .stop(name: stop.name, time: stop.time, isLast: index == stops.count - 1)
+            }
+        }
+        var entries: [StripEntry] = stops.prefix(2).map {
+            .stop(name: $0.name, time: $0.time, isLast: false)
+        }
+        entries.append(.gap(count: stops.count - 4))
+        for (offset, stop) in stops.suffix(2).enumerated() {
+            entries.append(.stop(name: stop.name, time: stop.time, isLast: offset == 1))
+        }
+        return entries
     }
 
     private func detail(for ride: RideLeg, repeatsHeadsign: Bool) -> String {

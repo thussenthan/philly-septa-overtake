@@ -42,7 +42,9 @@ struct PlanView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Wordmark(height: 22)
+                    // An inline title bar is 44pt tall, so this is about as large as
+                    // the mark can be drawn without the stops clipping.
+                    Wordmark(height: 30)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

@@ -55,8 +55,14 @@ The home screen is deliberately the smallest thing that answers the question:
  │ ────────────────────────────────────── │
  │ (B1) Southbound                  8:21  │
  │      toward NRG · off at Girard        │
+ │      ● Erie                      8:21  │
+ │      │ North Philadelphia        8:23  │
+ │      ● Girard        get off     8:27  │
  │ (B2) Southbound · Express        8:29  │
  │      off at Walnut-Locust              │
+ │      ● Girard                    8:29  │
+ │      │ 4 more stops                    │
+ │      ● Walnut-Locust get off     8:38  │
  │ ────────────────────────────────────── │
  │ Go now — miss this and you lose 11 min │
  └────────────────────────────────────────┘
@@ -74,6 +80,13 @@ At Erie the B1 and the B2 use different tracks and only one of them stops where
 you're going, so a card saying "B" hands the last and most error-prone step back to
 the rider. With it, the direction the signs use, the stopping pattern when that's the
 point, the terminus painted on the train, and where to get off.
+
+Under each leg is the stop strip: the stations between boarding and getting off,
+drawn the way the map draws them. That is what a rider looks at once they're aboard —
+how many more, and is the next one mine — and it's the honest way to use a card that
+stretches to fill the screen. Rides longer than six stops are compressed in the
+middle, because twenty station names is a wall of text and the two at either end are
+the ones you watch for.
 
 Each row carries only what the row above doesn't. The boarding station is the "from"
 already at the top of the screen, or the station the previous row just put you off
