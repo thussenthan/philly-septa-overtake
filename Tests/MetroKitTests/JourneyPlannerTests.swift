@@ -197,29 +197,88 @@ final class JourneyPlannerTests: XCTestCase {
         XCTAssertTrue(advice.contains("lose"), "got: \(advice)")
     }
 
-    /// The inverse, which matters just as much: cutting it fine for a train whose
-    /// replacement is right behind should tell the rider *not* to run. Warning
-    /// them anyway teaches them to ignore the warning.
+    /// A line with one pattern and a fixed headway, so the only thing that varies
+    /// between the two tests below is how long the next train is behind this one.
+    ///
+    /// The shared fixture can't do this job: its locals are ten minutes apart, so
+    /// missing one always costs ten minutes and the "don't bother running" branch is
+    /// unreachable no matter which stations or times the test picks. That is what was
+    /// wrong with the test this replaces — it asserted only that *if* a run warning
+    /// appeared its penalty was large, which passes whether or not the branch it was
+    /// named after ever runs.
+    private func metronome(headway: Int) -> (planner: JourneyPlanner, now: Date) {
+        let stations = [
+            Station(id: "p", name: "P", intersection: "P St",
+                    coordinate: Coordinate(latitude: 40.00, longitude: -75.16),
+                    lines: ["X"], isAccessible: true),
+            Station(id: "q", name: "Q", intersection: "Q St",
+                    coordinate: Coordinate(latitude: 39.99, longitude: -75.16),
+                    lines: ["X"], isAccessible: true),
+        ]
+        let pattern = ServicePattern(
+            id: "X-local", lineID: "X", routeID: "X1",
+            kind: .local, direction: .southbound, compass: .south, headsign: "Q",
+            stops: [PatternStop(station: "p", offset: 0), PatternStop(station: "q", offset: 240)],
+            schedule: Schedule(everyDay: [.frequency(from: 8 * 3600, until: 10 * 3600, every: headway)])
+        )
+        var options = PlannerOptions()
+        options.walking.startupSeconds = 0
+        options.walking.stationEntrySeconds = 0
+        options.walking.stationExitSeconds = 0
+        options.boardingBufferSeconds = 0
+        options.maxTransfers = 0
+        let network = Network(
+            lines: [Line(id: "X", badge: "X", name: "Metronome", colorHex: "888888")],
+            stations: stations,
+            patterns: [pattern],
+            provenance: Fixture.provenance
+        )
+        // 07:59 against an 08:00 departure from the platform itself: sixty seconds of
+        // slack, which is tight by any measure.
+        return (
+            JourneyPlanner(network: network, calendar: Fixture.calendar, options: options),
+            Fixture.date(7, 59)
+        )
+    }
+
+    /// The inverse of the run warning, which matters just as much: cutting it fine
+    /// for a train whose replacement is right behind should tell the rider *not* to
+    /// run. Warning them anyway teaches them to ignore the warning.
     func testNoRunWarningWhenTheNextTrainIsRightBehind() throws {
-        // Locals every 10 min, express excluded, so missing one costs 10 min...
-        // narrow that by asking for a stretch the express does not serve at a time
-        // when two locals are close together in arrival terms.
-        let planner = Fixture.planner { $0.maxTransfers = 0 }
-        let now = Fixture.date(8, 9, second: 30)
-        let plan = planner.plan(PlanRequest(
-            origin: .station("b"),
-            destination: .station("e"),
-            departAt: now
-        ))
-        let narrator = JourneyNarrator(network: Fixture.network)
-        guard let first = plan.journeys.first(where: { !$0.isWalkOnly }) else {
-            return XCTFail("expected a local option")
+        let (planner, now) = metronome(headway: 120)
+        let plan = planner.plan(PlanRequest(origin: .station("p"), destination: .station("q"), departAt: now))
+        let best = try XCTUnwrap(plan.best)
+        XCTAssertEqual(best.urgency.secondsUntilLeaveBy(asOf: now), 60, accuracy: 1, "precondition: tight")
+
+        let narrator = JourneyNarrator(network: planner.network)
+        let advisory = try XCTUnwrap(narrator.advisory(for: best, asOf: now), "expected an advisory")
+        guard case .dontRush(let penalty) = advisory else {
+            return XCTFail("expected .dontRush with a two-minute headway, got \(advisory)")
         }
-        // Whatever the advisory is, it must never claim urgency without a real
-        // penalty behind it.
-        if let advisory = narrator.advisory(for: first, asOf: now), case .run(let penalty, _) = advisory {
-            XCTAssertGreaterThanOrEqual(penalty, 300, "urgency claimed with only \(penalty)s at stake")
+        XCTAssertEqual(penalty, 120, accuracy: 1)
+        XCTAssertFalse(advisory.isUrgent)
+        XCTAssertTrue(narrator.advisoryText(advisory).contains("No need to run"),
+                      narrator.advisoryText(advisory))
+    }
+
+    /// The same sixty seconds of slack, and the opposite answer, because the next
+    /// train is six minutes back instead of two. Holding everything but the headway
+    /// fixed is the point: it shows the warning tracks what missing the train costs
+    /// rather than how little time is left.
+    func testTheSameSlackDoesWarnWhenTheNextTrainIsFarBehind() throws {
+        let (planner, now) = metronome(headway: 360)
+        let plan = planner.plan(PlanRequest(origin: .station("p"), destination: .station("q"), departAt: now))
+        let best = try XCTUnwrap(plan.best)
+        XCTAssertEqual(best.urgency.secondsUntilLeaveBy(asOf: now), 60, accuracy: 1, "same slack as above")
+
+        let narrator = JourneyNarrator(network: planner.network)
+        let advisory = try XCTUnwrap(narrator.advisory(for: best, asOf: now))
+        guard case .run(let penalty, let secondsLeft) = advisory else {
+            return XCTFail("expected .run with a six-minute headway, got \(advisory)")
         }
+        XCTAssertEqual(penalty, 360, accuracy: 1)
+        XCTAssertEqual(secondsLeft, 60, accuracy: 1)
+        XCTAssertTrue(advisory.isUrgent)
     }
 
     /// A missed option is never priced as though it were catchable.
