@@ -487,16 +487,31 @@ per minute. The widget states what missing the train *costs* ("Miss it: +12m") a
 never tells you to run — whether to run depends on how much time is left, and an
 entry rendered ten minutes after it was computed can't know that.
 
-Two manual steps in Xcode, both unavoidable:
+Both halves of the plumbing are in the project file rather than in a setup checklist,
+because both are things Xcode's dialogs merely write and neither survives being
+forgotten:
 
-1. **Share the code.** Select the `MetroKit` folder in the navigator, and in the File
-   inspector add `SEPTACommuteWidget` to its Target Membership. The extension needs
-   the timetable, the planner and `CommuteSnapshot`.
-2. **Share the container.** Both targets → Signing & Capabilities → + Capability →
-   App Groups → add the same identifier, then set it in
-   `SharedStore.appGroupID` (it ships as `group.com.example.septacommute`). Until
-   that matches, `UserDefaults(suiteName:)` returns nil; the app falls back to its
-   own defaults and keeps working, and the widget simply has nothing to read.
+- **Sharing the code.** A second synchronized group points at `SEPTACommute/MetroKit`
+  and is listed on the widget target. The extension needs the timetable, the planner
+  and `CommuteSnapshot` — and ticking Target Membership on a *subfolder* of an existing
+  synchronized group is the one case Xcode's UI handles badly.
+- **Sharing the container.** `SEPTACommute.entitlements` and
+  `SEPTACommuteWidget.entitlements` both declare `group.com.example.SEPTACommute`, and
+  `CODE_SIGN_ENTITLEMENTS` names them in all four build configurations. They sit at the
+  repository root rather than inside either target's folder, since both folders are
+  synchronized groups and a stray `.entitlements` in one gets picked up as a resource
+  to copy. Renaming means changing those two files and `SharedStore.appGroupID`.
+
+A mismatch between the three names is silent: the app carries on against its own
+defaults, the widget reads an empty store, and the only symptom is a widget insisting
+your addresses aren't set when they are. So `SharedStore.isSharedContainerAvailable`
+is checked, and the Service & data screen states the reason when the container is
+missing.
+
+On a **free Apple account** the App Groups entitlement isn't provisioned, so a device
+build may fail to sign. The Simulator doesn't validate entitlements against a profile
+and works regardless. Backing it out is deleting the two `CODE_SIGN_ENTITLEMENTS`
+lines.
 
 The template files Xcode generates for a Live Activity, a Control widget and a
 configuration intent aren't used — delete `SEPTACommuteWidgetLiveActivity.swift`,
