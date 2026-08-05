@@ -130,18 +130,36 @@ public struct SnapshotEndpoint: Codable, Hashable, Sendable {
 
 /// The container the app and its widget share.
 ///
-/// **Both targets must declare the same App Group.** In Xcode: select each target →
-/// Signing & Capabilities → + Capability → App Groups → add the identifier below.
-/// Until that is done `UserDefaults(suiteName:)` returns nil, so the fallback keeps
-/// the *app* working — the widget simply has nothing to read.
+/// Declared in `SEPTACommute.entitlements` and `SEPTACommuteWidget.entitlements`, and
+/// wired to both targets through `CODE_SIGN_ENTITLEMENTS` — which is all Xcode's
+/// Signing & Capabilities dialog writes, so it is done in the project file instead.
+/// The two must name the same group; a mismatch is silent, and looks exactly like a
+/// widget with nothing to show.
+///
+/// The identifier tracks the bundle identifier by convention, so renaming the app
+/// means renaming this, both entitlements files, and nothing else.
+///
+/// `UserDefaults(suiteName:)` returns nil if the entitlement is missing or the group
+/// isn't provisioned, so the fallback to `.standard` keeps the *app* working; only
+/// the widget goes quiet.
 public enum SharedStore {
-    /// Change this to match your own bundle identifier prefix.
-    public static let appGroupID = "group.com.example.septacommute"
+    public static let appGroupID = "group.com.example.SEPTACommute"
 
     private static let snapshotKey = "commuteSnapshot.v1"
 
     public static var defaults: UserDefaults {
         UserDefaults(suiteName: appGroupID) ?? .standard
+    }
+
+    /// False when the shared container isn't there — a missing entitlement, a group
+    /// that isn't provisioned, or the two targets naming different ones.
+    ///
+    /// Worth exposing rather than swallowing. The failure is otherwise completely
+    /// silent: the app keeps working against its own defaults, the widget reads an
+    /// empty store, and the only symptom is a widget that says the addresses aren't
+    /// set when they plainly are.
+    public static var isSharedContainerAvailable: Bool {
+        UserDefaults(suiteName: appGroupID) != nil
     }
 
     public static func snapshot(from defaults: UserDefaults = SharedStore.defaults) -> CommuteSnapshot? {

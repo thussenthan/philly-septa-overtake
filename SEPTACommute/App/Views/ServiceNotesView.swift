@@ -58,6 +58,14 @@ struct ServiceNotesView: View {
                     }
                 }
 
+                if let problem = model.sharedContainerProblem {
+                    Section {
+                        Label(problem, systemImage: "square.stack.3d.up.slash")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Timetable") {
                     Text(model.scheduleFootnote)
                         .font(.footnote)

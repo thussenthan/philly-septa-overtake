@@ -193,6 +193,10 @@ final class CommuteModel: ObservableObject {
         startTicking()
         replan()
         alertService.refreshIfNeeded()
+        // An install that already had addresses saved before the widget existed has
+        // never published them, and a rider with no location fix would never trigger
+        // a plan to do it either.
+        publishCommuteOnly()
     }
 
     func onDisappear() {
@@ -666,6 +670,15 @@ final class CommuteModel: ObservableObject {
             )
         }
         return notes
+    }
+
+    /// Set when the widget cannot possibly work, so the reason is visible somewhere
+    /// rather than only in a widget that looks blank for no stated reason.
+    var sharedContainerProblem: String? {
+        guard !SharedStore.isSharedContainerAvailable else { return nil }
+        return "The widget can't read your trip: the app group "
+            + "\(SharedStore.appGroupID) isn't available on this device. "
+            + "The app itself is unaffected."
     }
 
     /// Shown under the alerts when the fetch failed and there is nothing cached, so
