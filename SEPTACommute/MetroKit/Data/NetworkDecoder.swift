@@ -54,6 +54,8 @@ public enum NetworkDecoder {
 
         // The pattern currently being assembled from its P/O/D records.
         var pendingHeader: (id: String, line: String, route: String, kind: String, direction: String, headsign: String)?
+        var pendingCompass: CompassDirection?
+        var pendingPublished = 100
         var pendingStops: [PatternStop] = []
         var pendingBlocks: [DayType: [ScheduleBlock]] = [:]
 
@@ -74,11 +76,15 @@ public enum NetworkDecoder {
                 routeID: RouteID(header.route),
                 kind: kind,
                 direction: direction,
+                compass: pendingCompass,
                 headsign: header.headsign,
+                publishedTimePercent: pendingPublished,
                 stops: pendingStops,
                 schedule: Schedule(blocks: pendingBlocks)
             ))
             pendingHeader = nil
+            pendingCompass = nil
+            pendingPublished = 100
             pendingStops = []
             pendingBlocks = [:]
         }
@@ -107,7 +113,8 @@ public enum NetworkDecoder {
                         id: LineID(fields[1]),
                         badge: fields[2],
                         name: fields[3],
-                        colorHex: fields[4]
+                        colorHex: fields[4],
+                        sortOrder: fields.count > 5 ? (Int(fields[5]) ?? 9999) : 9999
                     ))
 
                 case "S":
@@ -135,6 +142,10 @@ public enum NetworkDecoder {
                     try flushPattern()
                     guard fields.count >= 7 else { throw DecodeError(line: lineNumber, reason: "short P record") }
                     pendingHeader = (fields[1], fields[2], fields[3], fields[4], fields[5], fields[6])
+                    // Both optional: a hand-written fixture need not supply them, and
+                    // an older generated file predates them.
+                    pendingCompass = fields.count > 7 ? CompassDirection(rawValue: fields[7]) : nil
+                    pendingPublished = fields.count > 8 ? (Int(fields[8]) ?? 100) : 100
 
                 case "O":
                     guard fields.count >= 2 else { throw DecodeError(line: lineNumber, reason: "short O record") }
@@ -144,10 +155,14 @@ public enum NetworkDecoder {
                             throw DecodeError(line: lineNumber, reason: "bad stop \(entry)")
                         }
                         let dwell = parts.count > 2 ? (Double(parts[2]) ?? 0) : 0
+                        // Bitmask, omitted when zero: 1 = no boarding, 2 = no alighting.
+                        let flags = parts.count > 3 ? (Int(parts[3]) ?? 0) : 0
                         pendingStops.append(PatternStop(
                             station: StationID(String(parts[0])),
                             offset: arrival,
-                            dwell: dwell
+                            dwell: dwell,
+                            allowsBoarding: flags & 1 == 0,
+                            allowsAlighting: flags & 2 == 0
                         ))
                     }
 

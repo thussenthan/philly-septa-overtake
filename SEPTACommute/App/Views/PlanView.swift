@@ -19,16 +19,24 @@ struct PlanView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    tripRow
-                    answerSection
-                    statusRow
+            // The content is asked to fill the viewport, and the answer card is the
+            // only flexible thing in it, so a short plan gives the recommendation the
+            // rest of the screen instead of leaving it stranded above a black gap.
+            // With enough options to overflow, the minimum stops binding and the card
+            // returns to its natural size.
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        tripRow
+                        answerSection
+                        statusRow
+                    }
+                    // Tighter than the usual inset: the answer card is the screen, and
+                    // every point of margin is a point it isn't using.
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: viewport.size.height, alignment: .top)
                 }
-                // Tighter than the usual inset: the answer card is the screen, and
-                // every point of margin is a point it isn't using.
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
@@ -180,6 +188,7 @@ struct PlanView: View {
                         alert: model.alert(for: best),
                         alertLabel: model.alert(for: best).map { model.alertChipText($0) }
                     )
+                    .frame(maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
 

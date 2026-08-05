@@ -92,11 +92,16 @@ public struct Line: Identifiable, Hashable, Sendable {
     public var name: String
     /// Hex color as published by the operator, e.g. "F58426".
     public var colorHex: String
+    /// SEPTA's own `route_sort_order`, so lists match the order the operator puts
+    /// its own network in: L, B, trolleys, Girard, Media-Sharon Hill, Norristown,
+    /// then the trackless trolleys. Alphabetical by badge put route 59 first.
+    public var sortOrder: Int
 
-    public init(id: LineID, badge: String, name: String, colorHex: String) {
+    public init(id: LineID, badge: String, name: String, colorHex: String, sortOrder: Int = 9999) {
         self.id = id
         self.badge = badge
         self.name = name
         self.colorHex = colorHex
+        self.sortOrder = sortOrder
     }
 }

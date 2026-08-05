@@ -45,6 +45,7 @@ enum Fixture {
         routeID: "T1",
         kind: .local,
         direction: .southbound,
+        compass: .south,
         headsign: "F",
         stops: (0..<6).map { PatternStop(station: stations[$0].id, offset: TimeInterval($0 * 120)) },
         schedule: Schedule(everyDay: [.frequency(from: sam(8, 0), until: sam(11, 0), every: 600)])
@@ -56,6 +57,7 @@ enum Fixture {
         routeID: "T2",
         kind: .express,
         direction: .southbound,
+        compass: .south,
         headsign: "F express",
         stops: [
             PatternStop(station: "a", offset: 0),
@@ -74,6 +76,7 @@ enum Fixture {
         routeID: "T1",
         kind: .local,
         direction: .northbound,
+        compass: .north,
         headsign: "A",
         stops: (0..<6).map { index in
             PatternStop(station: stations[5 - index].id, offset: TimeInterval(index * 120))

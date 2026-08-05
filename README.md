@@ -80,13 +80,13 @@ already at the top of the screen, or the station the previous row just put you o
 at; the headsign is dropped when it repeats; and there are no stop counts, because
 you get off at a named station rather than by counting.
 
-**Directions are measured, not stored.** SEPTA calls the Broad Street Line
-northbound and southbound and the Market-Frankford Line eastbound and westbound, so
-the axis comes from the line's full extent and only the sense comes from the ride.
-Taking it from the ride alone gets Philadelphia wrong: Frankford is 7.8 km north of
-City Hall and only 7.4 km east of it, so a trip up the L measures as *northbound*
-while every sign in the station says eastbound. A loop route that returns you near
-where you started is given no direction at all rather than a made-up one.
+**Directions come from SEPTA, not from arithmetic.** The feed ships a
+`directions.txt` naming the two ends of every route, and it is the only thing that
+agrees with the signs. Deriving the direction from coordinates was tried first and is
+wrong twice over: it calls the Media-Sharon Hill routes east–west when SEPTA calls
+them northbound and southbound, and `direction_id` 0 means southbound on route 59 but
+northbound on route 66. There is a test asserting the published words for all sixteen
+routes, and another asserting that D1's own geometry contradicts them.
 
 Everything else is a tap: the two ends open their pickers, the card and the rows
 open the full itinerary with clock times and skipped stations, and the bottom row
@@ -127,7 +127,7 @@ departure times are the real published ones rather than estimates:
 | Feed version | `v202607261` (valid 2026-07-26 → 2026-08-08) |
 | Coverage | 16 rail routes across 9 Metro lines, plus the B1 Owl night bus |
 | Stations | 585 |
-| Stopping patterns | 309 |
+| Stopping patterns | 321 |
 
 **These are scheduled times, not live train positions.** SEPTA publishes
 GTFS-Realtime feeds, but at the time of writing there is no confirmed real-time feed
@@ -155,6 +155,50 @@ That rewrites `SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift`, a
 generated file of Swift literals — no bundle resources, no runtime parsing, and the
 compiler checks the shape. Use `--report` to see what changed without writing
 anything.
+
+### What of the feed is used
+
+The feed is two zips, 39 files. What earns its place, and what doesn't:
+
+| File | Used for |
+|---|---|
+| `trips.txt`, `stop_times.txt` | the patterns and every departure time |
+| `stops.txt` | names, coordinates, `wheelchair_boarding` for step-free routing |
+| `routes.txt` | line colours, and `route_sort_order` so lists read in SEPTA's own order |
+| `calendar.txt` | which days each service runs |
+| `directions.txt` | northbound/southbound/eastbound/westbound, per route |
+| `feed_info.txt` | version and the validity window the app warns you about |
+
+Three columns are load-bearing and easy to miss:
+
+- **`pickup_type` / `drop_off_type`.** 1,082 stop-times on the Metro map forbid
+  boarding or alighting, and **every one of them is at a middle stop** — the
+  convenient assumption that they only mark trip ends is false here. Without them the
+  planner will tell you to get off at Baltimore Av & 49th St on a T2, where the doors
+  don't open for that.
+- **`timepoint`.** Every Broad Street Line stop time is a published timing point.
+  On the trolleys it's about one in six; the rest are SEPTA interpolating between
+  them. An app selling a countdown should know which it's holding, so each pattern
+  carries the share and the Service & data screen says so when it's under half.
+- **`route_sort_order`.** L, B, trolleys, Girard, Media-Sharon Hill, Norristown, then
+  the trackless trolleys. Sorting by badge put route 59 at the top of the network.
+
+Deliberately unused, with the reason:
+
+- **`pathways.txt` / `levels.txt`** would give real in-station walking times and stair
+  counts — but only **2 of 846** pathways touch a Metro stop, and 6 of 964 stops have
+  a level. It's a Regional Rail feature.
+- **`parent_station`** is set on **31 of 964** Metro stops, so it can't replace the
+  name-and-proximity station merging described below.
+- **`stop_headsign`** is empty on every Metro stop time.
+- **`route_stops.txt`** disagrees with the trips (see below).
+- **`shapes.txt`** is 452,000 points of route geometry, for a map this app doesn't
+  draw yet.
+- **`calendar_dates.txt`** holds the real holiday exceptions; the app currently guesses
+  a Sunday schedule on major holidays. Worth wiring up.
+- **The fare files** (`fare_products`, `fare_leg_rules`, `fare_transfer_rules`,
+  `timeframes`, `areas`) describe fares and free transfers completely enough to show
+  what a trip costs. A feature, not a fix — nothing in the app claims a price today.
 
 A few things the generator gets right that are easy to get wrong, and which the
 tests now lock in:

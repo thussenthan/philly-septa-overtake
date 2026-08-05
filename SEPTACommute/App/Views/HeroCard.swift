@@ -27,6 +27,9 @@ struct HeroCard: View {
                 Divider().opacity(0.35).padding(.vertical, 14)
                 instructions
             }
+            // Absorbs whatever height the screen has spare, so the card fills it
+            // instead of floating in the middle of it.
+            Spacer(minLength: 0)
             if alert != nil, let alertLabel {
                 Divider().opacity(0.35).padding(.vertical, 12)
                 alertChip(alertLabel)

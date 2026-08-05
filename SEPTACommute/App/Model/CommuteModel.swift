@@ -474,7 +474,9 @@ final class CommuteModel: ObservableObject {
 
     /// Stations grouped by line, each in travel order — the only arrangement that
     /// makes sense once there are 585 of them. Lines the rider's own places sit on
-    /// come first, then the rest by badge.
+    /// come first, then SEPTA's own order: L, B, trolleys, Girard, Media-Sharon Hill,
+    /// Norristown, then the trackless trolleys. Sorting by badge put route 59 at the
+    /// top of the Philadelphia rapid-transit network.
     var stationSections: [(line: Line, stations: [Station])] {
         let homeLines = Set((places.places.compactMap { place -> Station? in
             network.nearestStation(to: place.coordinate)?.station
@@ -487,6 +489,9 @@ final class CommuteModel: ObservableObject {
                 let lhsNear = homeLines.contains(lhs.line.id)
                 let rhsNear = homeLines.contains(rhs.line.id)
                 if lhsNear != rhsNear { return lhsNear }
+                if lhs.line.sortOrder != rhs.line.sortOrder {
+                    return lhs.line.sortOrder < rhs.line.sortOrder
+                }
                 return lhs.line.badge < rhs.line.badge
             }
     }
@@ -529,6 +534,25 @@ final class CommuteModel: ObservableObject {
             return alert.severity.label
         }
         return "\(alert.severity.label) on the \(line.badge)"
+    }
+
+    /// Where SEPTA interpolates rather than publishes the times behind an option.
+    ///
+    /// Every Broad Street Line stop time in the feed is a published timing point; on
+    /// the trolleys it's about one in six, and the rest are the agency's own estimate
+    /// between them. An app whose whole promise is a countdown should say which it is
+    /// holding — but on the detail screen, not over the answer, because it doesn't
+    /// change which train to catch.
+    var estimatedTimeNotes: [String] {
+        let routes = (plan?.journeys ?? []).flatMap(\.rides).compactMap { ride in
+            network.pattern(ride.patternID).map { (ride.routeBadge, $0) }
+        }
+        var seen = Set<String>()
+        return routes.compactMap { badge, pattern in
+            guard pattern.hasMostlyEstimatedTimes, seen.insert(badge).inserted else { return nil }
+            return "SEPTA publishes \(pattern.publishedTimePercent)% of the \(badge)'s stop times; "
+                + "the rest are its own estimates between timing points."
+        }
     }
 
     /// Shown under the alerts when the fetch failed and there is nothing cached, so

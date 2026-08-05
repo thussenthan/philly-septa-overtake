@@ -278,9 +278,11 @@ class PatternKey:
     stops: tuple[str, ...]
     offsets: tuple[int, ...]
     dwells: tuple[int, ...]
+    # Per stop: bit 0 set when boarding is prohibited, bit 1 when alighting is.
+    flags: tuple[int, ...] = ()
 
     def as_tuple(self):
-        return (self.route_id, self.direction_id, self.stops, self.offsets, self.dwells)
+        return (self.route_id, self.direction_id, self.stops, self.offsets, self.dwells, self.flags)
 
 
 @dataclass
@@ -290,6 +292,9 @@ class Pattern:
     # day type -> sorted trip start times, seconds after midnight
     starts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     trip_count: int = 0
+    # Share of this pattern's stop times SEPTA actually publishes, rather than
+    # interpolating between timing points. 100 on the subway, ~15 on the trolleys.
+    published_time_percent: int = 100
 
 
 def extract(feed: Feed, scope: str = "broad") -> dict:
@@ -297,10 +302,20 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     ROUTES = set(route_ids)
     routes = {r["route_id"]: r for r in feed.table("routes.txt") if r["route_id"] in ROUTES}
 
+    # directions.txt is a SEPTA extension, and it is the authority on which words
+    # each route uses for its two ends. Worth taking literally rather than deriving
+    # from geometry: it calls D1/D2 northbound and southbound even though Media is
+    # mostly *west* of 69th St, and direction_id 0 is southbound on route 59 but
+    # northbound on route 66. No amount of measuring gets to that.
     directions: dict[tuple[str, str], str] = {}
+    direction_words: dict[tuple[str, str], str] = {}
     for row in feed.table("directions.txt"):
         if row["route_id"] in ROUTES:
-            directions[(row["route_id"], row["direction_id"])] = row.get("direction_destination", "")
+            key = (row["route_id"], row["direction_id"])
+            directions[key] = row.get("direction_destination", "")
+            word = (row.get("direction") or "").strip().lower()
+            if word.endswith("bound"):
+                direction_words[key] = word[: -len("bound")]
 
     stops_by_id = {r["stop_id"]: r for r in feed.table("stops.txt")}
 
@@ -308,16 +323,24 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     trip_index = {t["trip_id"]: t for t in trips}
 
     # One pass over stop_times.txt: it holds millions of rows for the whole system.
-    sequences: dict[str, list[tuple[int, str, int, int]]] = defaultdict(list)
+    sequences: dict[str, list[tuple[int, str, int, int, bool, bool, bool]]] = defaultdict(list)
     for row in feed.rows("stop_times.txt"):
         trip_id = row["trip_id"]
         if trip_id not in trip_index:
             continue
+        # pickup_type / drop_off_type of 1 means the door does not open for that
+        # purpose here — all 1,082 such stop-times on the Metro map are at *middle*
+        # stops, not trip ends, so ignoring them lets the planner tell a rider to
+        # get off somewhere they cannot.
+        # timepoint 0 means SEPTA interpolated the time rather than publishing it.
         sequences[trip_id].append((
             int(row["stop_sequence"]),
             row["stop_id"],
             parse_gtfs_time(row["arrival_time"]),
             parse_gtfs_time(row["departure_time"]),
+            row.get("pickup_type", "0") == "1",
+            row.get("drop_off_type", "0") == "1",
+            (row.get("timepoint") or "1") == "1",
         ))
 
     all_service_dates, rare_services = recurring_services(feed)
@@ -340,8 +363,8 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     routes_by_stop: dict[str, set[str]] = defaultdict(set)
     for trip_id, rows in sequences.items():
         route_id = trip_index[trip_id]["route_id"]
-        for _, stop_id, _, _ in rows:
-            routes_by_stop[stop_id].add(route_id)
+        for row in rows:
+            routes_by_stop[row[1]].add(route_id)
 
     stations, stop_to_station, unsnapped, snap_report = build_stations(
         {sid: stops_by_id[sid] for sid in rail_stop_ids if sid in stops_by_id},
@@ -374,7 +397,9 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         station_ids: list[str] = []
         arrivals: list[int] = []
         dwells: list[int] = []
-        for _, stop_id, arrival, departure in rows:
+        flags: list[int] = []
+        exact = 0
+        for _, stop_id, arrival, departure, no_pickup, no_dropoff, timepoint in rows:
             station_id = stop_to_station.get(stop_id)
             if station_id is None:
                 dropped_stops += 1
@@ -385,20 +410,22 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
             station_ids.append(station_id)
             arrivals.append(arrival - origin_departure)
             dwells.append(departure - arrival)
+            flags.append((1 if no_pickup else 0) | (2 if no_dropoff else 0))
+            exact += 1 if timepoint else 0
         if len(station_ids) < 2:
             continue
 
         # Bucket by end-to-end running time so genuinely different speeds stay
         # separate (a peak express run vs. a slow one) while jitter collapses.
         bucket = arrivals[-1] // RUNTIME_VARIANT_TOLERANCE
-        group = (trip["route_id"], trip["direction_id"], tuple(station_ids), bucket)
-        raw_groups[group].append((tuple(arrivals), tuple(dwells)))
+        group = (trip["route_id"], trip["direction_id"], tuple(station_ids), bucket, tuple(flags))
+        raw_groups[group].append((tuple(arrivals), tuple(dwells), exact, len(station_ids)))
         group_trips[group].append((origin_departure, day_types, trip.get("trip_headsign", "").strip()))
 
     # Collapse each group into one pattern timed by the median of its trips.
     runtime_spread: list[tuple[int, str]] = []
     for group, timings in raw_groups.items():
-        route_id, direction_id, station_ids, _bucket = group
+        route_id, direction_id, station_ids, _bucket, flags = group
         columns = list(zip(*[t[0] for t in timings]))
         offsets = tuple(int(statistics.median(col)) for col in columns)
         dwell_columns = list(zip(*[t[1] for t in timings]))
@@ -406,9 +433,12 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         spread = max(t[0][-1] for t in timings) - min(t[0][-1] for t in timings)
         runtime_spread.append((spread, f"{route_id} {direction_id} {len(station_ids)} stops"))
 
-        key = PatternKey(route_id, direction_id, station_ids, offsets, dwells)
+        published = sum(t[2] for t in timings)
+        total_stops = sum(t[3] for t in timings)
+        key = PatternKey(route_id, direction_id, station_ids, offsets, dwells, flags)
         headsign = next((t[2] for t in group_trips[group] if t[2]), "")
         pattern = Pattern(key=key, headsign=headsign)
+        pattern.published_time_percent = round(100 * published / total_stops) if total_stops else 100
         for origin_departure, day_types, _ in group_trips[group]:
             for label in day_types:
                 pattern.starts[label].append(origin_departure)
@@ -423,6 +453,7 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     return {
         "routes": routes,
         "directions": directions,
+        "direction_words": direction_words,
         "patterns": list(patterns.values()),
         "stations": stations,
         "unsnapped_surface_stops": unsnapped,
@@ -690,6 +721,20 @@ def encode_field(value) -> str:
     return str(value).replace("|", "/").replace("\n", " ")
 
 
+def encode_stop(station_id: str, offset: int, dwell: int, flags: int) -> str:
+    """One stop of a pattern: `station:offset[:dwell[:flags]]`.
+
+    Trailing zero fields are dropped — 309 patterns' worth of `:0:0` is 40 KB of
+    generated source that says nothing.
+    """
+    parts = [station_id, str(offset)]
+    if dwell or flags:
+        parts.append(str(dwell))
+    if flags:
+        parts.append(str(flags))
+    return ":".join(parts)
+
+
 def encode_blocks(starts: list[int]) -> str:
     """Departure times as `f:from:until:every` and `t:a,b,c` blocks joined by `;`."""
     pieces: list[str] = []
@@ -760,7 +805,15 @@ def emit_swift(data: dict) -> str:
                 "badge": line_id.split("-")[0],
                 "name": name,
                 "color": colour,
+                # SEPTA's own ordering: L1 first, then B, T, G, D, M, then buses.
+                # Alphabetical by badge put the trackless trolleys ahead of the
+                # subway, which is nobody's mental model of this network.
+                "sort": 9999,
             }
+            line_rows[line_id]["sort"] = min(
+                line_rows[line_id]["sort"],
+                int(route.get("route_sort_order") or 9999),
+            )
 
     station_lines: dict[str, set[str]] = defaultdict(set)
     for pattern in patterns:
@@ -776,9 +829,10 @@ def emit_swift(data: dict) -> str:
         encode_field(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")),
         encode_field("SEPTA GTFS " + info["feed_version"]),
     ]))
-    for line in line_rows.values():
+    for line in sorted(line_rows.values(), key=lambda l: (l["sort"], l["badge"])):
         records.append("|".join(["L", encode_field(line["id"]), encode_field(line["badge"]),
-                                 encode_field(line["name"]), encode_field(line["color"])]))
+                                 encode_field(line["name"]), encode_field(line["color"]),
+                                 str(line["sort"])]))
     for station in stations.values():
         accessible = "-" if station["accessible"] is None else ("1" if station["accessible"] else "0")
         records.append("|".join([
@@ -809,11 +863,15 @@ def emit_swift(data: dict) -> str:
         if not headsign:
             headsign = stations[station_ids[-1]]["name"]
 
+        compass = data["direction_words"].get((route_id, pattern.key.direction_id), "")
         records.append("|".join(["P", encode_field(pattern_id), encode_field(line_id),
-                                 encode_field(route_id), kind, direction, encode_field(headsign)]))
+                                 encode_field(route_id), kind, direction, encode_field(headsign),
+                                 compass, str(pattern.published_time_percent)]))
+        stop_flags = pattern.key.flags or (0,) * len(station_ids)
         records.append("O|" + ",".join(
-            f"{sid}:{offset}:{dwell}" if dwell else f"{sid}:{offset}"
-            for sid, offset, dwell in zip(station_ids, pattern.key.offsets, pattern.key.dwells)
+            encode_stop(sid, offset, dwell, flag)
+            for sid, offset, dwell, flag
+            in zip(station_ids, pattern.key.offsets, pattern.key.dwells, stop_flags)
         ))
 
         by_timetable: dict[tuple[int, ...], list[str]] = {}

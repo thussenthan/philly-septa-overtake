@@ -43,15 +43,41 @@ public struct PatternStop: Hashable, Sendable {
     /// Seconds from the trip's start time to departure from this station.
     /// Always `>= arrivalOffset`; the difference is the dwell.
     public var departureOffset: TimeInterval
+    /// False where SEPTA marks the stop `pickup_type = 1`: the train calls, but not
+    /// for you. Rare — three places on the Metro map — and all of them mid-route,
+    /// so there is no shortcut of assuming it only happens at a terminus.
+    public var allowsBoarding: Bool
+    /// False where SEPTA marks the stop `drop_off_type = 1`.
+    public var allowsAlighting: Bool
 
-    public init(station: StationID, arrivalOffset: TimeInterval, departureOffset: TimeInterval) {
+    public init(
+        station: StationID,
+        arrivalOffset: TimeInterval,
+        departureOffset: TimeInterval,
+        allowsBoarding: Bool = true,
+        allowsAlighting: Bool = true
+    ) {
         self.station = station
         self.arrivalOffset = arrivalOffset
         self.departureOffset = max(arrivalOffset, departureOffset)
+        self.allowsBoarding = allowsBoarding
+        self.allowsAlighting = allowsAlighting
     }
 
-    public init(station: StationID, offset: TimeInterval, dwell: TimeInterval = 0) {
-        self.init(station: station, arrivalOffset: offset, departureOffset: offset + dwell)
+    public init(
+        station: StationID,
+        offset: TimeInterval,
+        dwell: TimeInterval = 0,
+        allowsBoarding: Bool = true,
+        allowsAlighting: Bool = true
+    ) {
+        self.init(
+            station: station,
+            arrivalOffset: offset,
+            departureOffset: offset + dwell,
+            allowsBoarding: allowsBoarding,
+            allowsAlighting: allowsAlighting
+        )
     }
 }
 
@@ -68,6 +94,15 @@ public struct ServicePattern: Identifiable, Sendable {
     public let direction: Direction
     /// Terminus shown on the train, e.g. "NRG" or "Fern Rock TC".
     public let headsign: String
+    /// The word SEPTA prints for this direction, taken from its own
+    /// `directions.txt` rather than derived from the coordinates. The feed calls the
+    /// Media-Sharon Hill routes northbound and southbound even though Media is
+    /// mostly *west* of 69th St, and no amount of measuring arrives at that.
+    public let compass: CompassDirection?
+    /// Percentage of this pattern's stop times SEPTA publishes rather than
+    /// interpolating between timing points. 100 on the subway; about 15 on the
+    /// trolleys, where most intermediate times are the agency's own estimate.
+    public let publishedTimePercent: Int
     /// Ordered stops in travel order.
     ///
     /// Immutable because `positions` indexes it: a mutable `stops` could be
@@ -88,7 +123,9 @@ public struct ServicePattern: Identifiable, Sendable {
         routeID: RouteID? = nil,
         kind: PatternKind,
         direction: Direction,
+        compass: CompassDirection? = nil,
         headsign: String,
+        publishedTimePercent: Int = 100,
         stops: [PatternStop],
         schedule: Schedule
     ) {
@@ -99,7 +136,9 @@ public struct ServicePattern: Identifiable, Sendable {
         self.routeID = routeID ?? RouteID(lineID.rawValue)
         self.kind = kind
         self.direction = direction
+        self.compass = compass
         self.headsign = headsign
+        self.publishedTimePercent = publishedTimePercent
         self.stops = stops
         self.schedule = schedule
 
@@ -122,10 +161,32 @@ public struct ServicePattern: Identifiable, Sendable {
     }
 
     /// True when this pattern can carry a rider from `board` to `alight` in one ride.
+    ///
+    /// "Can" includes the doors: SEPTA marks a handful of mid-route stops as no
+    /// pickup or no drop-off, and a plan that ignores them sends a rider to a stop
+    /// where the train calls but won't take them.
     public func carries(from board: StationID, to alight: StationID) -> Bool {
-        guard let b = stopIndex(of: board), let a = stopIndex(of: alight) else { return false }
-        return b < a
+        guard let b = stopIndex(of: board), let a = stopIndex(of: alight), b < a else { return false }
+        return stops[b].allowsBoarding && stops[a].allowsAlighting
     }
+
+    /// Whether a rider may board here at all.
+    public func allowsBoarding(at station: StationID) -> Bool {
+        guard let index = stopIndex(of: station) else { return false }
+        return stops[index].allowsBoarding
+    }
+
+    /// Whether a rider may get off here at all.
+    public func allowsAlighting(at station: StationID) -> Bool {
+        guard let index = stopIndex(of: station) else { return false }
+        return stops[index].allowsAlighting
+    }
+
+    /// True when SEPTA interpolates most of this pattern's intermediate times.
+    ///
+    /// The threshold is deliberately generous: at 50% the timetable is as much
+    /// estimate as schedule, and a countdown built on it should say so.
+    public var hasMostlyEstimatedTimes: Bool { publishedTimePercent < 50 }
 
     /// End-to-end running time of the pattern.
     public var duration: TimeInterval {
