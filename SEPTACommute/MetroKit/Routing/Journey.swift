@@ -75,6 +75,11 @@ public struct RideLeg: Sendable, Hashable {
     public var trip: Trip
     public var patternID: PatternID
     public var lineID: LineID
+    /// The operator's route — `B1`, `B2`, `B3`, `L1`. This is what the map, the
+    /// platform sign and the front of the train all say, and it is the difference
+    /// between the train a rider wants and the one on the next track. The line
+    /// letter alone can't distinguish them.
+    public var routeID: RouteID
     public var kind: PatternKind
     public var direction: Direction
     public var headsign: String
@@ -89,10 +94,28 @@ public struct RideLeg: Sendable, Hashable {
     /// Number of station-to-station hops.
     public var stopCount: Int { max(0, stationsServed.count - 1) }
 
+    /// What to look for on the platform: the route as the signs write it.
+    ///
+    /// The Owl bus is filed as `B1_OWL`, which is a feed identifier and not
+    /// something painted on anything, so it gets the word riders actually use.
+    public var routeBadge: String {
+        kind == .nightBus ? "OWL" : routeID.rawValue
+    }
+
+    /// "Express toward NRG" — the two things written on the front of the train.
+    ///
+    /// The headsign leads because it is the cue that always works. Compass
+    /// directions only make sense on a line that runs north–south, and this app
+    /// covers trolleys that run east–west and a loop route that runs both.
+    public var platformDescription: String {
+        kind == .local ? "toward \(headsign)" : "\(kind.label) toward \(headsign)"
+    }
+
     public init(
         trip: Trip,
         patternID: PatternID,
         lineID: LineID,
+        routeID: RouteID,
         kind: PatternKind,
         direction: Direction,
         headsign: String,
@@ -105,6 +128,7 @@ public struct RideLeg: Sendable, Hashable {
         self.trip = trip
         self.patternID = patternID
         self.lineID = lineID
+        self.routeID = routeID
         self.kind = kind
         self.direction = direction
         self.headsign = headsign

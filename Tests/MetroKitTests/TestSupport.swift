@@ -35,13 +35,14 @@ enum Fixture {
     /// Seconds after midnight for a `HH:MM` string on the fixture's service day.
     static func sam(_ hour: Int, _ minute: Int) -> Int { hour * 3600 + minute * 60 }
 
-    // Distinct route IDs matter: the planner only considers changing trains at
-    // stations served by more than one route, so a fixture where everything shares
-    // a route would never produce a transfer at all.
+    // Distinct route IDs matter twice over: the planner only considers changing
+    // trains at stations served by more than one route, so a fixture sharing one
+    // route would never produce a transfer — and the route ID is what the card
+    // shows on its badge, the way SEPTA's own map writes B1 and B2.
     static let localSouth = ServicePattern(
         id: "T-local-south",
         lineID: lineID,
-        routeID: "T-local",
+        routeID: "T1",
         kind: .local,
         direction: .southbound,
         headsign: "F",
@@ -52,7 +53,7 @@ enum Fixture {
     static let expressSouth = ServicePattern(
         id: "T-express-south",
         lineID: lineID,
-        routeID: "T-express",
+        routeID: "T2",
         kind: .express,
         direction: .southbound,
         headsign: "F express",
@@ -70,7 +71,7 @@ enum Fixture {
     static let localNorth = ServicePattern(
         id: "T-local-north",
         lineID: lineID,
-        routeID: "T-local",
+        routeID: "T1",
         kind: .local,
         direction: .northbound,
         headsign: "A",

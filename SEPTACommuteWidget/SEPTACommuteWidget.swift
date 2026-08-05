@@ -112,10 +112,17 @@ struct CommuteWidgetView: View {
             if let step = entry.step {
                 badges(step)
                 countdown(step, size: 26)
-                Text(step.title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if let platform = step.platformDescription {
+                    Text(platform)
+                        .font(.caption2.weight(.medium))
+                        .lineLimit(2)
+                }
+                if let board = step.boardName {
+                    Text("from \(board)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 0)
                 Text("arrive \(Format.clock(step.arrival))")
                     .font(.caption2.weight(.medium))
@@ -135,8 +142,13 @@ struct CommuteWidgetView: View {
                 if let step = entry.step {
                     badges(step)
                     countdown(step, size: 30)
-                    Text(step.title)
-                        .font(.caption)
+                    if let platform = step.platformDescription {
+                        Text(platform)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                    }
+                    Text(step.boardName.map { "from \($0) · \(step.title)" } ?? step.title)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 } else {

@@ -46,20 +46,22 @@ struct OptionRow: View {
     }
 
     private var badges: some View {
-        HStack(spacing: -6) {
-            ForEach(lines.prefix(2), id: \.id) { line in
+        HStack(spacing: 3) {
+            // Route numbers, not line letters: whether this option is the B2 express
+            // or the B1 local is the entire difference between the two rows.
+            ForEach(routes.prefix(2), id: \.badge) { route in
                 LineBadge(
-                    text: line.badge,
-                    color: Theme.color(for: line),
-                    textColor: Theme.foreground(on: line),
-                    size: 22
+                    text: route.badge,
+                    color: Theme.color(for: route.line),
+                    textColor: Theme.foreground(on: route.line),
+                    size: 24
                 )
             }
-            if lines.isEmpty {
+            if routes.isEmpty {
                 Image(systemName: "figure.walk")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(width: 22)
+                    .frame(width: 24)
             }
         }
     }
@@ -81,11 +83,15 @@ struct OptionRow: View {
         return parts.joined(separator: " · ")
     }
 
-    private var lines: [Line] {
-        var seen: [Line] = []
-        for ride in journey.rides {
-            guard let line = network.line(ride.lineID) else { continue }
-            if !seen.contains(where: { $0.id == line.id }) { seen.append(line) }
+    private struct Route {
+        var badge: String
+        var line: Line?
+    }
+
+    private var routes: [Route] {
+        var seen: [Route] = []
+        for ride in journey.rides where !seen.contains(where: { $0.badge == ride.routeBadge }) {
+            seen.append(Route(badge: ride.routeBadge, line: network.line(ride.lineID)))
         }
         return seen
     }

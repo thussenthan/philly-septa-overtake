@@ -496,6 +496,7 @@ public struct JourneyPlanner: Sendable {
                 trip: ride.trip,
                 patternID: ride.pattern.id,
                 lineID: ride.pattern.lineID,
+                routeID: ride.pattern.routeID,
                 kind: ride.pattern.kind,
                 direction: ride.pattern.direction,
                 headsign: ride.pattern.headsign,

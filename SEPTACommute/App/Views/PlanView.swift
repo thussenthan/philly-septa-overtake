@@ -25,12 +25,17 @@ struct PlanView: View {
                     answerSection
                     statusRow
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                // Tighter than the usual inset: the answer card is the screen, and
+                // every point of margin is a point it isn't using.
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("SEPTA")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Wordmark(height: 22)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSettings = true

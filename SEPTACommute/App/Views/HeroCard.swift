@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// The answer, and nothing else.
+/// The answer, at full width.
 ///
-/// The home screen exists to settle one question — which train, and how long have
-/// I got — so the best option gets a card with four things on it: the lines, what
-/// to do, when to move, and when you land. Stops, transfers, walking distances and
-/// skipped stations are all a tap away in `JourneyDetailView`; putting them here
-/// would mean reading a paragraph to answer a question that fits in a glance.
+/// Two jobs. First, the decision: how long until you have to move, and when you
+/// land. Second — and this is what a phone can do that a platform sign can't — the
+/// things you then have to *match against the station*: the route number as the map
+/// writes it, the words on the front of the train, which platform to stand on by way
+/// of where it's headed, and where to get off.
+///
+/// `B` is not enough for that. At Erie, B1 and B2 use different tracks and only one
+/// of them stops where you're going, so a card that says "B" leaves the rider doing
+/// the last and most error-prone step themselves.
 struct HeroCard: View {
     var journey: Journey
     var summary: JourneySummary
@@ -17,13 +21,14 @@ struct HeroCard: View {
     var alertLabel: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            badgeRow
-            Text(summary.title)
-                .font(.title3.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 0) {
             timing
+            if !journey.isWalkOnly {
+                Divider().opacity(0.35).padding(.vertical, 14)
+                instructions
+            }
             if alert != nil, let alertLabel {
+                Divider().opacity(0.35).padding(.vertical, 12)
                 alertChip(alertLabel)
             }
             advisory
@@ -31,50 +36,25 @@ struct HeroCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: 22)
                 .fill(.background.secondary)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 22)
+                .strokeBorder(Theme.accent.opacity(0.45), lineWidth: 1.5)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 20))
+        .contentShape(RoundedRectangle(cornerRadius: 22))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
 
-    // MARK: - Pieces
+    // MARK: - The decision
 
-    private var badgeRow: some View {
-        HStack(spacing: 6) {
-            ForEach(lines, id: \.id) { line in
-                LineBadge(
-                    text: line.badge,
-                    color: Theme.color(for: line),
-                    textColor: Theme.foreground(on: line),
-                    size: 24
-                )
-            }
-            if journey.isWalkOnly {
-                Image(systemName: "figure.walk")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    /// The two numbers that decide it: how long until you have to move, and when
-    /// you land. Departure time, total duration, stop counts and walking distances
-    /// are all in the detail view — none of them change the decision.
     private var timing: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             if journey.isWalkOnly {
                 Text("Walk \(Format.minutes(journey.totalDuration))")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
             } else {
                 LeaveCountdown(urgency: journey.urgency)
             }
@@ -87,29 +67,101 @@ struct HeroCard: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
     }
 
+    // MARK: - What to do in the station
+
+    /// One row per thing the rider does, in order. Walks are included when they are
+    /// long enough to matter, because "leave in four minutes" means nothing if you
+    /// don't know you're walking six blocks first.
+    private var instructions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let access = journey.walks.first(where: { $0.purpose == .access }), access.duration >= 60 {
+                walkRow("Walk \(Format.minutes(access.duration)) to \(access.toName)", symbol: "figure.walk")
+            }
+
+            ForEach(Array(journey.rides.enumerated()), id: \.offset) { _, ride in
+                rideRow(ride)
+            }
+
+            if let exit = journey.finalWalk, exit.duration >= 60 {
+                walkRow("Walk \(Format.minutes(exit.duration)) to \(exit.toName)", symbol: "figure.walk")
+            }
+        }
+    }
+
+    private func rideRow(_ ride: RideLeg) -> some View {
+        let line = network.line(ride.lineID)
+        return HStack(alignment: .top, spacing: 11) {
+            // The route as the signs write it — B2, not B.
+            LineBadge(
+                text: ride.routeBadge,
+                color: Theme.color(for: line),
+                textColor: Theme.foreground(on: line),
+                size: 30
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ride.platformDescription)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(stationName(ride.boardStation)) → \(stationName(ride.alightStation)) · \(Format.stops(ride.stopCount))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if ride.kind == .nightBus {
+                    Text("Boards at the curb, not in the station.")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.color(for: Urgency.Level.leaveSoon))
+                }
+            }
+            Spacer(minLength: 0)
+            Text(Format.clock(ride.departure))
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func walkRow(_ text: String, symbol: String) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: symbol)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(width: 30)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Warnings
+
     /// Only ever the run warning — the one thing that changes what to do in the
-    /// next thirty seconds. Everything else the narrator could say lives in the
-    /// detail view.
+    /// next thirty seconds.
     @ViewBuilder
     private var advisory: some View {
         TimelineView(.periodic(from: .now, by: 5)) { context in
             if let advisory = narrator.advisory(for: journey, asOf: context.date) {
                 let tint = advisoryTint(advisory)
-                HStack(spacing: 7) {
-                    Image(systemName: advisorySymbol(advisory))
-                        .font(.caption.weight(.bold))
-                    Text(narrator.advisoryText(advisory))
-                        .font(.caption.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 0) {
+                    if alert == nil {
+                        Divider().opacity(0.35).padding(.vertical, 12)
+                    }
+                    HStack(spacing: 7) {
+                        Image(systemName: advisorySymbol(advisory))
+                            .font(.caption.weight(.bold))
+                        Text(narrator.advisoryText(advisory))
+                            .font(.caption.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(tint)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
-                .foregroundStyle(tint)
             }
         }
     }
@@ -123,16 +175,14 @@ struct HeroCard: View {
                 .font(.caption.weight(.semibold))
             Spacer(minLength: 0)
         }
-        .foregroundStyle(Theme.color(for: .leaveSoon))
+        .foregroundStyle(Theme.color(for: Urgency.Level.leaveSoon))
+        .padding(.bottom, 4)
     }
 
-    private var lines: [Line] {
-        var seen: [Line] = []
-        for ride in journey.rides {
-            guard let line = network.line(ride.lineID) else { continue }
-            if !seen.contains(where: { $0.id == line.id }) { seen.append(line) }
-        }
-        return seen
+    // MARK: - Helpers
+
+    private func stationName(_ id: StationID) -> String {
+        network.station(id)?.name ?? id.rawValue
     }
 
     private func advisorySymbol(_ advisory: Advisory) -> String {
@@ -146,10 +196,10 @@ struct HeroCard: View {
 
     private func advisoryTint(_ advisory: Advisory) -> Color {
         switch advisory {
-        case .run: return Theme.color(for: .leaveNow)
-        case .dontRush: return Theme.color(for: .relaxed)
+        case .run: return Theme.color(for: Urgency.Level.leaveNow)
+        case .dontRush: return Theme.color(for: Urgency.Level.relaxed)
         case .worthCatching: return Theme.accent
-        case .missed: return Theme.color(for: .missed)
+        case .missed: return Theme.color(for: Urgency.Level.missed)
         }
     }
 
@@ -157,10 +207,11 @@ struct HeroCard: View {
         var parts: [String] = [summary.title]
         if !journey.isWalkOnly {
             parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
-            parts.append("train departs \(Format.clock(journey.urgency.boardingDeparture))")
+            for ride in journey.rides {
+                parts.append("\(ride.routeBadge) \(ride.platformDescription) from \(stationName(ride.boardStation)) to \(stationName(ride.alightStation))")
+            }
         }
         parts.append("arrive \(Format.clock(journey.arrivalTime))")
-        parts.append("total \(Format.minutes(journey.totalDuration))")
         if let alertLabel { parts.append(alertLabel) }
         return parts.joined(separator: ", ")
     }
@@ -186,14 +237,14 @@ struct LeaveCountdown: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if remaining <= 30 {
                     Text("Go now")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(tint)
                 } else {
                     Text("Leave in")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                     Text(Format.countdown(remaining))
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(tint)
                         .contentTransition(.numericText(countsDown: true))

@@ -26,9 +26,9 @@ struct OnboardingView: View {
     private var welcome: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 12) {
-                    LineBadge(text: "B", size: 52)
-                    Text("Which train, right now")
+                VStack(alignment: .leading, spacing: 14) {
+                    Wordmark(height: 34)
+                    Text(AppIdentity.tagline)
                         .font(.largeTitle.weight(.bold))
                         .fixedSize(horizontal: false, vertical: true)
                     Text("SEPTA runs local trains, express trains that skip half the stops, trolleys and the Broad-Ridge Spur, often over the same tracks. Which one gets you where you're going fastest changes minute by minute.")

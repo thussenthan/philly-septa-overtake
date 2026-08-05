@@ -76,7 +76,9 @@ final class WidgetPlannerTests: XCTestCase {
         XCTAssertEqual(step.leaveBy, best.urgency.leaveBy)
         XCTAssertEqual(step.arrival, best.arrivalTime)
         XCTAssertEqual(step.title, JourneyNarrator(network: Fixture.network).summary(for: best).title)
-        XCTAssertEqual(step.lines.map(\.badge), ["T"])
+        // The route, not the line: at 08:01 the express wins, and "T2" is what a
+        // rider matches against the platform sign.
+        XCTAssertEqual(step.lines.map(\.badge), ["T2"])
     }
 
     func testTheLimitIsRespected() {

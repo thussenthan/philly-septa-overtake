@@ -179,7 +179,7 @@ struct JourneyDetailView: View {
                     textColor: Theme.foreground(on: network.line(ride.lineID)),
                     size: 22
                 )
-                Text("\(ride.kind.label) toward \(ride.headsign)")
+                Text(ride.platformDescription)
                     .font(.subheadline.weight(.medium))
             }
             Text("\(stationName(ride.boardStation)) → \(stationName(ride.alightStation)) · \(Format.stops(ride.stopCount)) · \(Format.minutes(ride.duration))")
@@ -249,9 +249,8 @@ struct JourneyDetailView: View {
         network.station(id)?.displayName ?? id.rawValue
     }
 
-    private func badgeText(for ride: RideLeg) -> String {
-        network.line(ride.lineID)?.badge ?? ride.lineID.rawValue
-    }
+    /// The route as the map and the platform signs write it: B2, not B.
+    private func badgeText(for ride: RideLeg) -> String { ride.routeBadge }
 
     private func tint(for leg: JourneyLeg) -> Color {
         switch leg {

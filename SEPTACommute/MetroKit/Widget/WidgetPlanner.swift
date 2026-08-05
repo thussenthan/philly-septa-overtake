@@ -1,6 +1,11 @@
 import Foundation
 
-/// A line's badge and colour, resolved for a view that has no `Network`.
+/// A route's badge and its line's colour, resolved for a view that has no `Network`.
+///
+/// The badge is the route — `B2`, not `B` — because that is what the platform sign
+/// says and what distinguishes the train the rider wants from the one on the next
+/// track. The colour still comes from the line, so a B2 is orange like the rest of
+/// the Broad Street Line.
 public struct WidgetLineStyle: Sendable, Hashable {
     public var badge: String
     public var colorHex: String
@@ -23,6 +28,10 @@ public struct WidgetPlanStep: Sendable, Hashable {
     public var lines: [WidgetLineStyle]
     /// "Local now, switch to the express at Girard".
     public var title: String
+    /// "Express toward NRG" for the first train — the words on the front of it.
+    public var platformDescription: String?
+    /// Where to be standing.
+    public var boardName: String?
     /// The last moment the rider can set off. What the countdown counts to.
     public var leaveBy: Date
     public var arrival: Date
@@ -39,6 +48,8 @@ public struct WidgetPlanStep: Sendable, Hashable {
         validFrom: Date,
         lines: [WidgetLineStyle],
         title: String,
+        platformDescription: String? = nil,
+        boardName: String? = nil,
         leaveBy: Date,
         arrival: Date,
         isWalkOnly: Bool,
@@ -48,6 +59,8 @@ public struct WidgetPlanStep: Sendable, Hashable {
         self.validFrom = validFrom
         self.lines = lines
         self.title = title
+        self.platformDescription = platformDescription
+        self.boardName = boardName
         self.leaveBy = leaveBy
         self.arrival = arrival
         self.isWalkOnly = isWalkOnly
@@ -117,10 +130,9 @@ public enum WidgetPlanner {
         network: Network
     ) -> WidgetPlanStep {
         var lines: [WidgetLineStyle] = []
-        for ride in journey.rides {
-            guard let line = network.line(ride.lineID) else { continue }
-            guard !lines.contains(where: { $0.badge == line.badge }) else { continue }
-            lines.append(WidgetLineStyle(badge: line.badge, colorHex: line.colorHex))
+        for ride in journey.rides where !lines.contains(where: { $0.badge == ride.routeBadge }) {
+            let colorHex = network.line(ride.lineID)?.colorHex ?? "6B7280"
+            lines.append(WidgetLineStyle(badge: ride.routeBadge, colorHex: colorHex))
         }
 
         let runnerUp = plan.journeys.dropFirst().first
@@ -133,6 +145,8 @@ public enum WidgetPlanner {
             validFrom: instant,
             lines: lines,
             title: narrator.summary(for: journey).title,
+            platformDescription: journey.rides.first?.platformDescription,
+            boardName: journey.rides.first.map { network.station($0.boardStation)?.name ?? $0.boardStation.rawValue },
             leaveBy: journey.urgency.leaveBy,
             arrival: journey.arrivalTime,
             isWalkOnly: journey.isWalkOnly,

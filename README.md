@@ -1,7 +1,10 @@
-# SEPTA Commute
+# Overtake
 
 An iOS app that answers one question about SEPTA: **do I board the train that's
 about to leave, or wait for the faster one?**
+
+It's named after the manoeuvre that makes the question interesting — get on the
+local now, ride a few stops, and let the express catch you up.
 
 SEPTA runs several services over the same tracks. The Broad Street Line alone has
 the B1 local, the B2 express that skips fourteen of its twenty-two stations, and
@@ -46,28 +49,41 @@ The home screen is deliberately the smallest thing that answers the question:
 
 ```
  Erie  →  Home
- ┌──────────────────────────────────┐
- │ (B)                              │
- │ Local now, switch to the express │
- │ at Girard                        │
- │ Leave in 4:12          5:42      │
- │                        arrive    │
- │ Go now — miss this and you       │
- │ lose 11 min                      │
- └──────────────────────────────────┘
- (B)  Straight through on the B
+ ┌────────────────────────────────────────┐
+ │ Leave in 4:12                   5:42   │
+ │                                 arrive │
+ │ ────────────────────────────────────── │
+ │ (B1) toward NRG                  8:21  │
+ │      Erie → Girard · 3 stops           │
+ │ (B2) Express toward NRG          8:29  │
+ │      Girard → Walnut-Locust · 7 stops  │
+ │ ────────────────────────────────────── │
+ │ Go now — miss this and you lose 11 min │
+ └────────────────────────────────────────┘
+ (B1) Straight through on the B
       +6 min arrival · leave in 12 min
- (B)(L) B to City Hall, change to the L
+ (B1)(L1) B to City Hall, change to the L
       +9 min arrival · leave in 15 min
- All 5 options                        ›
- Delays on the B · 1 note             ›
+ All 5 options                          ›
+ Delays on the B · 1 note               ›
 ```
 
-Everything on it is a tap: the two ends open their pickers, the card and the rows
-open the step-by-step itinerary, and the bottom row opens SEPTA's alert text, the
-planner's caveats and where the timetable came from. Stop counts, walking
-distances, skipped stations and total trip time are all real information and all
-reasons to read instead of decide, so none of them are on the first screen.
+The recommendation gets the full width, and it carries the things you then have to
+match against the station: **the route as the map writes it, not the line letter.**
+At Erie the B1 and the B2 use different tracks and only one of them stops where
+you're going, so a card saying "B" hands the last and most error-prone step back to
+the rider. Under it, the words on the front of the train (`toward NRG` — the cue
+that always works, since compass directions are meaningless on a trolley running
+east–west), which stops to ride, and where to get off.
+
+Everything else is a tap: the two ends open their pickers, the card and the rows
+open the full itinerary with clock times and skipped stations, and the bottom row
+opens SEPTA's alert text, the planner's caveats and where the timetable came from.
+
+The name is drawn rather than typeset — each letter is a set of coloured lines with
+white stops, in SEPTA's own palette, so the wordmark reads as a piece of the network
+diagram. `Wordmark.swift` carries a complete A–Z, so renaming the app is a one-line
+change to `AppIdentity.name`.
 
 ## Getting started
 
@@ -252,6 +268,9 @@ stub — turn measured walks off in Settings and everything still works with no 
   and terminating at Walnut-Locust, the Spur serving Fairmount but not City Hall,
   Saturday having no express, 2:30 AM routing onto the Owl bus.
 - **Regressions**: no pointless backtracking, no duplicate itineraries.
+- **What the rider is told to look for**: every route in the bundled data produces
+  a badge that appears somewhere in a station (`B2`, and `OWL` rather than the feed's
+  `B1_OWL`), and every ride names the terminus written on the front of the train.
 - **Alert decoding**, against a fixture copied from a live response with its
   inconsistencies intact — `isadvisory` really is `"Yes"`/`"No"` while every
   neighbouring flag is `"Y"`/`"N"`, and the subway lines really are filed under
