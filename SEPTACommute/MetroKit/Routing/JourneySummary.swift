@@ -88,10 +88,11 @@ public struct JourneyNarrator: Sendable {
         network.station(id)?.name ?? id.rawValue
     }
 
-    /// The letter a rider sees on the map and the station signs.
-    private func badge(_ id: LineID) -> String {
-        network.line(id)?.badge ?? id.rawValue
-    }
+    /// The route a rider sees on the map and the station signs.
+    ///
+    /// The route, never the line letter: "the B" is three different trains at Erie,
+    /// two of which don't stop where you're going.
+    private func badge(_ ride: RideLeg) -> String { ride.routeBadge }
 
     // MARK: - Strategy
 
@@ -134,7 +135,7 @@ public struct JourneyNarrator: Sendable {
         case .walk:
             return "Walk the whole way"
         case .direct(let kind):
-            let line = journey.rides.first.map { badge($0.lineID) }
+            let line = journey.rides.first.map { badge($0) }
             switch kind {
             case .express: return "Express, straight through"
             case .spur: return "Broad-Ridge Spur"
@@ -156,10 +157,13 @@ public struct JourneyNarrator: Sendable {
         case .connect(let first, let second, let at):
             // Changing between lines is the useful thing to say; changing stopping
             // pattern within one line is the fallback.
-            if let from = journey.rides.first?.lineID,
-               let to = journey.rides.dropFirst().first?.lineID,
-               from != to {
-                return "\(badge(from)) to \(name(at)), change to the \(badge(to))"
+            if let from = journey.rides.first,
+               let to = journey.rides.dropFirst().first,
+               from.routeID != to.routeID {
+                // Naming both routes is the point — and the second one's stopping
+                // pattern too, when it is what makes the change worth making.
+                let onward = to.kind == .local ? badge(to) : "\(badge(to)) \(to.kind.label.lowercased())"
+                return "\(badge(from)) to \(name(at)), change to the \(onward)"
             }
             return "\(first.label) to \(name(at)), change to the \(second.label.lowercased())"
         case .multiLeg(let count):

@@ -53,10 +53,10 @@ The home screen is deliberately the smallest thing that answers the question:
  │ Leave in 4:12                   5:42   │
  │                                 arrive │
  │ ────────────────────────────────────── │
- │ (B1) toward NRG                  8:21  │
- │      Erie → Girard · 3 stops           │
- │ (B2) Express toward NRG          8:29  │
- │      Girard → Walnut-Locust · 7 stops  │
+ │ (B1) Southbound                  8:21  │
+ │      toward NRG · off at Girard        │
+ │ (B2) Southbound · Express        8:29  │
+ │      off at Walnut-Locust              │
  │ ────────────────────────────────────── │
  │ Go now — miss this and you lose 11 min │
  └────────────────────────────────────────┘
@@ -72,9 +72,21 @@ The recommendation gets the full width, and it carries the things you then have 
 match against the station: **the route as the map writes it, not the line letter.**
 At Erie the B1 and the B2 use different tracks and only one of them stops where
 you're going, so a card saying "B" hands the last and most error-prone step back to
-the rider. Under it, the words on the front of the train (`toward NRG` — the cue
-that always works, since compass directions are meaningless on a trolley running
-east–west), which stops to ride, and where to get off.
+the rider. With it, the direction the signs use, the stopping pattern when that's the
+point, the terminus painted on the train, and where to get off.
+
+Each row carries only what the row above doesn't. The boarding station is the "from"
+already at the top of the screen, or the station the previous row just put you off
+at; the headsign is dropped when it repeats; and there are no stop counts, because
+you get off at a named station rather than by counting.
+
+**Directions are measured, not stored.** SEPTA calls the Broad Street Line
+northbound and southbound and the Market-Frankford Line eastbound and westbound, so
+the axis comes from the line's full extent and only the sense comes from the ride.
+Taking it from the ride alone gets Philadelphia wrong: Frankford is 7.8 km north of
+City Hall and only 7.4 km east of it, so a trip up the L measures as *northbound*
+while every sign in the station says eastbound. A loop route that returns you near
+where you started is given no direction at all rather than a made-up one.
 
 Everything else is a tap: the two ends open their pickers, the card and the rows
 open the full itinerary with clock times and skipped stations, and the bottom row
@@ -270,7 +282,10 @@ stub — turn measured walks off in Settings and everything still works with no 
 - **Regressions**: no pointless backtracking, no duplicate itineraries.
 - **What the rider is told to look for**: every route in the bundled data produces
   a badge that appears somewhere in a station (`B2`, and `OWL` rather than the feed's
-  `B1_OWL`), and every ride names the terminus written on the front of the train.
+  `B1_OWL`); Broad St trips read southbound and northbound while Market-Frankford
+  trips read eastbound and westbound, including the City Hall → Frankford ride that
+  is literally more north than east; and a ride with no net movement is given no
+  direction rather than a fabricated one.
 - **Alert decoding**, against a fixture copied from a live response with its
   inconsistencies intact — `isadvisory` really is `"Yes"`/`"No"` while every
   neighbouring flag is `"Y"`/`"N"`, and the subway lines really are filed under

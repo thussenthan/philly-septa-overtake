@@ -84,8 +84,11 @@ struct HeroCard: View {
                 walkRow("Walk \(Format.minutes(access.duration)) to \(access.toName)", symbol: "figure.walk")
             }
 
-            ForEach(Array(journey.rides.enumerated()), id: \.offset) { _, ride in
-                rideRow(ride)
+            ForEach(Array(journey.rides.enumerated()), id: \.offset) { index, ride in
+                rideRow(
+                    ride,
+                    repeatsHeadsign: index > 0 && journey.rides[index - 1].headsign == ride.headsign
+                )
             }
 
             if let exit = journey.finalWalk, exit.duration >= 60 {
@@ -94,7 +97,15 @@ struct HeroCard: View {
         }
     }
 
-    private func rideRow(_ ride: RideLeg) -> some View {
+    /// Everything needed to get on the right train and off at the right stop, and
+    /// nothing else.
+    ///
+    /// The boarding station is left out on purpose: for the first train it is the
+    /// "from" already at the top of the screen, and for a change it is where the
+    /// previous row just put you. The headsign is left out when it repeats the row
+    /// above, which it does for every same-corridor change. Stop counts are gone —
+    /// you get off at a named station, not after counting.
+    private func rideRow(_ ride: RideLeg, repeatsHeadsign: Bool) -> some View {
         let line = network.line(ride.lineID)
         return HStack(alignment: .top, spacing: 11) {
             // The route as the signs write it — B2, not B.
@@ -105,10 +116,10 @@ struct HeroCard: View {
                 size: 30
             )
             VStack(alignment: .leading, spacing: 2) {
-                Text(ride.platformDescription)
+                Text(ride.platformHeadline)
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(stationName(ride.boardStation)) → \(stationName(ride.alightStation)) · \(Format.stops(ride.stopCount))")
+                Text(detail(for: ride, repeatsHeadsign: repeatsHeadsign))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -124,6 +135,12 @@ struct HeroCard: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func detail(for ride: RideLeg, repeatsHeadsign: Bool) -> String {
+        let off = "off at \(stationName(ride.alightStation))"
+        guard !repeatsHeadsign, !ride.platformHeadline.hasPrefix("toward") else { return off }
+        return "\(ride.headsignPhrase) · \(off)"
     }
 
     private func walkRow(_ text: String, symbol: String) -> some View {

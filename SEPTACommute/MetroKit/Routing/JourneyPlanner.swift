@@ -267,6 +267,19 @@ public struct JourneyPlanner: Sendable {
         )
     }
 
+    /// Which way a ride travels, in the words its line uses.
+    ///
+    /// The axis comes from the pattern end to end, so the Market-Frankford Line is
+    /// east–west and the Broad Street Line is north–south the way SEPTA's own signs
+    /// have it; the sense comes from the two stations the rider is actually between.
+    private func compass(on pattern: ServicePattern, from board: StationID, to alight: StationID) -> CompassDirection? {
+        guard let start = pattern.stops.first.flatMap({ network.station($0.station)?.coordinate }),
+              let end = pattern.stops.last.flatMap({ network.station($0.station)?.coordinate }),
+              let from = network.station(board)?.coordinate,
+              let to = network.station(alight)?.coordinate else { return nil }
+        return CompassDirection(travelling: from, to: to, along: TransitAxis(from: start, to: end))
+    }
+
     // MARK: - Walk-only option
 
     private func directWalk(request: PlanRequest) -> Journey? {
@@ -499,6 +512,7 @@ public struct JourneyPlanner: Sendable {
                 routeID: ride.pattern.routeID,
                 kind: ride.pattern.kind,
                 direction: ride.pattern.direction,
+                compass: compass(on: ride.pattern, from: ride.board, to: ride.alight),
                 headsign: ride.pattern.headsign,
                 boardStation: ride.board,
                 alightStation: ride.alight,

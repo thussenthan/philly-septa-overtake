@@ -82,6 +82,9 @@ public struct RideLeg: Sendable, Hashable {
     public var routeID: RouteID
     public var kind: PatternKind
     public var direction: Direction
+    /// Which way this ride actually travels, measured from the two stations. What
+    /// the station entrance and the platform sign say.
+    public var compass: CompassDirection?
     public var headsign: String
     public var boardStation: StationID
     public var alightStation: StationID
@@ -102,13 +105,24 @@ public struct RideLeg: Sendable, Hashable {
         kind == .nightBus ? "OWL" : routeID.rawValue
     }
 
-    /// "Express toward NRG" — the two things written on the front of the train.
+    /// "Southbound · Express" — how a rider picks the right platform, then the
+    /// right train on it.
     ///
-    /// The headsign leads because it is the cue that always works. Compass
-    /// directions only make sense on a line that runs north–south, and this app
-    /// covers trolleys that run east–west and a loop route that runs both.
+    /// The stopping pattern is only named when it is the point: every ordinary train
+    /// is a local, so saying so on all of them buries the one word that matters.
+    public var platformHeadline: String {
+        let parts = [compass?.label, kind == .local ? nil : kind.label].compactMap { $0 }
+        return parts.isEmpty ? "toward \(headsign)" : parts.joined(separator: " · ")
+    }
+
+    /// The terminus painted on the front of the train.
+    public var headsignPhrase: String { "toward \(headsign)" }
+
+    /// Both cues in one line, for the widget and for VoiceOver.
     public var platformDescription: String {
-        kind == .local ? "toward \(headsign)" : "\(kind.label) toward \(headsign)"
+        platformHeadline.hasPrefix("toward")
+            ? platformHeadline
+            : "\(platformHeadline) · \(headsignPhrase)"
     }
 
     public init(
@@ -118,6 +132,7 @@ public struct RideLeg: Sendable, Hashable {
         routeID: RouteID,
         kind: PatternKind,
         direction: Direction,
+        compass: CompassDirection? = nil,
         headsign: String,
         boardStation: StationID,
         alightStation: StationID,
@@ -131,6 +146,7 @@ public struct RideLeg: Sendable, Hashable {
         self.routeID = routeID
         self.kind = kind
         self.direction = direction
+        self.compass = compass
         self.headsign = headsign
         self.boardStation = boardStation
         self.alightStation = alightStation
