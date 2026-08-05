@@ -2,6 +2,15 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+// The engine reaches this target one of two ways, depending on how the project is
+// wired: as compiled-in sources (the MetroKit folder added to this target's
+// membership), in which case there is no module to import — or as the local
+// `MetroKit` package product, in which case there is. `canImport` covers both, so
+// the choice is a project setting rather than an edit to this file.
+#if canImport(MetroKit)
+import MetroKit
+#endif
+
 /// The home-screen and lock-screen widget: when to leave, and when you land.
 ///
 /// It plans from the bundled timetable, in the extension, for the moment it is being
