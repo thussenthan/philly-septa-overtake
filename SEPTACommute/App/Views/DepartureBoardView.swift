@@ -38,58 +38,83 @@ struct DepartureBoardView: View {
     }
 
     private func row(_ departure: BoardDeparture) -> some View {
-        let line = model.network.line(departure.lineID)
         let recommended = model.isRecommended(departure)
         return HStack(spacing: 10) {
-            LineBadge(
-                text: departure.routeBadge,
-                color: Theme.color(for: line),
-                textColor: Theme.foreground(on: line),
-                size: 26
-            )
-            VStack(alignment: .leading, spacing: 1) {
-                Text(departure.platformHeadline)
-                    .font(.caption.weight(recommended ? .semibold : .regular))
-                    .lineLimit(1)
-                Text(stationName(departure.alightStation))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
+            badge(for: departure)
+            service(departure, recommended: recommended)
             Spacer(minLength: 4)
-
-            // The countdown is the number a rider is actually reading, so it ticks.
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let remaining = departure.departure.timeIntervalSince(context.date)
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(remaining <= 0 ? "gone" : Format.countdown(remaining))
-                        .font(.caption.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(remaining <= 0 ? .tertiary : (recommended ? Theme.accent : .primary))
-                    Text(Format.clock(departure.departure))
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Text(Format.clock(departure.arrival))
-                .font(.caption.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(recommended ? .primary : .secondary)
-                .frame(width: 62, alignment: .trailing)
+            countdown(departure, recommended: recommended)
+            arrival(departure, recommended: recommended)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(
-            recommended ? Theme.accent.opacity(0.12) : Color.clear
-        )
+        .background(recommended ? Theme.accent.opacity(0.12) : Color.clear)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(departure.routeBadge) \(departure.platformHeadline), leaves "
-                + "\(Format.clock(departure.departure)), reaches "
-                + "\(stationName(departure.alightStation)) at \(Format.clock(departure.arrival))"
-                + (recommended ? ", recommended" : "")
+        .accessibilityLabel(spokenLabel(for: departure, recommended: recommended))
+    }
+
+    private func badge(for departure: BoardDeparture) -> some View {
+        let line = model.network.line(departure.lineID)
+        return LineBadge(
+            text: departure.routeBadge,
+            color: Theme.color(for: line),
+            textColor: Theme.foreground(on: line),
+            size: 26
         )
+    }
+
+    private func service(_ departure: BoardDeparture, recommended: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(departure.platformHeadline)
+                .font(.caption.weight(recommended ? .semibold : .regular))
+                .lineLimit(1)
+            Text(stationName(departure.alightStation))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+    }
+
+    /// The number a rider is actually reading, so it ticks.
+    private func countdown(_ departure: BoardDeparture, recommended: Bool) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = departure.departure.timeIntervalSince(context.date)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(remaining <= 0 ? "gone" : Format.countdown(remaining))
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(countdownColor(remaining: remaining, recommended: recommended))
+                Text(Format.clock(departure.departure))
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func arrival(_ departure: BoardDeparture, recommended: Bool) -> some View {
+        Text(Format.clock(departure.arrival))
+            .font(.caption.weight(.medium))
+            .monospacedDigit()
+            .foregroundStyle(recommended ? Color.primary : Color.secondary)
+            .frame(width: 62, alignment: .trailing)
+    }
+
+    /// Built with statements rather than one interpolated expression: concatenating
+    /// four interpolations and a ternary is enough to time the type checker out.
+    private func spokenLabel(for departure: BoardDeparture, recommended: Bool) -> String {
+        var parts: [String] = [departure.routeBadge, departure.platformHeadline]
+        parts.append("leaves \(Format.clock(departure.departure))")
+        parts.append("reaches \(stationName(departure.alightStation)) at \(Format.clock(departure.arrival))")
+        if recommended { parts.append("recommended") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Three-way choice pulled out of the view body — `.tertiary` and `.primary` are
+    /// a different type from `Theme.accent`, so inline it needs coercing anyway.
+    private func countdownColor(remaining: TimeInterval, recommended: Bool) -> Color {
+        if remaining <= 0 { return .secondary }
+        return recommended ? Theme.accent : .primary
     }
 
     private func stationName(_ id: StationID) -> String {
