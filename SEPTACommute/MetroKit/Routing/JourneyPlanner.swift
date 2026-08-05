@@ -568,13 +568,62 @@ public struct JourneyPlanner: Sendable {
             return otherFirst.departure > firstRide.departure
         }
 
-        guard let fallback = alternatives.min(by: { $0.arrivalTime < $1.arrivalTime }) else { return nil }
-        let penalty = fallback.arrivalTime.timeIntervalSince(journey.arrivalTime)
-        guard penalty > 0 else { return nil }
+        var priced: [MissedTrainCost] = []
 
+        if let fallback = alternatives.min(by: { $0.arrivalTime < $1.arrivalTime }) {
+            let penalty = fallback.arrivalTime.timeIntervalSince(journey.arrivalTime)
+            if penalty > 0 {
+                priced.append(MissedTrainCost(
+                    fallbackArrival: fallback.arrivalTime,
+                    fallbackBoarding: fallback.rides.first?.departure,
+                    penalty: penalty
+                ))
+            }
+        }
+        if let sameTrain = nextTrainOnTheSamePattern(after: journey) {
+            priced.append(sameTrain)
+        }
+
+        // Whichever fallback is actually better, because that is the one the rider
+        // would take.
+        return priced.min(by: { $0.penalty < $1.penalty })
+    }
+
+    /// The next departure of the same pattern, priced.
+    ///
+    /// This has to be computed rather than found among the candidates, because the
+    /// search deliberately takes only the *next* trip of each pattern — a list of
+    /// options should not contain the same itinerary twice twenty minutes apart. But
+    /// it is the most natural fallback there is ("I'll get the next one"), and
+    /// without it a line running a single stopping pattern has no priced fallback at
+    /// all, so the run/don't-run advice can never fire on it. On the Broad Street Line
+    /// the express and the Spur hide the gap; on the Norristown line nothing does.
+    ///
+    /// Restricted to single-ride journeys, where the penalty is exact: the rest of
+    /// the trip is the same walk to the same door, so arriving `n` minutes later on
+    /// the same train is `n` minutes later at the destination. With a change of train
+    /// it would only be a lower bound, since the later train may miss the connection
+    /// entirely — and a lower bound presented as a cost would understate the risk of
+    /// the thing this warning exists to prevent.
+    private func nextTrainOnTheSamePattern(after journey: Journey) -> MissedTrainCost? {
+        guard journey.rides.count == 1,
+              let ride = journey.rides.first,
+              let pattern = network.pattern(ride.patternID) else { return nil }
+
+        guard let next = timetable.nextTrip(
+            of: pattern,
+            departingFrom: ride.boardStation,
+            atOrAfter: ride.departure.addingTimeInterval(1),
+            within: options.searchHorizon
+        ),
+        let departure = timetable.departure(of: next, at: ride.boardStation),
+        let arrival = timetable.arrival(of: next, at: ride.alightStation) else { return nil }
+
+        let penalty = arrival.timeIntervalSince(ride.arrival)
+        guard penalty > 0 else { return nil }
         return MissedTrainCost(
-            fallbackArrival: fallback.arrivalTime,
-            fallbackBoarding: fallback.rides.first?.departure,
+            fallbackArrival: journey.arrivalTime.addingTimeInterval(penalty),
+            fallbackBoarding: departure,
             penalty: penalty
         )
     }

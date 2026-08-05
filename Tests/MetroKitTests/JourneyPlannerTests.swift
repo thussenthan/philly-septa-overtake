@@ -206,6 +206,11 @@ final class JourneyPlannerTests: XCTestCase {
     /// wrong with the test this replaces — it asserted only that *if* a run warning
     /// appeared its penalty was large, which passes whether or not the branch it was
     /// named after ever runs.
+    ///
+    /// One pattern, deliberately. Writing it that way is what exposed the planner
+    /// pricing every fallback against a *different* pattern and never against the next
+    /// train on the same one, which left the whole advisory dead on any line running a
+    /// single stopping pattern.
     private func metronome(headway: Int) -> (planner: JourneyPlanner, now: Date) {
         let stations = [
             Station(id: "p", name: "P", intersection: "P St",
@@ -249,6 +254,10 @@ final class JourneyPlannerTests: XCTestCase {
         let plan = planner.plan(PlanRequest(origin: .station("p"), destination: .station("q"), departAt: now))
         let best = try XCTUnwrap(plan.best)
         XCTAssertEqual(best.urgency.secondsUntilLeaveBy(asOf: now), 60, accuracy: 1, "precondition: tight")
+
+        // The fallback is the next train on this same pattern — the only one there is.
+        let cost = try XCTUnwrap(best.missedCost, "a single-pattern line still has a fallback")
+        XCTAssertEqual(cost.fallbackBoarding, Fixture.date(8, 2))
 
         let narrator = JourneyNarrator(network: planner.network)
         let advisory = try XCTUnwrap(narrator.advisory(for: best, asOf: now), "expected an advisory")
