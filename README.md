@@ -71,6 +71,13 @@ The home screen is deliberately the smallest thing that answers the question:
  (B1)(L1) B to City Hall, change to the L
       +9 min arrival · leave in 15 min
  All 5 options                          ›
+ LEAVING ERIE                    arrive
+ (B2) Southbound · Express  4:07  8:29  │ ← the one recommended
+      Walnut-Locust         8:04        │
+ (B1) Southbound            9:12  8:41
+      Walnut-Locust         8:09
+ (B3) Southbound · Spur    14:40  8:52
+      8th-Market            8:14
  Delays on the B · 1 note               ›
 ```
 
@@ -100,6 +107,18 @@ wrong twice over: it calls the Media-Sharon Hill routes east–west when SEPTA c
 them northbound and southbound, and `direction_id` 0 means southbound on route 59 but
 northbound on route 66. There is a test asserting the published words for all sixteen
 routes, and another asserting that D1's own geometry contradicts them.
+
+Below it is the platform sign: every train leaving that station soon that can
+actually get you where you're going, in departure order, with a live countdown and the
+time it lands. It answers the question a rider asks *after* the recommendation —
+what else is coming, and what does waiting cost me — and it is deliberately
+**unfiltered**. The planner hides an option another beats outright, which is right for
+a recommendation and wrong for a board: the slow train you're going to take anyway
+because it's pulling in belongs on it. There's a test asserting the board keeps a train
+the planner correctly drops.
+
+It's also the honest way to use a screen with room to spare, which stretching the
+recommendation into a taller box was not.
 
 Everything else is a tap: the two ends open their pickers, the card and the rows
 open the full itinerary with clock times and skipped stations, and the bottom row

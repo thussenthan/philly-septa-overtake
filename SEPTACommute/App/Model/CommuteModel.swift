@@ -103,6 +103,9 @@ final class CommuteModel: ObservableObject {
 
     @Published private(set) var plan: Plan?
     @Published private(set) var advice: String?
+    /// Every train from the recommended boarding station that can get the rider
+    /// there, in departure order — the platform sign this app is standing in for.
+    @Published private(set) var departures: [BoardDeparture] = []
     /// Set when the rider is standing in (or right next to) a station.
     @Published private(set) var currentStation: Station?
     @Published private(set) var lastPlannedAt: Date?
@@ -358,6 +361,7 @@ final class CommuteModel: ObservableObject {
         guard let origin = resolvedOrigin, let destination = resolvedTarget else {
             planTask?.cancel()
             plan = nil
+            departures = []
             advice = nil
             return
         }
@@ -418,10 +422,28 @@ final class CommuteModel: ObservableObject {
 
             guard !Task.isCancelled, let self else { return }
             self.plan = result
+            self.departures = board(for: result, asOf: request.departAt, options: options)
             self.advice = narrator.advice(for: result, asOf: request.departAt)
             self.lastPlannedAt = request.departAt
             self.publishSnapshot(for: request)
         }
+    }
+
+    /// The board for the recommended boarding station.
+    ///
+    /// Built from the plan rather than independently, so it lists trains from the
+    /// station the app is actually sending the rider to, towards the stations the
+    /// plan found usable at the far end. Anything else would be a board for a
+    /// different trip.
+    private func board(for plan: Plan, asOf now: Date, options: PlannerOptions) -> [BoardDeparture] {
+        guard let origin = plan.best?.boardStation else { return [] }
+        // Where the *first* train ends, not where the trip does: on an itinerary with
+        // a change, the useful board is trains towards the interchange. Each row names
+        // the station it arrives at, so there is nothing to misread.
+        let destinations = Set(plan.journeys.compactMap { $0.rides.first?.alightStation })
+        guard !destinations.isEmpty else { return [] }
+        return JourneyPlanner(network: network, options: options)
+            .departureBoard(from: origin, to: destinations, after: now, limit: 8)
     }
 
     /// Hand the widget the trip, not the answer.
@@ -494,6 +516,17 @@ final class CommuteModel: ObservableObject {
                 }
                 return lhs.line.badge < rhs.line.badge
             }
+    }
+
+    /// The station the board is for, named.
+    var boardStationName: String? {
+        plan?.best?.boardStation.map { network.station($0)?.name ?? $0.rawValue }
+    }
+
+    /// True for the train the recommendation actually puts the rider on, so the board
+    /// can mark it rather than making them match times by eye.
+    func isRecommended(_ departure: BoardDeparture) -> Bool {
+        plan?.best?.rides.first?.trip.id == departure.trip.id
     }
 
     // MARK: - Service alerts

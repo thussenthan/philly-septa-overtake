@@ -27,9 +27,6 @@ struct HeroCard: View {
                 Divider().opacity(0.35).padding(.vertical, 14)
                 instructions
             }
-            // Whatever the screen has spare after the itinerary, which on a short
-            // ride is little — the stop strip is doing the filling now.
-            Spacer(minLength: 0)
             if alert != nil, let alertLabel {
                 Divider().opacity(0.35).padding(.vertical, 12)
                 alertChip(alertLabel)

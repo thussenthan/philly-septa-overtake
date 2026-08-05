@@ -190,11 +190,11 @@ struct PlanView: View {
                         alert: model.alert(for: best),
                         alertLabel: model.alert(for: best).map { model.alertChipText($0) }
                     )
-                    .frame(maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
 
                 alternatives(in: plan, best: best)
+                DepartureBoardView()
             }
         } else if model.plan != nil {
             MessageCard(
