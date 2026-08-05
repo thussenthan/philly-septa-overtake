@@ -61,25 +61,35 @@ public struct JourneyFare: Sendable, Hashable {
 public extension Journey {
     /// What this journey costs. `nil` for a walk — there is nothing to pay.
     func fare(_ rules: FareRules) -> JourneyFare? {
-        guard rules.isKnown, !rides.isEmpty else { return nil }
-        let boardings = rides.count
-        let transfers = boardings - 1
+        guard rules.isKnown, let first = rides.first else { return nil }
 
-        // The window runs from the first fare validation to the last, which for a
-        // rider tapping as they board is first departure to last departure.
-        let spread = (rides.last?.departure ?? Date()).timeIntervalSince(rides.first?.departure ?? Date())
-        let covered = transfers <= rules.includedTransfers
-            && (rules.transferWindow <= 0 || spread <= rules.transferWindow)
+        // Walked boarding by boarding rather than computed from the count, because
+        // there are two independent limits and either can bite: the number of free
+        // transfers, and how long they stay valid. A journey with one change is
+        // covered — unless the second train leaves more than two hours after the
+        // first, at which point the rider taps a new fare and its own allowance
+        // starts over.
+        var fares = 1
+        var validFrom = first.departure
+        var transfersUsed = 0
 
-        // Beyond the allowance the rider starts a second fare, and its own transfers
-        // are covered in turn.
-        let faresNeeded = covered ? 1 : Int(ceil(Double(boardings) / Double(max(1, rules.includedTransfers + 1))))
+        for ride in rides.dropFirst() {
+            let withinWindow = rules.transferWindow <= 0
+                || ride.departure.timeIntervalSince(validFrom) <= rules.transferWindow
+            if transfersUsed < rules.includedTransfers, withinWindow {
+                transfersUsed += 1
+            } else {
+                fares += 1
+                validFrom = ride.departure
+                transfersUsed = 0
+            }
+        }
 
         return JourneyFare(
-            boardings: boardings,
-            withFreeTransfers: rules.amount * Double(faresNeeded),
-            perBoarding: rules.amount * Double(boardings),
-            transfersAreCovered: covered,
+            boardings: rides.count,
+            withFreeTransfers: rules.amount * Double(fares),
+            perBoarding: rules.amount * Double(rides.count),
+            transfersAreCovered: fares == 1,
             currency: rules.currency
         )
     }
