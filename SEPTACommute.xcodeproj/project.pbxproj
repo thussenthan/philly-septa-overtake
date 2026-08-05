@@ -54,9 +54,9 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		6BB57C763022442C00538C5F /* SEPTACommuteWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = SEPTACommuteWidget; sourceTree = "<group>"; };
 		6BB57C9330224CF400538C5F /* SEPTACommuteWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (6BB57CA030224CF400538C5F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SEPTACommuteWidget; sourceTree = "<group>"; };
 		AA0000000000000000000010 /* SEPTACommute */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = SEPTACommute; sourceTree = "<group>"; };
+		AA0000000000000000000070 /* MetroKit (widget) */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = SEPTACommute/MetroKit; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,8 +92,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000010 /* SEPTACommute */,
-				6BB57C763022442C00538C5F /* SEPTACommuteWidget */,
 				6BB57C9330224CF400538C5F /* SEPTACommuteWidget */,
+				AA0000000000000000000070 /* MetroKit (widget) */,
 				6BB57C713022442C00538C5F /* Frameworks */,
 				AA0000000000000000000001 /* Products */,
 			);
@@ -125,6 +125,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				6BB57C9330224CF400538C5F /* SEPTACommuteWidget */,
+				AA0000000000000000000070 /* MetroKit (widget) */,
 			);
 			name = SEPTACommuteWidgetExtension;
 			packageProductDependencies = (
@@ -431,7 +432,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find the nearest Broad Street Line station and work out how long the walk takes. It stays on your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find the nearest SEPTA station and work out how long the walk takes. It stays on your device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -461,7 +462,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find the nearest Broad Street Line station and work out how long the walk takes. It stays on your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find the nearest SEPTA station and work out how long the walk takes. It stays on your device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
