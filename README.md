@@ -168,6 +168,8 @@ The feed is two zips, 39 files. What earns its place, and what doesn't:
 | `calendar.txt` | which days each service runs |
 | `directions.txt` | northbound/southbound/eastbound/westbound, per route |
 | `feed_info.txt` | version and the validity window the app warns you about |
+| `calendar_dates.txt` | service exceptions, which SEPTA hangs on nearly every date |
+| `fare_*.txt`, `rider_categories.txt` | the fare, and whether a change of train is included |
 
 Three columns are load-bearing and easy to miss:
 
@@ -183,6 +185,32 @@ Three columns are load-bearing and easy to miss:
 - **`route_sort_order`.** L, B, trolleys, Girard, Media-Sharon Hill, Norristown, then
   the trackless trolleys. Sorting by badge put route 59 at the top of the network.
 
+**Fares.** SEPTA fills in GTFS-Fares v2 properly, so the app reads rather than
+hardcodes: $2.90 adult full fare, and `fare_transfer_rules` rows carrying *no*
+`fare_product_id` — which under transfer type 0 means the transfer adds nothing.
+Free, within two hours, up to two of them, on SEPTA Key and contactless. Cash and
+Quick Trip have no such rule, so with those every boarding is a new fare. That's the
+one fare fact on this network that can change which option a rider picks, so it
+appears on the card *only* on itineraries with a change — "$2.90 — the change is free
+with SEPTA Key, $5.80 paying twice" — and the full rules are on the Service & data
+screen. Single-ride trips don't mention money at all.
+
+**Is the seven-day-type timetable exact?** SEPTA hangs a `calendar_dates` row on
+nearly every date, so two Wednesdays can run different service IDs, and the generator
+samples one date per weekday. That's an assumption worth checking rather than
+believing, so `--report` now compares the emitted timetable against **every date in
+the feed window**, per pattern. On the current feed it holds exactly:
+
+```
+calendar: the day-type timetable holds on every date in the feed window
+```
+
+The two revisions this feed carries differ only in service IDs, apart from three
+Sunday B2 trips that the special-event filter already removes. A holiday, or a
+timetable change mid-window, would not hold — and the check says so instead of
+silently averaging one away. (The app's holiday fallback to a Sunday schedule stays,
+because a two-week window contains no holiday to learn from.)
+
 Deliberately unused, with the reason:
 
 - **`pathways.txt` / `levels.txt`** would give real in-station walking times and stair
@@ -194,11 +222,6 @@ Deliberately unused, with the reason:
 - **`route_stops.txt`** disagrees with the trips (see below).
 - **`shapes.txt`** is 452,000 points of route geometry, for a map this app doesn't
   draw yet.
-- **`calendar_dates.txt`** holds the real holiday exceptions; the app currently guesses
-  a Sunday schedule on major holidays. Worth wiring up.
-- **The fare files** (`fare_products`, `fare_leg_rules`, `fare_transfer_rules`,
-  `timeframes`, `areas`) describe fares and free transfers completely enough to show
-  what a trip costs. A feature, not a fix — nothing in the app claims a price today.
 
 A few things the generator gets right that are easy to get wrong, and which the
 tests now lock in:

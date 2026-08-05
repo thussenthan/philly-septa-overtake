@@ -53,6 +53,7 @@ L|59|59|Route 59|6B7280|2054
 L|66|66|Route 66|6B7280|2061
 L|75|75|Route 75|6B7280|2067
 L|B-OWL|B|Broad Street Owl Bus|F26100|3002
+F|2.90|USD|7200|2|Contactless Payment,SEPTA Key|Cash,Quick Trip
 S|10th-st-and-main-st|10th St & Main St|||39.920121|-75.263141|T|0
 S|10th-st-and-mulberry-av|10th St & Mulberry Av|||39.923621|-75.257349|T|0
 S|10th-st-and-ridge-av|10th St & Ridge Av|||39.921306|-75.261462|T|0
@@ -441,9 +442,9 @@ S|lancaster-av-and-48th-st|Lancaster Av & 48th St|||39.972244|-75.217035|T|0
 S|lancaster-av-and-49th-st|Lancaster Av & 49th St|||39.973703|-75.219464|T|0
 S|lancaster-av-and-50th-st|Lancaster Av & 50th St|||39.975220|-75.222489|T|0
 S|lancaster-av-and-52nd-st|Lancaster Av & 52nd St|||39.977186|-75.226600|T|0
-S|lancaster-av-and-bible-way|Lancaster Av & Bible Way|||39.976855|-75.226176|T|0
 """,
 """
+S|lancaster-av-and-bible-way|Lancaster Av & Bible Way|||39.976855|-75.226176|T|0
 S|lancaster-av-and-haverford-av|Lancaster Av & Haverford Av|||39.962900|-75.201826|T|0
 S|lancaster-av-and-ogden-st|Lancaster Av & Ogden St|||39.968565|-75.210998|T|0
 S|lancaster-av-and-parrish-st|Lancaster Av & Parrish St|||39.967670|-75.209560|T|0
@@ -843,9 +844,9 @@ D|monday,tuesday,wednesday,thursday,friday|t:1800,2400,3300,4200,5096
 D|saturday,sunday|t:2400,3300,4200,5096
 P|B1_OWL-southbound-fern-rock-nrg-21-v4|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
 O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,race-vine:1359,city-hall:1500:300,walnut-locust:1920,lombard-south:2008,ellsworth-federal:2160,tasker-morris:2261,snyder:2359,oregon:2492,nrg:2748
-D|monday,tuesday,wednesday,thursday,friday|t:840,1200
 """,
 """
+D|monday,tuesday,wednesday,thursday,friday|t:840,1200
 D|saturday,sunday|t:840,1500
 P|B1_OWL-southbound-city-hall-nrg-8|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
 O|city-hall:0,walnut-locust:120,lombard-south:208,ellsworth-federal:360,tasker-morris:461,snyder:559,oregon:692,nrg:948
@@ -1245,9 +1246,9 @@ P|M1-southbound-69th-st-transit-center-norristown-transit-center-22-v3|M|M1|loca
 O|69th-st-transit-center:0,parkview:113,township-line-rd:180,penfield:230,beechwood-brookline:293,wynnewood-rd:360,ardmore-junction:407,ardmore-av:461,haverford-south:561,bryn-mawr-south:660,roberts-rd:723,garrett-hill:803,stadium:860,villanova-south:889,radnor-south:1020,county-line:1089,matsonford:1165,gulph-mills:1260,hughes-park:1380,dekalb-st:1552,bridgeport:1620,norristown-transit-center:1800
 D|monday,tuesday,wednesday,thursday,friday|f:20400:32100:900;t:33180;f:34800:52800:1800;t:53700,54600,55500,56400
 P|M1-northbound-norristown-transit-center-69th-st-transit-center-22|M|M1|local|northbound|69th St Transit Center|south|41
-O|norristown-transit-center:0,bridgeport:120,dekalb-st:187,hughes-park:360,gulph-mills:420,matsonford:490,county-line:547,radnor-south:600,villanova-south:707,stadium:731,garrett-hill:778,roberts-rd:844,bryn-mawr-south:900,haverford-south:997,ardmore-av:1098,ardmore-junction:1151,wynnewood-rd:1200,beechwood-brookline:1266,penfield:1329,township-line-rd:1380,parkview:1511,69th-st-transit-center:1740
 """,
 """
+O|norristown-transit-center:0,bridgeport:120,dekalb-st:187,hughes-park:360,gulph-mills:420,matsonford:490,county-line:547,radnor-south:600,villanova-south:707,stadium:731,garrett-hill:778,roberts-rd:844,bryn-mawr-south:900,haverford-south:997,ardmore-av:1098,ardmore-junction:1151,wynnewood-rd:1200,beechwood-brookline:1266,penfield:1329,township-line-rd:1380,parkview:1511,69th-st-transit-center:1740
 D|monday,tuesday,wednesday,thursday,friday|t:16740,18300,68160,69120,70020,71100,72300;f:73560:80760:1200;t:81900,83760,84960,87060,88920,91440,94320
 D|saturday|t:19200,21480;f:22800:68400:1200;t:70080;f:71160:81960:1800;t:83700,85260,87840,90600,94560
 D|sunday|t:19200,22200;f:24780:69780:1800;f:71100:83700:1800;t:85260,87900,90600,94500
@@ -1647,9 +1648,9 @@ D|sunday|t:29160
 P|T3-northbound-13th-st-darby-transit-center-47-v4|T|T3|local|northbound|Darby Transit Center|west|15
 O|13th-st:0,city-hall:60,19th-st:147,22nd-st:218,drexel-station-at-30th-st:310,33rd-st:398,36th-sansom:493,37th-spruce:569,40th-st-portal:660,chester-av-and-42nd-st:738,chester-av-and-43rd-st:777,chester-av-and-45th-st:827,chester-av-and-46th-st:859,chester-av-and-47th-st:892,chester-av-and-48th-st:926,chester-av-and-49th-st:960,chester-av-and-51st-st:1034,chester-av-and-52nd-st:1067,chester-av-and-53rd-st:1108,chester-av-and-54th-st:1149,chester-av-and-55th-st:1189,chester-av-and-56th-st:1230,chester-av-and-57th-st:1275,chester-av-and-58th-st:1320,chester-av-and-59th-st:1352,chester-av-and-60th-st:1393,60th-st-and-kingsessing-av:1432,kingsessing-av-and-61st-st:1480,kingsessing-av-and-62nd-st:1517,mt-moriah:1560,kingsessing-av-and-65th-st:1600,65th-st-and-chester-st:1637,65th-st-and-belmar-st:1692,chester-av-and-65th-st-fs:1766,chester-av-and-church-ln:1847,chester-av-and-yeadon-av:1873,chester-av-and-duncan-av:1906,chester-av-and-stetser-av:1939,yeadon:1980,chester-av-and-alfred-av:2014,chester-av-and-cedar-av:2049,10th-st-and-mulberry-av:2086,10th-st-and-wycombe-av:2108,10th-st-and-summit-st:2131,10th-st-and-ridge-av:2172,10th-st-and-main-st:2211,darby-transit-center:2280
 D|saturday|t:49020,56940,58380,61260,65760
-P|T3-northbound-13th-st-darby-transit-center-47-v5|T|T3|local|northbound|Darby Transit Center|west|15
 """,
 """
+P|T3-northbound-13th-st-darby-transit-center-47-v5|T|T3|local|northbound|Darby Transit Center|west|15
 O|13th-st:0,city-hall:49,19th-st:120,22nd-st:178,drexel-station-at-30th-st:253,33rd-st:325,36th-sansom:403,37th-spruce:465,40th-st-portal:540,chester-av-and-42nd-st:602,chester-av-and-43rd-st:633,chester-av-and-45th-st:673,chester-av-and-46th-st:698,chester-av-and-47th-st:725,chester-av-and-48th-st:752,chester-av-and-49th-st:780,chester-av-and-51st-st:829,chester-av-and-52nd-st:851,chester-av-and-53rd-st:878,chester-av-and-54th-st:905,chester-av-and-55th-st:932,chester-av-and-56th-st:959,chester-av-and-57th-st:989,chester-av-and-58th-st:1020,chester-av-and-59th-st:1052,chester-av-and-60th-st:1093,60th-st-and-kingsessing-av:1132,kingsessing-av-and-61st-st:1180,kingsessing-av-and-62nd-st:1217,mt-moriah:1260,kingsessing-av-and-65th-st:1288,65th-st-and-chester-st:1314,65th-st-and-belmar-st:1353,chester-av-and-65th-st-fs:1406,chester-av-and-church-ln:1464,chester-av-and-yeadon-av:1483,chester-av-and-duncan-av:1507,chester-av-and-stetser-av:1531,yeadon:1560,chester-av-and-alfred-av:1587,chester-av-and-cedar-av:1615,10th-st-and-mulberry-av:1645,10th-st-and-wycombe-av:1662,10th-st-and-summit-st:1680,10th-st-and-ridge-av:1713,10th-st-and-main-st:1744,darby-transit-center:1800
 D|tuesday,wednesday,thursday,friday,saturday|t:88920
 D|sunday|t:25560

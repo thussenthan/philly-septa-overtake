@@ -555,6 +555,29 @@ final class CommuteModel: ObservableObject {
         }
     }
 
+    /// SEPTA's fare rules, as sentences. From the feed's own fare tables, so they
+    /// change when SEPTA changes them rather than when someone remembers to.
+    var fareNotes: [String] {
+        let fare = network.fare
+        guard fare.isKnown else { return [] }
+        var notes = ["\(Format.money(fare.amount, currency: fare.currency)) per ride, adult full fare."]
+        if fare.includedTransfers > 0, !fare.freeTransferMedia.isEmpty {
+            let media = fare.freeTransferMedia.joined(separator: " or ")
+            let changes = fare.includedTransfers == 1 ? "one change" : "up to \(fare.includedTransfers) changes"
+            notes.append(
+                "With \(media), one fare covers \(changes) of train within "
+                    + "\(Format.minutes(fare.transferWindow))."
+            )
+        }
+        if !fare.perBoardingMedia.isEmpty {
+            notes.append(
+                "Paying with \(fare.perBoardingMedia.joined(separator: " or "))"
+                    + " costs a new fare every time you board."
+            )
+        }
+        return notes
+    }
+
     /// Shown under the alerts when the fetch failed and there is nothing cached, so
     /// an empty list isn't mistaken for good news.
     var alertFetchProblem: String? {

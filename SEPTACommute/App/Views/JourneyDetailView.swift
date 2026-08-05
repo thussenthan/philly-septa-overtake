@@ -227,6 +227,26 @@ struct JourneyDetailView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
+            if let fare = journey.fare(network.fare) {
+                HStack {
+                    Text(fare.mediumMatters ? "Fare, with a free transfer" : "Fare")
+                    Spacer()
+                    Text(Format.money(fare.withFreeTransfers, currency: fare.currency))
+                        .monospacedDigit()
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                if fare.mediumMatters {
+                    HStack {
+                        Text("Paying for each boarding")
+                        Spacer()
+                        Text(Format.money(fare.perBoarding, currency: fare.currency))
+                            .monospacedDigit()
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(16)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))

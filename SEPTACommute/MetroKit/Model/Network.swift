@@ -10,6 +10,8 @@ public struct Network: Sendable {
     public let patterns: [ServicePattern]
     /// Human-readable statement of where the schedule data came from and when.
     public let provenance: DataProvenance
+    /// What a ride costs, and whether a change of train is included in it.
+    public let fare: FareRules
 
     private let stationsByID: [StationID: Station]
     private let patternsByID: [PatternID: ServicePattern]
@@ -27,12 +29,14 @@ public struct Network: Sendable {
         lines: [Line],
         stations: [Station],
         patterns: [ServicePattern],
-        provenance: DataProvenance
+        provenance: DataProvenance,
+        fare: FareRules = FareRules(amount: 0)
     ) {
         self.lines = lines
         self.stations = stations
         self.patterns = patterns
         self.provenance = provenance
+        self.fare = fare
 
         self.stationsByID = Dictionary(stations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.patternsByID = Dictionary(patterns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })

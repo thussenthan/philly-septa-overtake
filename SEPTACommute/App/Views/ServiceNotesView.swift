@@ -38,6 +38,16 @@ struct ServiceNotesView: View {
                     }
                 }
 
+                if !model.fareNotes.isEmpty {
+                    Section("Fares") {
+                        ForEach(model.fareNotes, id: \.self) { note in
+                            Text(note)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 if !model.estimatedTimeNotes.isEmpty {
                     Section("How exact these times are") {
                         ForEach(model.estimatedTimeNotes, id: \.self) { note in

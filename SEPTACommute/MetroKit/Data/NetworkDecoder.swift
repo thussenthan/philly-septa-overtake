@@ -51,6 +51,12 @@ public enum NetworkDecoder {
         var patterns: [ServicePattern] = []
 
         var provenance = DataProvenance(fidelity: .official, source: "unknown", generated: "unknown")
+        var fare = FareRules(amount: 0)
+
+        /// Comma-separated list field, empty entries dropped.
+        func splitList(_ field: String) -> [String] {
+            field.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+        }
 
         // The pattern currently being assembled from its P/O/D records.
         var pendingHeader: (id: String, line: String, route: String, kind: String, direction: String, headsign: String)?
@@ -116,6 +122,20 @@ public enum NetworkDecoder {
                         colorHex: fields[4],
                         sortOrder: fields.count > 5 ? (Int(fields[5]) ?? 9999) : 9999
                     ))
+
+                case "F":
+                    guard fields.count >= 5 else { throw DecodeError(line: lineNumber, reason: "short F record") }
+                    guard let amount = Double(fields[1]) else {
+                        throw DecodeError(line: lineNumber, reason: "bad fare amount \(fields[1])")
+                    }
+                    fare = FareRules(
+                        amount: amount,
+                        currency: fields[2],
+                        transferWindow: Double(fields[3]) ?? 0,
+                        includedTransfers: Int(fields[4]) ?? 0,
+                        freeTransferMedia: fields.count > 5 ? splitList(fields[5]) : [],
+                        perBoardingMedia: fields.count > 6 ? splitList(fields[6]) : []
+                    )
 
                 case "S":
                     guard fields.count >= 9 else { throw DecodeError(line: lineNumber, reason: "short S record") }
@@ -200,6 +220,12 @@ public enum NetworkDecoder {
         }
         try flushPattern()
 
-        return Network(lines: lines, stations: stations, patterns: patterns, provenance: provenance)
+        return Network(
+            lines: lines,
+            stations: stations,
+            patterns: patterns,
+            provenance: provenance,
+            fare: fare
+        )
     }
 }

@@ -163,6 +163,66 @@ def parse_date(value: str) -> dt.date:
     return dt.date(int(value[0:4]), int(value[4:6]), int(value[6:8]))
 
 
+def read_fares(feed: Feed) -> dict:
+    """The adult pay-per-ride fare, and what a transfer costs.
+
+    GTFS-Fares v2, and SEPTA fills it in properly: one $2.90 product per payment
+    medium, and `fare_transfer_rules` rows that carry **no** fare_product_id, which
+    under transfer type 0 means the transfer adds nothing — free, within
+    `duration_limit`, up to `transfer_count` of them. Cash and Quick Trip have no
+    such rule, so with those every boarding is a new fare. That difference is worth
+    surfacing: it is $2.90 against $5.80 for the same two-train trip.
+    """
+    media = {m["fare_media_id"]: m["fare_media_name"] for m in feed.table("fare_media.txt")}
+    default_categories = {
+        r["rider_category_id"]
+        for r in feed.table("rider_categories.txt")
+        if r.get("is_default_fare_category") == "1"
+    } or {"adult_full_fare"}
+
+    products = {}
+    for row in feed.table("fare_products.txt"):
+        category = row.get("rider_category_id")
+        if category and category not in default_categories:
+            continue
+        products[row["fare_product_id"]] = row
+
+    group_media: dict[str, str] = {}
+    amounts: list[float] = []
+    for row in feed.table("fare_leg_rules.txt"):
+        product = products.get(row.get("fare_product_id", ""))
+        if not product:
+            continue
+        group_media[row["leg_group_id"]] = media.get(product.get("fare_media_id", ""), "")
+        amounts.append(float(product["amount"]))
+
+    window = allowed = 0
+    free_media: list[str] = []
+    for row in feed.table("fare_transfer_rules.txt"):
+        if row["from_leg_group_id"] != row["to_leg_group_id"]:
+            continue
+        if row.get("fare_product_id"):
+            continue  # the transfer costs something of its own; not a free one
+        window = max(window, int(row.get("duration_limit") or 0))
+        allowed = max(allowed, int(row.get("transfer_count") or 0))
+        name = group_media.get(row["from_leg_group_id"])
+        if name and name not in free_media:
+            free_media.append(name)
+
+    paid = {
+        media.get(row.get("fare_media_id", ""), "")
+        for row in products.values()
+    } - set(free_media) - {""}
+    return {
+        "amount": min(amounts) if amounts else 0.0,
+        "currency": next((p["currency"] for p in products.values()), "USD"),
+        "transfer_window": window,
+        "included_transfers": allowed,
+        "free_transfer_media": sorted(free_media),
+        "per_boarding_media": sorted(paid),
+    }
+
+
 def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
     """Every date each service ID runs on, over the whole span the feed describes.
 
@@ -295,6 +355,9 @@ class Pattern:
     # Share of this pattern's stop times SEPTA actually publishes, rather than
     # interpolating between timing points. 100 on the subway, ~15 on the trolleys.
     published_time_percent: int = 100
+    # Trip start times per calendar date, kept only to check the day-type timetable
+    # against every date in the window rather than the seven that were sampled.
+    starts_by_date: dict[dt.date, set[int]] = field(default_factory=dict)
 
 
 def extract(feed: Feed, scope: str = "broad") -> dict:
@@ -316,6 +379,8 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
             word = (row.get("direction") or "").strip().lower()
             if word.endswith("bound"):
                 direction_words[key] = word[: -len("bound")]
+
+    fare = read_fares(feed)
 
     stops_by_id = {r["stop_id"]: r for r in feed.table("stops.txt")}
 
@@ -375,6 +440,9 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     patterns: dict[tuple, Pattern] = {}
     raw_groups: dict[tuple, list] = defaultdict(list)
     group_trips: dict[tuple, list] = defaultdict(list)
+    group_dates: dict[tuple, dict[dt.date, set[int]]] = defaultdict(dict)
+    window_start = parse_date(feed.table("feed_info.txt")[0]["feed_start_date"])
+    window_end = parse_date(feed.table("feed_info.txt")[0]["feed_end_date"])
     skipped_no_service = 0
     skipped_rare = 0
     dropped_stops = 0
@@ -421,6 +489,9 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         group = (trip["route_id"], trip["direction_id"], tuple(station_ids), bucket, tuple(flags))
         raw_groups[group].append((tuple(arrivals), tuple(dwells), exact, len(station_ids)))
         group_trips[group].append((origin_departure, day_types, trip.get("trip_headsign", "").strip()))
+        for day in all_service_dates.get(service_id, ()):
+            if window_start <= day <= window_end:
+                group_dates[group].setdefault(day, set()).add(origin_departure)
 
     # Collapse each group into one pattern timed by the median of its trips.
     runtime_spread: list[tuple[int, str]] = []
@@ -439,6 +510,7 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         headsign = next((t[2] for t in group_trips[group] if t[2]), "")
         pattern = Pattern(key=key, headsign=headsign)
         pattern.published_time_percent = round(100 * published / total_stops) if total_stops else 100
+        pattern.starts_by_date = group_dates.get(group, {})
         for origin_departure, day_types, _ in group_trips[group]:
             for label in day_types:
                 pattern.starts[label].append(origin_departure)
@@ -448,11 +520,32 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     for pattern in patterns.values():
         for label in list(pattern.starts):
             pattern.starts[label] = sorted(set(pattern.starts[label]))
+
+    # Does the seven-day-type timetable actually hold for every date in the window?
+    #
+    # SEPTA hangs a calendar_dates row on nearly every date, so two Wednesdays can
+    # run different service IDs. Almost always they resolve to identical departures
+    # and sampling one Wednesday is exact — but a holiday, or a timetable change
+    # mid-window, would not, and silently averaging one away is the failure this
+    # catches. Reported rather than worked around: on the current feed there is
+    # nothing to work around, and a mechanism that never runs is worse than a check
+    # that tells you when you need one.
+    calendar_mismatches: list[tuple[str, str, int]] = []
+    for pattern in patterns.values():
+        for day, actual in pattern.starts_by_date.items():
+            claimed = set(pattern.starts.get(DAY_FIELDS[day.weekday()]) or [])
+            difference = len(actual ^ claimed)
+            if difference:
+                calendar_mismatches.append(
+                    (day.isoformat(), f"{pattern.key.route_id} {pattern.key.direction_id}", difference)
+                )
+    calendar_mismatches.sort(key=lambda m: -m[2])
     runtime_spread.sort(reverse=True)
 
     return {
         "routes": routes,
         "directions": directions,
+        "fare": fare,
         "direction_words": direction_words,
         "patterns": list(patterns.values()),
         "stations": stations,
@@ -463,6 +556,7 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         "runtime_spread": runtime_spread[:6],
         "feed_info": feed.table("feed_info.txt")[0],
         "representative_dates": {k: v.isoformat() for k, v in dates.items()},
+        "calendar_mismatches": calendar_mismatches,
         "skipped_no_service": skipped_no_service,
         "skipped_rare": skipped_rare,
     }
@@ -833,6 +927,15 @@ def emit_swift(data: dict) -> str:
         records.append("|".join(["L", encode_field(line["id"]), encode_field(line["badge"]),
                                  encode_field(line["name"]), encode_field(line["color"]),
                                  str(line["sort"])]))
+    fare = data["fare"]
+    if fare["amount"]:
+        records.append("|".join([
+            "F", f"{fare['amount']:.2f}", encode_field(fare["currency"]),
+            str(fare["transfer_window"]), str(fare["included_transfers"]),
+            encode_field(",".join(fare["free_transfer_media"])),
+            encode_field(",".join(fare["per_boarding_media"])),
+        ]))
+
     for station in stations.values():
         accessible = "-" if station["accessible"] is None else ("1" if station["accessible"] else "0")
         records.append("|".join([
@@ -961,6 +1064,15 @@ def report(data: dict) -> None:
     print(f"stations: {len(stations)}   patterns: {len(data['patterns'])}")
     print(f"trips skipped: {data['skipped_rare']} special-event, "
           f"{data['skipped_no_service']} not in effect on a sampled date")
+    mismatches = data["calendar_mismatches"]
+    if mismatches:
+        affected = len({m[0] for m in mismatches})
+        print(f"calendar: {len(mismatches)} pattern-days across {affected} dates do not match "
+              f"their day type — the sampled weekday is not representative for those")
+        for date, route, count in mismatches[:6]:
+            print(f"     {date}  {route}  {count} departures differ")
+    else:
+        print("calendar: the day-type timetable holds on every date in the feed window")
     print(f"widest running-time spread collapsed into one pattern: "
           f"{[(f'{s}s', label) for s, label in data['runtime_spread']]}")
     print(f"surface stop-times dropped (no station within "
