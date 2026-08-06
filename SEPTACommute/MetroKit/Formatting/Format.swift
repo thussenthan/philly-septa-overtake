@@ -30,12 +30,29 @@ public enum Format {
         return remainder == 0 ? "\(hours)h" : "\(hours)h\(remainder)m"
     }
 
-    /// A live countdown: "4:07", "0:12", "now".
+    /// Below this, a countdown shows seconds; above it, whole minutes.
+    ///
+    /// A ticking seconds digit is a demand for attention, and eleven minutes out there
+    /// is nothing to attend to — it reads as urgent when it isn't, and the eye is drawn
+    /// to a number that means nothing. Inside two minutes it is the opposite: the
+    /// difference between 1:50 and 0:20 is the difference between finishing your coffee
+    /// and running, and "1 min" cannot express it.
+    public static let countdownSecondsThreshold: TimeInterval = 120
+
+    /// A live countdown: "9 min" far out, "1:47" close in, "now" when it's gone.
+    ///
+    /// Minutes are floored rather than rounded, deliberately. A countdown that rounds
+    /// up says "5 min" with 4:31 left, and the one thing this number must never do is
+    /// promise time the rider doesn't have.
     public static func countdown(_ seconds: TimeInterval) -> String {
         if seconds <= 0 { return "now" }
         let whole = Int(seconds.rounded(.down))
-        if whole >= 3600 {
-            return "\(whole / 3600):\(pad((whole % 3600) / 60)):\(pad(whole % 60))"
+        if seconds > countdownSecondsThreshold {
+            let total = whole / 60
+            if total < 60 { return "\(total) min" }
+            let hours = total / 60
+            let remainder = total % 60
+            return remainder == 0 ? "\(hours) hr" : "\(hours) hr \(remainder) min"
         }
         return "\(whole / 60):\(pad(whole % 60))"
     }

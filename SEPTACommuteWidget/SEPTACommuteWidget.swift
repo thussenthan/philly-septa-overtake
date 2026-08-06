@@ -15,17 +15,23 @@ import MetroKit
 ///
 /// It plans from the bundled timetable, in the extension, for the moment it is being
 /// looked at — no network call and no location fix, both of which a widget is bad at.
-/// What it takes from the app is only the rider's two addresses, written to the shared
-/// App Group as soon as they are saved; which way round to read them it works out from
-/// the clock. So it is right from the first launch, without the app being opened to
-/// prime it, which is the whole point of a widget.
+/// What it takes from the app is the rider's two addresses, their settings, and the
+/// last place the app saw them — written to the shared App Group as soon as they exist.
+/// Which way round to read the addresses follows the app's own rule: within a mile of
+/// home means heading out, anywhere else means heading home, and only a fix too old to
+/// trust sends it back to guessing from the clock. So it is right from the first
+/// launch, without the app being opened to prime it, which is the whole point.
 struct SEPTACommuteWidget: Widget {
     let kind = "SEPTACommuteWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: CommuteTimelineProvider()) { entry in
-            CommuteWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+            let palette = WidgetPalette.current
+            CommuteWidgetView(entry: entry, palette: palette)
+                .containerBackground(palette.background, for: .widget)
+                // Forced rather than inherited: WidgetKit renders against the system
+                // appearance, so without this a dark app sits next to a light widget.
+                .environment(\.colorScheme, palette.colorScheme)
         }
         .configurationDisplayName("Next train")
         .description("When to leave for your commute — out in the morning, back in the afternoon.")
@@ -41,6 +47,10 @@ struct CommuteEntry: TimelineEntry {
     var destinationName: String?
     /// Set when there is nothing to show, and why.
     var placeholder: String?
+    /// The countdown to draw, or nil once WidgetKit's live timer takes over. Decided
+    /// when the timeline is built, because a widget cannot redraw itself: every value
+    /// the number ever shows is an entry, and the switch to seconds is one of them.
+    var countdown: String? = nil
 }
 
 struct CommuteTimelineProvider: TimelineProvider {
@@ -65,23 +75,50 @@ struct CommuteTimelineProvider: TimelineProvider {
             ))
             return
         }
-        // WidgetKit reloads when the last entry expires, which is the moment the
-        // final option stops being catchable — exactly when a fresh plan is needed.
-        completion(Timeline(entries: entries, policy: .after(last.date.addingTimeInterval(60))))
+        // Reload when the last option stops being catchable — exactly when a fresh plan
+        // is needed, and not one entry earlier: the final entry stays on screen through
+        // its own countdown. Unless the rider could have turned around first, in which
+        // case the answer is stale before it is uncatchable.
+        let lastCatchable = (last.step?.leaveBy ?? last.date).addingTimeInterval(60)
+        let deadline = SharedStore.snapshot().map { expiry(for: $0, from: now) } ?? lastCatchable
+        completion(Timeline(entries: entries, policy: .after(min(lastCatchable, deadline))))
     }
 
     private func entries(from now: Date) -> [CommuteEntry] {
         guard let snapshot = SharedStore.snapshot() else { return [] }
-        return WidgetPlanner.steps(for: snapshot, from: now).map { step in
+        // One direction for the whole timeline, resolved once. Naming each entry for
+        // its own moment would relabel the trip halfway down a plan that was worked
+        // out for the other one, which is worse than being briefly out of date —
+        // `expiry` is what keeps it from being out of date for long.
+        let trip = snapshot.trip(at: now)
+        let steps = WidgetPlanner.steps(for: snapshot, from: now)
+        // One entry per minute the countdown shows, then one for the ticking stretch
+        // at the end — the widget can't redraw itself, so every change is an entry.
+        let horizon = expiry(for: snapshot, from: now)
+        let frames = WidgetPlanner.frames(for: steps, from: now)
+            .filter { $0.at < horizon }
+        return frames.map { frame in
             CommuteEntry(
-                date: step.validFrom,
-                step: step,
-                // Named per entry, not per snapshot: an entry that takes over after
-                // midday is answering the trip home, and has to say so.
-                destinationName: snapshot.trip(at: step.validFrom).destination.name,
-                placeholder: nil
+                date: frame.at,
+                step: frame.step,
+                destinationName: trip.destination.name,
+                placeholder: nil,
+                countdown: frame.countdown
             )
         }
+    }
+
+    /// The point past which this timeline could be answering the wrong direction.
+    ///
+    /// Entries are computed in advance and cannot be revised, so a timeline running
+    /// past the moment the rider counts as facing the other way would sit there
+    /// offering the trip they have already made. That moment is either the fix the
+    /// direction rests on ageing out, or — when the clock is deciding — the turnaround.
+    private func expiry(for snapshot: CommuteSnapshot, from now: Date) -> Date {
+        let direction = snapshot.commute?.directionStableUntil(from: now)
+        // Never sooner than a minute out: a timeline with nothing in it is a blank
+        // widget, and a reload loop on top of one.
+        return max(direction ?? .distantFuture, now.addingTimeInterval(60))
     }
 
     private func empty(at date: Date) -> CommuteEntry {
@@ -100,9 +137,54 @@ struct CommuteTimelineProvider: TimelineProvider {
 
 // MARK: - Views
 
+/// The colours the widget draws in, taken from the app's own appearance setting.
+///
+/// A widget cannot ask the app anything at render time, and it is rendered by the
+/// system against the *system* appearance — so an app defaulting to dark shows a
+/// light widget on a light phone. The setting is published to the shared container
+/// and read here instead.
+struct WidgetPalette {
+    var colorScheme: ColorScheme
+    var background: Color
+    var primary: Color
+    var secondary: Color
+    var tertiary: Color
+    /// For the "miss it" cost, which has to stand out in either mode.
+    var warning: Color
+
+    static var current: WidgetPalette {
+        // Absent (or "system") means follow the phone, which is the platform default
+        // and what the container-unavailable case should fall back to as well.
+        switch SharedStore.appearance() {
+        case "light": return .light
+        case "dark": return .dark
+        default: return UITraitCollection.current.userInterfaceStyle == .dark ? .dark : .light
+        }
+    }
+
+    static let dark = WidgetPalette(
+        colorScheme: .dark,
+        background: Color(red: 0.07, green: 0.07, blue: 0.08),
+        primary: .white,
+        secondary: Color(white: 0.72),
+        tertiary: Color(white: 0.48),
+        warning: Color(red: 1.0, green: 0.60, blue: 0.25)
+    )
+
+    static let light = WidgetPalette(
+        colorScheme: .light,
+        background: Color(white: 0.95),
+        primary: .black,
+        secondary: Color(white: 0.32),
+        tertiary: Color(white: 0.52),
+        warning: Color(red: 0.78, green: 0.35, blue: 0.02)
+    )
+}
+
 struct CommuteWidgetView: View {
     @Environment(\.widgetFamily) private var family
     var entry: CommuteEntry
+    var palette: WidgetPalette = .dark
 
     var body: some View {
         switch family {
@@ -127,7 +209,7 @@ struct CommuteWidgetView: View {
                 if let board = step.boardName {
                     Text("from \(board)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -156,7 +238,7 @@ struct CommuteWidgetView: View {
                     }
                     Text(step.boardName.map { "from \($0) · \(step.title)" } ?? step.title)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondary)
                         .lineLimit(2)
                 } else {
                     unavailable
@@ -168,7 +250,7 @@ struct CommuteWidgetView: View {
                     if let destination = entry.destinationName {
                         Text(destination)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondary)
                             .lineLimit(1)
                     }
                     Text(Format.clock(step.arrival))
@@ -176,16 +258,16 @@ struct CommuteWidgetView: View {
                         .monospacedDigit()
                     Text("arrive")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondary)
                     Spacer(minLength: 0)
                     if let penalty = step.penaltyText {
                         Text(penalty)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(palette.warning)
                     } else if let next = step.nextArrival {
                         Text("next \(Format.clock(next))")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondary)
                             .monospacedDigit()
                     }
                 }
@@ -204,14 +286,20 @@ struct CommuteWidgetView: View {
                         .font(.caption.weight(.bold))
                     Text(step.isWalkOnly ? "walk" : "leave")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(step.leaveBy, style: .timer)
-                        .font(.caption.weight(.semibold))
-                        .monospacedDigit()
+                        .foregroundStyle(palette.secondary)
+                    Group {
+                        if let countdown = entry.countdown {
+                            Text(countdown)
+                        } else {
+                            Text(step.leaveBy, style: .timer)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
                 }
                 Text("arrive \(Format.clock(step.arrival)) · \(entry.destinationName ?? "")")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
                     .lineLimit(1)
             } else {
                 Text(entry.placeholder ?? "—").font(.caption)
@@ -238,19 +326,30 @@ struct CommuteWidgetView: View {
         }
     }
 
-    /// A self-updating countdown. WidgetKit renders `.timer` live, so one entry
-    /// covers the whole stretch until this option stops being catchable — no entry
-    /// per minute, and no stale "leave in 4 min" sitting on the home screen.
+    /// The countdown, in whichever of its two forms this entry calls for.
+    ///
+    /// Far out it is a plain number of minutes, held still — the entry it belongs to
+    /// ends on the instant that number changes, so it is never stale. Inside two
+    /// minutes it becomes WidgetKit's live `.timer`, which ticks without needing an
+    /// entry per second. That is the same switch the app makes at the same threshold,
+    /// which is the point: the two sit next to each other on the home screen.
+    @ViewBuilder
     private func countdown(_ step: WidgetPlanStep, size: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(step.isWalkOnly ? "walk now" : "leave in")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(step.leaveBy, style: .timer)
-                .font(.system(size: size, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .minimumScaleFactor(0.6)
-                .lineLimit(1)
+                .foregroundStyle(palette.secondary)
+            Group {
+                if let countdown = entry.countdown {
+                    Text(countdown)
+                } else {
+                    Text(step.leaveBy, style: .timer)
+                }
+            }
+            .font(.system(size: size, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .minimumScaleFactor(0.6)
+            .lineLimit(1)
         }
     }
 
@@ -258,12 +357,12 @@ struct CommuteWidgetView: View {
         VStack(alignment: .leading, spacing: 4) {
             Image(systemName: "tram.fill")
                 .font(.headline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondary)
             Text(entry.placeholder ?? "—")
                 .font(.caption.weight(.medium))
             Text("Add home and work in the app and this fills itself in.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.secondary)
                 .lineLimit(3)
         }
     }

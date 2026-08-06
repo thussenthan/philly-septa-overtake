@@ -41,11 +41,11 @@ public struct CommuteSnapshot: Codable, Hashable, Sendable {
 
     /// The trip to answer at this moment.
     ///
-    /// Prefers the saved commute, flipped by time of day, over whatever the app last
-    /// looked at. That is deliberate: a widget should show the trip you take twice a
-    /// day, not the one you idly checked on Sunday. The app's own guess is
-    /// location-based and better, but a widget has no usable location fix, and the
-    /// clock is a good enough proxy for which way a commuter is pointing.
+    /// Prefers the saved commute over whatever the app last looked at. That is
+    /// deliberate: a widget should show the trip you take twice a day, not the one you
+    /// idly checked on Sunday. Which way round it points follows the app's rule — near
+    /// home means heading out — using the fix the app lends it, since a widget can get
+    /// none of its own.
     public func trip(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> (origin: SnapshotEndpoint, destination: SnapshotEndpoint) {
         guard let commute else { return (origin, destination) }
         return commute.outbound(at: moment, calendar: calendar)
@@ -59,12 +59,18 @@ public struct CommuteSnapshot: Codable, Hashable, Sendable {
     /// WidgetKit to reload each time would burn the widget's refresh budget to say
     /// nothing new. The commute is part of the comparison because a rider moving house
     /// is precisely the change the widget must not miss.
+    ///
+    /// It is compared by where it would *send* the rider rather than field by field:
+    /// it carries a location fix that moves every few metres and is restamped on every
+    /// replan, and reloading the widget because someone crossed the room would spend
+    /// the whole refresh budget saying nothing.
     public func describesSameTrip(as other: CommuteSnapshot?) -> Bool {
         guard let other else { return false }
-        return origin == other.origin
-            && destination == other.destination
-            && reason == other.reason
-            && commute == other.commute
+        guard origin == other.origin, destination == other.destination, reason == other.reason else {
+            return false
+        }
+        guard let commute else { return other.commute == nil }
+        return commute.agrees(with: other.commute, at: savedAt)
     }
 }
 
@@ -77,17 +83,127 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     /// The hour the widget stops assuming they are outbound. Noon by default: a
     /// commuter leaving at seven and coming back at six is on the right side of it
     /// both times, and a rider who disagrees can still open the app.
+    ///
+    /// Only consulted when there is no usable location fix to reason from.
     public var turnaroundHour: Int
+    /// The last place the app saw the rider, and when.
+    ///
+    /// A widget extension gets no location fix of its own, so the app lends it the
+    /// last one it had. With it the widget can apply the same rule the app does —
+    /// near home means heading out, anywhere else means heading home — instead of
+    /// guessing from the clock and disagreeing with the screen it sits beside.
+    public var lastFix: LocationFix?
 
-    public init(home: SnapshotEndpoint, away: SnapshotEndpoint, turnaroundHour: Int = 12) {
+    public init(
+        home: SnapshotEndpoint,
+        away: SnapshotEndpoint,
+        turnaroundHour: Int = 12,
+        lastFix: LocationFix? = nil
+    ) {
         self.home = home
         self.away = away
         self.turnaroundHour = turnaroundHour
+        self.lastFix = lastFix
     }
 
+    /// Inside this, the rider counts as being at home.
+    ///
+    /// One mile: far enough to cover the walk to any of the stations a rider would
+    /// use from home, close enough that being inside it means they haven't left yet.
+    public static let nearHomeMeters: Double = 1609.34
+
+    /// How long a fix is worth trusting.
+    ///
+    /// A fix taken at home this morning is worthless by the afternoon — it would have
+    /// the widget offering the trip *to* work while the rider is sitting at work. One
+    /// commute's worth of staleness is the most that can be defended, and past that
+    /// the clock is the better guess.
+    public static let fixLifetime: TimeInterval = 90 * 60
+
     /// True when the rider is presumed to be heading out rather than home.
+    ///
+    /// Distance first, clock second. Being within a mile of home is direct evidence
+    /// of which way they are facing; the hour of the day is only a proxy for it.
     public func outbound(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
-        calendar.component(.hour, from: moment) < turnaroundHour
+        if let metres = metersFromHome(at: moment) {
+            return metres <= Self.nearHomeMeters
+        }
+        return calendar.component(.hour, from: moment) < turnaroundHour
+    }
+
+    /// Whether this would send the rider the same way as `other` at this moment.
+    ///
+    /// The direction is all the widget takes from a commute, so it is all that is
+    /// worth reloading for. Whether the fix is fresh counts too: a stored one that has
+    /// aged out has quietly stopped being distance-based, and replacing it with a live
+    /// fix restores the rule even when the verdict happens to match.
+    public func agrees(
+        with other: SavedCommute?,
+        at moment: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        guard let other else { return false }
+        return home == other.home
+            && away == other.away
+            && turnaroundHour == other.turnaroundHour
+            && outbound(at: moment, calendar: calendar) == other.outbound(at: moment, calendar: calendar)
+            && (metersFromHome(at: moment) == nil) == (other.metersFromHome(at: moment) == nil)
+    }
+
+    /// How long the direction worked out at `moment` can still be relied on.
+    ///
+    /// A widget hands WidgetKit a stretch of future entries and cannot revise them, so
+    /// a timeline that runs past the moment the rider counts as facing the other way
+    /// would sit there offering the trip they have already made. This is when that
+    /// could first happen: the fix ageing out, or — when the clock is deciding — the
+    /// turnaround.
+    public func directionStableUntil(
+        from moment: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date {
+        if let lastFix, metersFromHome(at: moment) != nil {
+            return lastFix.at.addingTimeInterval(Self.fixLifetime)
+        }
+        let changes = [turnaroundHour, 0].compactMap {
+            calendar.nextDate(
+                after: moment,
+                matching: DateComponents(hour: $0, minute: 0, second: 0),
+                matchingPolicy: .nextTime
+            )
+        }
+        // An hour is a safe floor if the calendar can't answer, which it can't in
+        // time zones that skip the hour being asked for.
+        return changes.min() ?? moment.addingTimeInterval(3600)
+    }
+
+    /// How far the rider was from home when last seen, if that is still recent
+    /// enough to mean anything and home has coordinates to measure against.
+    public func metersFromHome(at moment: Date) -> Double? {
+        guard let lastFix,
+              abs(moment.timeIntervalSince(lastFix.at)) <= Self.fixLifetime,
+              let origin = home.coordinate else { return nil }
+        return lastFix.coordinate.distance(to: origin)
+    }
+}
+
+/// Where the rider was, and when the app saw them there.
+public struct LocationFix: Codable, Hashable, Sendable {
+    public var latitude: Double
+    public var longitude: Double
+    public var at: Date
+
+    public init(latitude: Double, longitude: Double, at: Date) {
+        self.latitude = latitude
+        self.longitude = longitude
+        self.at = at
+    }
+
+    public init(_ coordinate: Coordinate, at: Date) {
+        self.init(latitude: coordinate.latitude, longitude: coordinate.longitude, at: at)
+    }
+
+    public var coordinate: Coordinate {
+        Coordinate(latitude: latitude, longitude: longitude)
     }
 }
 
@@ -120,11 +236,60 @@ public struct SnapshotEndpoint: Codable, Hashable, Sendable {
         }
     }
 
+    /// Set for a saved address. A station-based endpoint carries an ID instead, and
+    /// resolving that to a position needs the network, which is the caller's to hold.
+    public var coordinate: Coordinate? {
+        guard let latitude, let longitude else { return nil }
+        return Coordinate(latitude: latitude, longitude: longitude)
+    }
+
     /// Back to something the planner accepts, or `nil` if the record is unusable.
     public var endpoint: Endpoint? {
         if let stationID { return .station(stationID) }
         guard let latitude, let longitude else { return nil }
         return .place(name: name, coordinate: Coordinate(latitude: latitude, longitude: longitude))
+    }
+}
+
+/// The rider's own settings, in the form both processes need them.
+///
+/// This exists because the app and the widget were each building `PlannerOptions`
+/// their own way, and so answering the same question differently: the app from the
+/// rider's saved walking speed, boarding margin and transfer preference, the widget
+/// from the library defaults. A slower walker's countdown on the home screen did not
+/// match the countdown in the widget beside it, and neither was wrong on its own
+/// terms — they were answering two subtly different questions.
+///
+/// Now there is one conversion, used by both.
+public struct RiderTuning: Codable, Hashable, Sendable {
+    public var walkingMilesPerHour: Double
+    public var maxWalkMinutes: Double
+    public var boardingBufferSeconds: Double
+    public var allowTransfers: Bool
+    public var stepFreeOnly: Bool
+
+    public init(
+        walkingMilesPerHour: Double = 3.0,
+        maxWalkMinutes: Double = 18,
+        boardingBufferSeconds: Double = 30,
+        allowTransfers: Bool = true,
+        stepFreeOnly: Bool = false
+    ) {
+        self.walkingMilesPerHour = walkingMilesPerHour
+        self.maxWalkMinutes = maxWalkMinutes
+        self.boardingBufferSeconds = boardingBufferSeconds
+        self.allowTransfers = allowTransfers
+        self.stepFreeOnly = stepFreeOnly
+    }
+
+    public func plannerOptions() -> PlannerOptions {
+        var options = PlannerOptions()
+        options.walking.milesPerHour = walkingMilesPerHour
+        options.maxWalkSeconds = maxWalkMinutes * 60
+        options.boardingBufferSeconds = boardingBufferSeconds
+        options.maxTransfers = allowTransfers ? 2 : 0
+        options.requiresStepFreeAccess = stepFreeOnly
+        return options
     }
 }
 
@@ -146,6 +311,8 @@ public enum SharedStore {
     public static let appGroupID = "group.com.example.SEPTACommute"
 
     private static let snapshotKey = "commuteSnapshot.v1"
+    private static let appearanceKey = "appearance.v1"
+    private static let tuningKey = "riderTuning.v1"
 
     public static var defaults: UserDefaults {
         UserDefaults(suiteName: appGroupID) ?? .standard
@@ -165,6 +332,45 @@ public enum SharedStore {
     public static func snapshot(from defaults: UserDefaults = SharedStore.defaults) -> CommuteSnapshot? {
         guard let data = defaults.data(forKey: snapshotKey) else { return nil }
         return try? JSONDecoder().decode(CommuteSnapshot.self, from: data)
+    }
+
+    /// Light, dark, or follow the phone — whichever the rider chose in the app.
+    ///
+    /// A widget is rendered by the system and follows the *system* appearance, so an
+    /// app that defaults to dark gets a light widget on a light phone and looks like
+    /// two different products. The preference has to cross the process boundary for
+    /// the widget to honour it, and there is now a container to cross it in.
+    public static func appearance(from defaults: UserDefaults = SharedStore.defaults) -> String? {
+        defaults.string(forKey: appearanceKey)
+    }
+
+    /// Returns true when the stored value changed, so the caller knows whether a
+    /// widget reload is warranted.
+    @discardableResult
+    public static func saveAppearance(
+        _ raw: String,
+        to defaults: UserDefaults = SharedStore.defaults
+    ) -> Bool {
+        guard appearance(from: defaults) != raw else { return false }
+        defaults.set(raw, forKey: appearanceKey)
+        return true
+    }
+
+    /// The rider's settings, so the widget plans the trip the way the app does.
+    public static func tuning(from defaults: UserDefaults = SharedStore.defaults) -> RiderTuning? {
+        guard let data = defaults.data(forKey: tuningKey) else { return nil }
+        return try? JSONDecoder().decode(RiderTuning.self, from: data)
+    }
+
+    @discardableResult
+    public static func saveTuning(
+        _ tuning: RiderTuning,
+        to defaults: UserDefaults = SharedStore.defaults
+    ) -> Bool {
+        guard Self.tuning(from: defaults) != tuning,
+              let data = try? JSONEncoder().encode(tuning) else { return false }
+        defaults.set(data, forKey: tuningKey)
+        return true
     }
 
     /// Writes the snapshot, and reports whether it changed the trip on file.

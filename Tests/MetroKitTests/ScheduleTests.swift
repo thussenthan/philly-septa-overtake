@@ -189,8 +189,24 @@ final class FormatTests: XCTestCase {
     func testCountdown() {
         XCTAssertEqual(Format.countdown(-5), "now")
         XCTAssertEqual(Format.countdown(12), "0:12")
-        XCTAssertEqual(Format.countdown(247), "4:07")
-        XCTAssertEqual(Format.countdown(3725), "1:02:05")
+        XCTAssertEqual(Format.countdown(247), "4 min")
+        XCTAssertEqual(Format.countdown(3725), "1 hr 2 min")
+    }
+
+    /// Seconds are for the last two minutes and nowhere else: a digit ticking eleven
+    /// minutes out reads as urgent when there is nothing to be urgent about.
+    func testCountdownOnlyShowsSecondsCloseIn() {
+        XCTAssertEqual(Format.countdown(121), "2 min", "just outside the threshold")
+        XCTAssertEqual(Format.countdown(120), "2:00", "exactly at it")
+        XCTAssertEqual(Format.countdown(119), "1:59")
+        XCTAssertEqual(Format.countdown(1), "0:01")
+        XCTAssertEqual(Format.countdown(3600), "1 hr")
+    }
+
+    /// A countdown that rounds up promises time the rider hasn't got.
+    func testCountdownFloorsRatherThanRounding() {
+        XCTAssertEqual(Format.countdown(299), "4 min", "4:59 is four minutes, not five")
+        XCTAssertEqual(Format.countdown(300), "5 min")
     }
 
     func testSignedMinutes() {

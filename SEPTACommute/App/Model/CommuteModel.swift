@@ -53,15 +53,23 @@ struct RiderPreferences: Codable, Equatable {
 
     static let storageKey = "riderPreferences.v1"
 
-    func plannerOptions() -> PlannerOptions {
-        var options = PlannerOptions()
-        options.walking.milesPerHour = walkingMilesPerHour
-        options.maxWalkSeconds = maxWalkMinutes * 60
-        options.boardingBufferSeconds = boardingBufferSeconds
-        options.maxTransfers = allowTransfers ? 2 : 0
-        options.requiresStepFreeAccess = stepFreeOnly
-        return options
+    /// The settings that change the answer, in the shape the widget can read too.
+    ///
+    /// Everything the planner needs lives here rather than in a private conversion,
+    /// because the widget plans the same trip in another process and has to plan it
+    /// the same way. Settings that only affect the app — whether to spend network
+    /// calls on measured walking times, which appearance to use — stay out of it.
+    var tuning: RiderTuning {
+        RiderTuning(
+            walkingMilesPerHour: walkingMilesPerHour,
+            maxWalkMinutes: maxWalkMinutes,
+            boardingBufferSeconds: boardingBufferSeconds,
+            allowTransfers: allowTransfers,
+            stepFreeOnly: stepFreeOnly
+        )
     }
+
+    func plannerOptions() -> PlannerOptions { tuning.plannerOptions() }
 }
 
 /// Where the rider is heading.
@@ -131,7 +139,11 @@ final class CommuteModel: ObservableObject {
     /// The point of the app is to open it and have the answer already there, so the
     /// destination is guessed from where you are standing: near home means you are
     /// heading to work or school, anywhere else means you are heading home.
-    private let nearHomeMeters: Double = 1609.34   // one mile
+    ///
+    /// The number lives on `SavedCommute` because the widget applies the same rule in
+    /// another process, and a home screen where the app and the widget disagreed about
+    /// which way the rider was facing would be worse than either alone.
+    private let nearHomeMeters: Double = SavedCommute.nearHomeMeters
 
     /// Set once the rider picks a destination by hand, so the guess stops
     /// overriding them. Deliberately not persisted — every launch starts by
@@ -165,7 +177,7 @@ final class CommuteModel: ObservableObject {
             preferences = saved
         }
 
-        target = Self.automaticTarget(places: places, location: nil, nearHomeMeters: 1609.34)
+        target = Self.automaticTarget(places: places, location: nil, nearHomeMeters: SavedCommute.nearHomeMeters)
 
         // `self.` is load-bearing: the initialiser parameter of the same name is
         // optional, and would shadow the stored property here.
@@ -195,8 +207,10 @@ final class CommuteModel: ObservableObject {
         alertService.refreshIfNeeded()
         // An install that already had addresses saved before the widget existed has
         // never published them, and a rider with no location fix would never trigger
-        // a plan to do it either.
+        // a plan to do it either. Same for the appearance, which existed as a setting
+        // before anything read it across the boundary.
         publishCommuteOnly()
+        publishSettings()
     }
 
     func onDisappear() {
@@ -474,11 +488,16 @@ final class CommuteModel: ObservableObject {
     }
 
     /// The rider's two anchors, for the widget to choose between.
+    ///
+    /// The last location fix rides along so the widget can apply the same rule the app
+    /// does — within a mile of home means heading out, anywhere else means heading
+    /// home — rather than falling back to the clock and pointing the other way.
     private func savedCommute() -> SavedCommute? {
         guard let home = places.home, let away = places.school else { return nil }
         return SavedCommute(
             home: SnapshotEndpoint(home.endpoint, name: home.name),
-            away: SnapshotEndpoint(away.endpoint, name: away.name)
+            away: SnapshotEndpoint(away.endpoint, name: away.name),
+            lastFix: locationService.coordinate.map { LocationFix($0, at: Date()) }
         )
     }
 
@@ -525,6 +544,22 @@ final class CommuteModel: ObservableObject {
     private func persistPreferences() {
         guard let data = try? JSONEncoder().encode(preferences) else { return }
         defaults.set(data, forKey: RiderPreferences.storageKey)
+        publishSettings()
+    }
+
+    /// Put the settings the widget depends on where the widget can read them.
+    ///
+    /// Two of them cross the boundary. The appearance, because a widget is drawn by
+    /// the system and would otherwise sit light beside a dark app. And the planner
+    /// tuning, because the widget re-plans the trip itself: with the library defaults
+    /// instead of the rider's walking speed and boarding margin it would count down
+    /// to a different minute than the app it is sitting next to, and be wrong about
+    /// which train to take whenever the two disagreed.
+    private func publishSettings() {
+        let appearanceChanged = SharedStore.saveAppearance(preferences.appearance.rawValue)
+        let tuningChanged = SharedStore.saveTuning(preferences.tuning)
+        guard appearanceChanged || tuningChanged else { return }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Derived view state

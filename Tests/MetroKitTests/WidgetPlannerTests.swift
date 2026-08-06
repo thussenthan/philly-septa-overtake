@@ -282,4 +282,265 @@ final class WidgetPlannerTests: XCTestCase {
         XCTAssertEqual(SharedStore.snapshot(from: defaults)?.destination.stationID, "e")
         defaults.removePersistentDomain(forName: "widget-planner-tests")
     }
+
+    // MARK: - Which way the rider is facing
+
+    /// One home, one school, and a coordinate to measure from: the rule is distance,
+    /// not the hour. Inside a mile of home the rider is setting out; anywhere else
+    /// they are heading back.
+    private func commuteWithFix(
+        metersFromHome: Double,
+        takenAt: Date = Fixture.date(8, 0),
+        age: TimeInterval = 0
+    ) -> SavedCommute {
+        let home = Coordinate(latitude: 40.0, longitude: -75.16)
+        // Shift east so the offset is a pure distance.
+        let degrees = metersFromHome / (111_320 * cos(home.latitude * .pi / 180))
+        return SavedCommute(
+            home: SnapshotEndpoint(
+                .place(name: "Home", coordinate: home),
+                name: "Home"
+            ),
+            away: SnapshotEndpoint(
+                .place(name: "School", coordinate: Coordinate(latitude: 39.98, longitude: -75.16)),
+                name: "School"
+            ),
+            lastFix: LocationFix(
+                Coordinate(latitude: home.latitude, longitude: home.longitude + degrees),
+                at: takenAt.addingTimeInterval(-age)
+            )
+        )
+    }
+
+    func testNearHomeMeansHeadingOutWhateverTheClockSays() {
+        // Half past three in the afternoon: the clock would send them home.
+        let afternoon = Fixture.date(15, 30)
+        XCTAssertTrue(
+            commuteWithFix(metersFromHome: 400, takenAt: afternoon).outbound(at: afternoon, calendar: eastern),
+            "within a mile of home is outbound"
+        )
+        let morning = Fixture.date(8, 0)
+        XCTAssertTrue(
+            commuteWithFix(metersFromHome: 400, takenAt: morning).outbound(at: morning, calendar: eastern)
+        )
+    }
+
+    func testAwayFromHomeMeansHeadingHomeWhateverTheClockSays() {
+        // Eight in the morning: the clock would send them out.
+        let morning = Fixture.date(8, 0)
+        XCTAssertFalse(
+            commuteWithFix(metersFromHome: 4_000, takenAt: morning).outbound(at: morning, calendar: eastern),
+            "outside the mile is homeward"
+        )
+        let afternoon = Fixture.date(15, 30)
+        XCTAssertFalse(
+            commuteWithFix(metersFromHome: 4_000, takenAt: afternoon).outbound(at: afternoon, calendar: eastern)
+        )
+    }
+
+    /// The boundary itself, from both sides. A mile is 1609.34 m.
+    func testTheMileIsTheBoundary() {
+        let afternoon = Fixture.date(15, 30)
+        XCTAssertTrue(
+            commuteWithFix(metersFromHome: 1_500, takenAt: afternoon).outbound(at: afternoon, calendar: eastern)
+        )
+        XCTAssertFalse(
+            commuteWithFix(metersFromHome: 1_700, takenAt: afternoon).outbound(at: afternoon, calendar: eastern)
+        )
+    }
+
+    /// A fix from this morning says nothing about where the rider is this afternoon,
+    /// and acting on it would offer the trip *to* work to someone already at work.
+    func testAStaleFixFallsBackToTheClock() {
+        let stale = commuteWithFix(metersFromHome: 400, age: 6 * 3600)
+        XCTAssertFalse(
+            stale.outbound(at: Fixture.date(15, 30), calendar: eastern),
+            "too old to trust; the clock says homeward"
+        )
+        XCTAssertTrue(stale.outbound(at: Fixture.date(8, 0), calendar: eastern), "the clock says outbound")
+    }
+
+    /// With no fix at all — a rider who has never granted location — the clock is all
+    /// there is, and the widget still has to point somewhere.
+    func testWithoutAFixTheClockDecides() {
+        var commute = commuteWithFix(metersFromHome: 400)
+        commute.lastFix = nil
+        XCTAssertTrue(commute.outbound(at: Fixture.date(8, 0), calendar: eastern))
+        XCTAssertFalse(commute.outbound(at: Fixture.date(15, 30), calendar: eastern))
+    }
+
+    /// A widget hands WidgetKit entries it cannot revise, so it has to know when the
+    /// direction it planned for could stop being true.
+    func testTheTimelineExpiresWhenTheDirectionCould() {
+        let fresh = commuteWithFix(metersFromHome: 400)
+        let moment = Fixture.date(8, 0)
+        // Distance is deciding, so the verdict holds exactly as long as the fix does.
+        XCTAssertEqual(
+            fresh.directionStableUntil(from: moment, calendar: eastern),
+            moment.addingTimeInterval(SavedCommute.fixLifetime),
+            "the fix was taken at this moment, so it ages out a lifetime later"
+        )
+
+        // With no fix the clock is deciding, and the clock changes its mind at noon.
+        var clockOnly = fresh
+        clockOnly.lastFix = nil
+        XCTAssertEqual(
+            clockOnly.directionStableUntil(from: moment, calendar: eastern),
+            Fixture.date(12, 0)
+        )
+        // Past the turnaround, the next change is midnight.
+        XCTAssertGreaterThan(
+            clockOnly.directionStableUntil(from: Fixture.date(15, 30), calendar: eastern),
+            Fixture.date(23, 59)
+        )
+    }
+
+    private var eastern: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = ServiceCalendar.easternTimeZone
+        return calendar
+    }
+
+    /// The fix is restamped on every replan and drifts by metres. Reloading the widget
+    /// for that would spend the whole refresh budget saying nothing — but crossing the
+    /// mile is the one movement it must not miss.
+    func testOnlyCrossingTheMileCountsAsAChange() {
+        func snapshot(with commute: SavedCommute) -> CommuteSnapshot {
+            CommuteSnapshot(
+                origin: SnapshotEndpoint(.station("a"), name: "A"),
+                destination: SnapshotEndpoint(.station("f"), name: "F"),
+                savedAt: Fixture.date(8, 0),
+                commute: commute
+            )
+        }
+        let base = snapshot(with: commuteWithFix(metersFromHome: 400))
+
+        XCTAssertTrue(
+            snapshot(with: commuteWithFix(metersFromHome: 600)).describesSameTrip(as: base),
+            "walking down the street is not a new question"
+        )
+        XCTAssertFalse(
+            snapshot(with: commuteWithFix(metersFromHome: 4_000)).describesSameTrip(as: base),
+            "leaving the neighbourhood turns the trip around"
+        )
+        XCTAssertFalse(
+            snapshot(with: commuteWithFix(metersFromHome: 400, age: 6 * 3600)).describesSameTrip(as: base),
+            "a fix that has aged out is no longer answering by distance"
+        )
+    }
+
+    // MARK: - The countdown
+
+    /// The bug this fixes: the widget planned with the library defaults while the app
+    /// planned with the rider's settings, so the two counted down to different minutes
+    /// sitting inches apart on the same screen.
+    func testTheWidgetPlansWithTheRidersSettings() throws {
+        let tuning = RiderTuning(
+            walkingMilesPerHour: 2.1,
+            maxWalkMinutes: 25,
+            boardingBufferSeconds: 90,
+            allowTransfers: false,
+            stepFreeOnly: true
+        )
+        let widget = WidgetPlanner.options(tuning: tuning)
+        let app = tuning.plannerOptions()
+
+        XCTAssertEqual(widget.walking.milesPerHour, app.walking.milesPerHour)
+        XCTAssertEqual(widget.maxWalkSeconds, app.maxWalkSeconds)
+        XCTAssertEqual(widget.boardingBufferSeconds, app.boardingBufferSeconds)
+        XCTAssertEqual(widget.maxTransfers, app.maxTransfers)
+        XCTAssertEqual(widget.requiresStepFreeAccess, app.requiresStepFreeAccess)
+        XCTAssertEqual(widget.maxAccessStations, app.maxAccessStations)
+    }
+
+    /// Same tuning, same trip, same moment: the same deadline. `maxResults` is the one
+    /// thing the widget narrows, and trimming a ranked list cannot change its head.
+    func testTheWidgetAndTheAppAgreeOnWhenToLeave() throws {
+        var tuning = RiderTuning()
+        tuning.walkingMilesPerHour = 2.2
+        tuning.boardingBufferSeconds = 0
+
+        var appOptions = tuning.plannerOptions()
+        appOptions.walking.startupSeconds = 0
+        appOptions.walking.stationEntrySeconds = 0
+        appOptions.walking.stationExitSeconds = 0
+        appOptions.minTransferSeconds = 60
+
+        var widgetOptions = appOptions
+        widgetOptions.maxResults = 2
+
+        let moment = Fixture.date(8, 1)
+        let request = PlanRequest(origin: .station("a"), destination: .station("f"), departAt: moment)
+        let fromTheApp = try XCTUnwrap(
+            JourneyPlanner(network: Fixture.network, options: appOptions).plan(request).best
+        )
+        let fromTheWidget = try XCTUnwrap(
+            WidgetPlanner.steps(
+                for: snapshot(),
+                from: moment,
+                limit: 1,
+                network: Fixture.network,
+                options: widgetOptions
+            ).first
+        )
+        XCTAssertEqual(fromTheWidget.leaveBy, fromTheApp.urgency.leaveBy)
+    }
+
+    /// A widget cannot redraw itself, so every minute the countdown displays has to be
+    /// an entry — landing exactly on the instant the digit changes, never in between.
+    func testFramesLandOnEachDisplayedMinute() throws {
+        let now = Fixture.date(8, 1)
+        let steps = self.steps(at: 8, 1, limit: 2)
+        let frames = WidgetPlanner.frames(for: steps, from: now)
+        XCTAssertGreaterThan(frames.count, steps.count, "one entry per step would go stale within the minute")
+
+        XCTAssertLessThanOrEqual(frames[0].at, now, "WidgetKit rejects a timeline starting in the future")
+        for (previous, next) in zip(frames, frames.dropFirst()) {
+            XCTAssertLessThan(previous.at, next.at, "entries must advance")
+        }
+
+        // The number a frame shows has to be the truth for the whole of its turn on
+        // screen, since nothing can redraw it in between. Checked just after it takes
+        // over, in the middle, and at the last instant before the next one does.
+        for (index, frame) in frames.enumerated() {
+            guard let shown = frame.countdown else { continue }
+            let ends = index + 1 < frames.count ? frames[index + 1].at : frame.step.leaveBy
+            let midpoint = frame.at.addingTimeInterval(ends.timeIntervalSince(frame.at) / 2)
+            for instant in [frame.at.addingTimeInterval(0.001), midpoint, ends.addingTimeInterval(-0.001)]
+            where instant >= frame.at && instant < ends {
+                XCTAssertEqual(
+                    shown,
+                    Format.countdown(frame.step.leaveBy.timeIntervalSince(instant)),
+                    "the entry went stale \(ends.timeIntervalSince(instant))s before it expired"
+                )
+            }
+        }
+    }
+
+    /// The whole point of landing on the change instants: the sequence steps down one
+    /// minute at a time and hands over to the live timer at two.
+    func testFramesCountDownOneMinuteAtATime() throws {
+        let steps = self.steps(at: 8, 1, limit: 1)
+        let frames = WidgetPlanner.frames(for: steps, from: Fixture.date(8, 1))
+        let shown = frames.compactMap(\.countdown)
+        XCTAssertEqual(shown.last, "2 min", "the last still number before the timer takes over")
+        XCTAssertEqual(frames.last?.countdown, nil, "expected the live timer at the end")
+        XCTAssertEqual(Set(shown).count, shown.count, "a repeated number means a wasted entry")
+    }
+
+    /// Seconds start ticking two minutes out and not before — the same switch the app
+    /// makes, because the two are looked at side by side.
+    func testSecondsOnlyTickInTheFinalTwoMinutes() throws {
+        let frames = WidgetPlanner.frames(for: steps(at: 8, 1, limit: 2), from: Fixture.date(8, 1))
+        for frame in frames {
+            let remaining = frame.step.leaveBy.timeIntervalSince(frame.at)
+            XCTAssertEqual(
+                frame.showsSeconds,
+                remaining <= Format.countdownSecondsThreshold,
+                "a ticking second hand ten minutes out is noise, and a still number ten seconds out is useless"
+            )
+        }
+        XCTAssertTrue(frames.contains { $0.showsSeconds }, "expected a handover to the live timer")
+        XCTAssertTrue(frames.contains { !$0.showsSeconds }, "expected a whole-minute stretch first")
+    }
 }

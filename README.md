@@ -475,17 +475,34 @@ last moment you can leave, and when you'd arrive.
 It doesn't ask the app what the answer is. Widget extensions have no reliable
 location fix, get throttled on the network, and are killed if they take too long —
 but they have the same bundled timetable, which is enough to compute exact
-departures for any moment. So the app writes only *which trip* to answer
-(`CommuteSnapshot`: two endpoints and a name for each) into a shared App Group, and
-the extension re-plans it for the moment it is being looked at.
+departures for any moment. So the app writes only *which trip* to answer into a
+shared App Group and the extension re-plans it for the moment it is being looked at.
+Three things cross that boundary, and each is there because the widget got something
+visibly wrong without it:
+
+- **The trip** (`CommuteSnapshot`: two endpoints and a name for each), plus the two
+  saved addresses, so the widget is right on a fresh install rather than blank until
+  someone opens the plan screen.
+- **The rider's settings** (`RiderTuning`). The widget used to plan with the library
+  defaults while the app planned with the rider's walking speed and boarding margin,
+  so the two counted down to different minutes sitting inches apart.
+- **The last location fix**, so the widget applies the app's own rule for which way
+  the rider is facing — within a mile of home means heading out, anywhere else means
+  heading home — instead of guessing from the clock and pointing the other way. A fix
+  older than ninety minutes stops meaning anything and the clock takes back over.
 
 The timeline is built from the answers rather than from a guessed refresh interval:
-each entry begins at the exact instant the option the previous one recommended stops
-being catchable. Between those instants nothing the widget could say changes, which
-is why the countdown is a self-updating `Text(_:style:.timer)` instead of an entry
-per minute. The widget states what missing the train *costs* ("Miss it: +12m") and
-never tells you to run — whether to run depends on how much time is left, and an
-entry rendered ten minutes after it was computed can't know that.
+each step begins at the exact instant the option the previous one recommended stops
+being catchable, and the timeline stops early if the rider could have turned around
+by then. Within a step, the countdown's own changes are entries too — one per
+displayed minute, landing exactly on the instant the number changes, and then a
+single entry for the last two minutes where WidgetKit's live `Text(_:style:.timer)`
+takes over. That threshold is the app's as well: a seconds digit ticking eleven
+minutes out reads as urgent when there is nothing to be urgent about, and "1 min" is
+useless when the real answer is 0:20. The widget states what missing the train
+*costs* ("Miss it: +12m") and never tells you to run — whether to run depends on how
+much time is left, and an entry rendered ten minutes after it was computed can't
+know that.
 
 Both halves of the plumbing are in the project file rather than in a setup checklist,
 because both are things Xcode's dialogs merely write and neither survives being
