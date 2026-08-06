@@ -67,7 +67,8 @@ STATION_DISPLAY_NAMES = {
     "Olney Transit Center": ("Olney", "Transit Center"),
     "Broad-Allegheny": ("Allegheny", None),
     "Broad-Girard": ("Girard", None),
-    "Broad-Spring Garden": ("Spring Garden", None),
+    "Broad-Spring Garden": ("Spring Garden", "Broad St"),
+    "Spring Garden": ("Spring Garden", "Front St"),
     "Cecil B. Moore": ("Cecil B. Moore", "Temple University"),
     "15th St/City Hall": ("City Hall", "15th St"),
     "North Philadelphia": ("North Philadelphia", None),
@@ -90,6 +91,7 @@ STATION_INTERSECTIONS = {
     "Broad-Girard": "Broad St & Girard Ave",
     "Fairmount": "Broad St & Fairmount Ave",
     "Broad-Spring Garden": "Broad St & Spring Garden St",
+    "Spring Garden": "Front St & Spring Garden St",
     "Race-Vine": "Broad St & Race St",
     "15th St/City Hall": "Broad St & Market St",
     "Walnut-Locust": "Broad St & Locust St",
@@ -101,6 +103,19 @@ STATION_INTERSECTIONS = {
     "NRG": "Broad St & Pattison Ave",
     "Chinatown": "8th St & Vine St",
     "8th-Market": "8th St & Market St",
+}
+
+# Two stations on this network genuinely share a name, and deriving ids from names
+# collapsed them into one.
+#
+# The Broad Street Line's Spring Garden is at Broad & Spring Garden; the
+# Market-Frankford Line's is at Front & Spring Garden, 1.8 km east. Merged, they
+# became a single station at the midpoint — a place that does not exist, roughly
+# 900 m from either real platform, advertising a B-to-L interchange that does not
+# exist either. Since the names cannot tell them apart, the ids are stated.
+STATION_ID_OVERRIDES = {
+    "Broad-Spring Garden": "spring-garden-broad",
+    "Spring Garden": "spring-garden-front",
 }
 
 
@@ -603,7 +618,10 @@ def canonical_station_id(stop_name: str) -> str:
     feed releases, so ids are derived from the name instead. That keeps saved
     places, tests, and shared links valid across regenerations.
     """
-    display = STATION_DISPLAY_NAMES.get(normalized_stop_name(stop_name), (normalized_stop_name(stop_name), None))[0]
+    normalized = normalized_stop_name(stop_name)
+    if normalized in STATION_ID_OVERRIDES:
+        return STATION_ID_OVERRIDES[normalized]
+    display = STATION_DISPLAY_NAMES.get(normalized, (normalized, None))[0]
     return slugify(display)
 
 
@@ -651,6 +669,11 @@ def build_stations(
     stations: dict[str, dict] = {}
     stop_to_station: dict[str, str] = {}
     for station_id, members in sorted(grouped.items()):
+        # members[0] decides the name, subtitle and intersection, so it must not
+        # depend on the order the feed happened to yield stops in — otherwise two
+        # runs over the same feed produce different output, and a regeneration
+        # cannot be checked for being the no-op it should be.
+        members.sort(key=lambda m: m["stop_id"])
         gtfs_name = normalized_stop_name(members[0]["stop_name"])
         display, subtitle = STATION_DISPLAY_NAMES.get(gtfs_name, (gtfs_name, None))
         latitude = statistics.fmean(float(m["stop_lat"]) for m in members)

@@ -33,7 +33,7 @@ public enum SEPTAData {
 
     /// Counts asserted by the test suite, so a truncated or half-parsed
     /// blob fails loudly instead of quietly routing over less of the city.
-    public static let expectedStationCount = 585
+    public static let expectedStationCount = 586
     public static let expectedPatternCount = 321
     public static let expectedDepartureCount = 19351
 
@@ -42,7 +42,7 @@ public enum SEPTAData {
 
     static let parts: [String] = [
 """
-M|v202607261|20260726|20260808|2026-08-05|SEPTA GTFS v202607261
+M|v202607261|20260726|20260808|2026-08-06|SEPTA GTFS v202607261
 L|L|L|Market-Frankford Line|0097D6|1001
 L|B|B|Broad Street Line|F26100|1011
 L|T|T|Subway-Surface Trolleys|5A960A|1021
@@ -547,7 +547,8 @@ S|scenic-rd|Scenic Rd|||39.940743|-75.325996|D|1
 S|school-ln|School Ln|||39.948671|-75.299835|D|1
 S|snyder|Snyder||Broad St & Snyder Ave|39.924375|-75.169705|B,B-OWL|0
 S|somerset|Somerset|||39.991456|-75.122518|L|1
-S|spring-garden|Spring Garden||Broad St & Spring Garden St|39.961462|-75.150916|B,L|-
+S|spring-garden-broad|Spring Garden|Broad St|Broad St & Spring Garden St|39.962383|-75.161429|B,B-OWL|1
+S|spring-garden-front|Spring Garden|Front St|Front St & Spring Garden St|39.960542|-75.140402|L|0
 S|springfield-madison|Springfield-Madison|||39.927288|-75.292601|D|1
 S|springfield-mall|Springfield Mall|||39.918144|-75.348939|D|1
 S|spruce-st-and-38th-st|Spruce St & 38th St|||39.951231|-75.199490|T|1
@@ -812,7 +813,7 @@ P|75-northbound-windrim-av-and-wayne-av-oxford-av-and-frankford-av-48-v6|75|75|l
 O|windrim-av-and-wayne-av:0,wayne-av-and-roberts-av:25,roberts-av-and-green-st:48,windrim-av-and-germantown-av:100,wingohocking-st-and-uber-st:134,wingohocking-st-and-19th-st:156,wingohocking-st-and-18th-st:190,wingohocking-st-and-17th-st:224,wingohocking-st-and-16th-st:259,wingohocking-st-and-15th-st:294,15th-st-and-courtland-st:337,15th-st-and-belfield-av:380,wyoming:420,wyoming-av-and-old-york-rd:444,wyoming-av-and-13th-st:468,wyoming-av-and-12th-st:499,wyoming-av-and-11th-st:530,wyoming-av-and-10th-st:560,wyoming-av-and-9th-st:591,wyoming-av-and-roosevelt-blvd:634,wyoming-av-and-fairhill-st:686,wyoming-av-and-5th-st:720,wyoming-av-and-3rd-st:769,wyoming-av-and-2nd-st:809,wyoming-av-and-mascher-st:848,wyoming-av-and-front-st:877,wyoming-av-and-a-st:910,wyoming-av-and-b-st:943,wyoming-av-and-c-st:980,wyoming-av-and-d-st:1015,wyoming-av-and-whitaker-av:1048,wyoming-av-and-weymouth-st:1094,wyoming-av-and-g-st:1113,wyoming-av-and-h-st:1150,wyoming-av-and-ramona-av:1264,wyoming-av-and-castor-av-mbns:1320,castor-av-and-orthodox-av-mbns:1379,orthodox-st-and-adams-av:1415,orthodox-st-and-large-st:1434,orthodox-st-and-horrocks-st:1473,orthodox-st-and-oakland-st:1492,orthodox-st-and-pilling-st:1511,orthodox-st-and-leiper-st:1535,orthodox-st-and-penn-st:1551,penn-st-and-overington-st:1574,penn-st-and-arrott-st:1596,penn-st-and-foulkrod-st:1629,oxford-av-and-frankford-av:1680
 D|monday,tuesday,wednesday,thursday,friday|t:25140,26400,27600,50940,52140,64080
 P|B1-southbound-fern-rock-nrg-22|B|B1|local|southbound|NRG|south|100
-O|fern-rock:0,olney:225,logan:360,wyoming:435,hunting-park:525,erie:675,allegheny:765,north-philadelphia:870,susquehanna-dauphin:975,cecil-b-moore:1065,girard:1170,fairmount:1275,spring-garden:1350,race-vine:1440,city-hall:1560,walnut-locust:1665,lombard-south:1800,ellsworth-federal:1890,tasker-morris:1980,snyder:2100,oregon:2190,nrg:2415
+O|fern-rock:0,olney:225,logan:360,wyoming:435,hunting-park:525,erie:675,allegheny:765,north-philadelphia:870,susquehanna-dauphin:975,cecil-b-moore:1065,girard:1170,fairmount:1275,spring-garden-broad:1350,race-vine:1440,city-hall:1560,walnut-locust:1665,lombard-south:1800,ellsworth-federal:1890,tasker-morris:1980,snyder:2100,oregon:2190,nrg:2415
 D|monday,tuesday,wednesday,thursday,friday|t:17760,18780,19710,20640,21240,21840,22350,22860;f:23400:64980:420;t:65640,66240;f:66900:69900:600;t:70530,71130,71730,72390;f:73080:81720:720;t:82560,83280,84000,84660,85500,86640
 D|saturday|t:18000,18900,19800,20700,21600,22440,23280,24000,24720,25380,26040;f:26700:71700:600;f:72360:81720:720;t:82560,83280,84000,84660,85500,86640
 D|sunday|t:18300,19500,20460,21420,22380,23280;f:24180:32820:720;f:33420:68820:600;f:69480:81720:720;t:82560,83280,84000,84660,85500,86640
@@ -820,58 +821,58 @@ P|B1-southbound-fern-rock-nrg-9|B|B1|local|southbound|NRG|south|100
 O|fern-rock:0,city-hall:1200,walnut-locust:1305,lombard-south:1440,ellsworth-federal:1530,tasker-morris:1620,snyder:1740,oregon:1830,nrg:2055
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:16800
 P|B1-northbound-nrg-fern-rock-22|B|B1|local|northbound|Fern Rock Transit Center|north|100
-O|nrg:0,oregon:135,snyder:240,tasker-morris:330,ellsworth-federal:420,lombard-south:525,walnut-locust:615,city-hall:705,race-vine:825,spring-garden:915,fairmount:1005,girard:1095,cecil-b-moore:1215,susquehanna-dauphin:1320,north-philadelphia:1410,allegheny:1500,erie:1605,hunting-park:1725,wyoming:1800,logan:1875,olney:1980,fern-rock:2265
+O|nrg:0,oregon:135,snyder:240,tasker-morris:330,ellsworth-federal:420,lombard-south:525,walnut-locust:615,city-hall:705,race-vine:825,spring-garden-broad:915,fairmount:1005,girard:1095,cecil-b-moore:1215,susquehanna-dauphin:1320,north-philadelphia:1410,allegheny:1500,erie:1605,hunting-park:1725,wyoming:1800,logan:1875,olney:1980,fern-rock:2265
 D|monday,tuesday,wednesday,thursday,friday|t:18435,19455,20475,21375,22305,23205,23955,24375,24915,25455;f:25995:66735:420;t:67185;f:67665:72465:600;t:73125,73785;f:74445:83085:720;t:83925,84645,85365,86085,86805
 D|saturday|t:18705,19725,20745,21645,22545,23445,24345,25125,25905,26625,27345,28065,28785;f:29445:74445:600;f:75165:83085:720;t:83925,84645,85365,86085,86805
 D|sunday|t:18900,19980,21060,22140,23145,24105,25065,25965,26865;f:27705:34185:720;f:34785:70185:600;f:70845:83085:720;t:83925,84645,85365,86085,86805
 P|B1-northbound-nrg-fern-rock-16|B|B1|local|northbound|Fern Rock Transit Center|north|100
-O|nrg:0,city-hall:540,race-vine:660,spring-garden:750,fairmount:840,girard:930,cecil-b-moore:1050,susquehanna-dauphin:1155,north-philadelphia:1245,allegheny:1335,erie:1440,hunting-park:1560,wyoming:1635,logan:1710,olney:1815,fern-rock:2100
+O|nrg:0,city-hall:540,race-vine:660,spring-garden-broad:750,fairmount:840,girard:930,cecil-b-moore:1050,susquehanna-dauphin:1155,north-philadelphia:1245,allegheny:1335,erie:1440,hunting-park:1560,wyoming:1635,logan:1710,olney:1815,fern-rock:2100
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:17460
 P|B1-northbound-nrg-fern-rock-22-v2|B|B1|local|northbound|Fern Rock Transit Center|north|100
-O|nrg:0,oregon:135,snyder:240,tasker-morris:330,ellsworth-federal:420,lombard-south:525,walnut-locust:615,city-hall:915,race-vine:1035,spring-garden:1125,fairmount:1215,girard:1305,cecil-b-moore:1425,susquehanna-dauphin:1530,north-philadelphia:1620,allegheny:1710,erie:1815,hunting-park:1935,wyoming:2010,logan:2085,olney:2190,fern-rock:2475
+O|nrg:0,oregon:135,snyder:240,tasker-morris:330,ellsworth-federal:420,lombard-south:525,walnut-locust:615,city-hall:915,race-vine:1035,spring-garden-broad:1125,fairmount:1215,girard:1305,cecil-b-moore:1425,susquehanna-dauphin:1530,north-philadelphia:1620,allegheny:1710,erie:1815,hunting-park:1935,wyoming:2010,logan:2085,olney:2190,fern-rock:2475
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:87315
-P|B1_OWL-southbound-fern-rock-nrg-21|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
-O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1169,race-vine:1318,city-hall:1440:300,walnut-locust:1800,lombard-south:1866,ellsworth-federal:1980,tasker-morris:2072,snyder:2160,oregon:2279,nrg:2509
+P|B1_OWL-southbound-fern-rock-nrg-22|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|36
+O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1169,spring-garden-broad:1240,race-vine:1318,city-hall:1440:300,walnut-locust:1800,lombard-south:1866,ellsworth-federal:1980,tasker-morris:2072,snyder:2160,oregon:2279,nrg:2509
 D|monday,tuesday,wednesday,thursday,friday|t:6060,6960,7860,8760,9720,16380,16920,17520
 D|saturday,sunday|t:6060,6960,7860,8760,9720,16920,17520
-P|B1_OWL-southbound-fern-rock-nrg-21-v2|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
-O|fern-rock:0,olney:120,logan:239,wyoming:320,hunting-park:426,erie:540,allegheny:645,north-philadelphia:711,susquehanna-dauphin:832,cecil-b-moore:960,girard:1020,fairmount:1094,race-vine:1218,city-hall:1320:300,walnut-locust:1680,lombard-south:1746,ellsworth-federal:1860,tasker-morris:1952,snyder:2040,oregon:2159,nrg:2389
+P|B1_OWL-southbound-fern-rock-nrg-22-v2|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|36
+O|fern-rock:0,olney:120,logan:239,wyoming:320,hunting-park:426,erie:540,allegheny:645,north-philadelphia:711,susquehanna-dauphin:832,cecil-b-moore:960,girard:1020,fairmount:1094,spring-garden-broad:1153,race-vine:1218,city-hall:1320:300,walnut-locust:1680,lombard-south:1746,ellsworth-federal:1860,tasker-morris:1952,snyder:2040,oregon:2159,nrg:2389
 D|monday,tuesday,wednesday,thursday,friday|f:10680:15180:900;t:15780
 D|saturday,sunday|f:10680:16080:900
-P|B1_OWL-southbound-fern-rock-nrg-21-v3|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
-O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,race-vine:1359,city-hall:1500:300,walnut-locust:1860,lombard-south:1948,ellsworth-federal:2100,tasker-morris:2192,snyder:2280,oregon:2399,nrg:2629
+P|B1_OWL-southbound-fern-rock-nrg-22-v3|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|36
+O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,spring-garden-broad:1267,race-vine:1359,city-hall:1500:300,walnut-locust:1860,lombard-south:1948,ellsworth-federal:2100,tasker-morris:2192,snyder:2280,oregon:2399,nrg:2629
 D|monday,tuesday,wednesday,thursday,friday|t:1800,2400,3300,4200,5096
 D|saturday,sunday|t:2400,3300,4200,5096
-P|B1_OWL-southbound-fern-rock-nrg-21-v4|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
-O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,race-vine:1359,city-hall:1500:300,walnut-locust:1920,lombard-south:2008,ellsworth-federal:2160,tasker-morris:2261,snyder:2359,oregon:2492,nrg:2748
+P|B1_OWL-southbound-fern-rock-nrg-22-v4|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|36
 """,
 """
+O|fern-rock:0,olney:180,logan:299,wyoming:380,hunting-park:486,erie:600,allegheny:705,north-philadelphia:771,susquehanna-dauphin:892,cecil-b-moore:1020,girard:1080,fairmount:1184,spring-garden-broad:1267,race-vine:1359,city-hall:1500:300,walnut-locust:1920,lombard-south:2008,ellsworth-federal:2160,tasker-morris:2261,snyder:2359,oregon:2492,nrg:2748
 D|monday,tuesday,wednesday,thursday,friday|t:840,1200
 D|saturday,sunday|t:840,1500
 P|B1_OWL-southbound-city-hall-nrg-8|B-OWL|B1_OWL|nightBus|southbound|NRG Station|south|38
 O|city-hall:0,walnut-locust:120,lombard-south:208,ellsworth-federal:360,tasker-morris:461,snyder:559,oregon:692,nrg:948
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:1800
-P|B1_OWL-southbound-erie-city-hall-9|B-OWL|B1_OWL|nightBus|southbound|City Hall Station|south|44
-O|erie:0,allegheny:103,north-philadelphia:169,susquehanna-dauphin:290,cecil-b-moore:420,girard:480,fairmount:569,race-vine:718,city-hall:840
+P|B1_OWL-southbound-erie-city-hall-10|B-OWL|B1_OWL|nightBus|southbound|City Hall Station|south|40
+O|erie:0,allegheny:103,north-philadelphia:169,susquehanna-dauphin:290,cecil-b-moore:420,girard:480,fairmount:569,spring-garden-broad:640,race-vine:718,city-hall:840
 D|monday,tuesday,wednesday,thursday,friday|t:17280
-P|B1_OWL-northbound-nrg-fern-rock-21|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|33
-O|nrg:0,oregon:120,snyder:258,tasker-morris:345,ellsworth-federal:460,lombard-south:611,walnut-locust:696,city-hall:763,race-vine:1200,fairmount:1359,girard:1440,cecil-b-moore:1560,susquehanna-dauphin:1663,north-philadelphia:1765,allegheny:1869,erie:1980,hunting-park:2121,wyoming:2229,logan:2329,olney:2460,fern-rock:2580
+P|B1_OWL-northbound-nrg-fern-rock-22|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|32
+O|nrg:0,oregon:120,snyder:258,tasker-morris:345,ellsworth-federal:460,lombard-south:611,walnut-locust:696,city-hall:763,race-vine:1200,spring-garden-broad:1292,fairmount:1359,girard:1440,cecil-b-moore:1560,susquehanna-dauphin:1663,north-philadelphia:1765,allegheny:1869,erie:1980,hunting-park:2121,wyoming:2229,logan:2329,olney:2460,fern-rock:2580
 D|monday,tuesday,wednesday,thursday,friday|t:1920,2520;f:3120:15720:900;t:16320,16920,17520
 D|saturday,sunday|f:2220:17520:900;t:17880
-P|B1_OWL-northbound-city-hall-fern-rock-14|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|43
-O|city-hall:0,race-vine:120,fairmount:279,girard:360,cecil-b-moore:480,susquehanna-dauphin:598,north-philadelphia:716,allegheny:835,erie:960,hunting-park:1101,wyoming:1209,logan:1309,olney:1440,fern-rock:1620
+P|B1_OWL-northbound-city-hall-fern-rock-15|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|40
+O|city-hall:0,race-vine:120,spring-garden-broad:212,fairmount:279,girard:360,cecil-b-moore:480,susquehanna-dauphin:598,north-philadelphia:716,allegheny:835,erie:960,hunting-park:1101,wyoming:1209,logan:1309,olney:1440,fern-rock:1620
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:1800
-P|B1_OWL-northbound-nrg-fern-rock-21-v2|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|33
-O|nrg:0,oregon:120,snyder:258,tasker-morris:345,ellsworth-federal:460,lombard-south:611,walnut-locust:696,city-hall:763,race-vine:1200,fairmount:1359,girard:1440,cecil-b-moore:1560,susquehanna-dauphin:1678,north-philadelphia:1796,allegheny:1915,erie:2040,hunting-park:2181,wyoming:2289,logan:2389,olney:2520,fern-rock:2640
+P|B1_OWL-northbound-nrg-fern-rock-22-v2|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|32
+O|nrg:0,oregon:120,snyder:258,tasker-morris:345,ellsworth-federal:460,lombard-south:611,walnut-locust:696,city-hall:763,race-vine:1200,spring-garden-broad:1292,fairmount:1359,girard:1440,cecil-b-moore:1560,susquehanna-dauphin:1678,north-philadelphia:1796,allegheny:1915,erie:2040,hunting-park:2181,wyoming:2289,logan:2389,olney:2520,fern-rock:2640
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:1320
-P|B1_OWL-northbound-oregon-fern-rock-20|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|30
-O|oregon:0,snyder:138,tasker-morris:225,ellsworth-federal:340,lombard-south:491,walnut-locust:576,city-hall:643,race-vine:1080,fairmount:1239,girard:1320,cecil-b-moore:1440,susquehanna-dauphin:1543,north-philadelphia:1645,allegheny:1749,erie:1860,hunting-park:2001,wyoming:2109,logan:2209,olney:2340,fern-rock:2460
+P|B1_OWL-northbound-oregon-fern-rock-21|B-OWL|B1_OWL|nightBus|northbound|Fern Rock Transit Center|north|29
+O|oregon:0,snyder:138,tasker-morris:225,ellsworth-federal:340,lombard-south:491,walnut-locust:576,city-hall:643,race-vine:1080,spring-garden-broad:1172,fairmount:1239,girard:1320,cecil-b-moore:1440,susquehanna-dauphin:1543,north-philadelphia:1645,allegheny:1749,erie:1860,hunting-park:2001,wyoming:2109,logan:2209,olney:2340,fern-rock:2460
 D|monday,tuesday,wednesday,thursday,friday|t:7560,11160,14880
 P|B2-southbound-fern-rock-walnut-locust-8|B|B2|express|southbound|Walnut-Locust|south|100
-O|fern-rock:0,olney:225,erie:480,girard:765,spring-garden:870,race-vine:960,city-hall:1080,walnut-locust:1185
+O|fern-rock:0,olney:225,erie:480,girard:765,spring-garden-broad:870,race-vine:960,city-hall:1080,walnut-locust:1185
 D|monday,tuesday,wednesday,thursday,friday|t:20850,22050,23085,23610,24030,24480;f:24870:32430:420;t:33180,33600,34470,35040,48720,49320,50160,50880,51660,52500,53340,54180,55020,55875,56700,57240;f:57720:64860:420
 P|B2-northbound-walnut-locust-fern-rock-8|B|B2|express|northbound|Fern Rock Transit Center|north|100
-O|walnut-locust:0,city-hall:90,race-vine:210,spring-garden:300,girard:435,erie:675,olney:930,fern-rock:1215
+O|walnut-locust:0,city-hall:90,race-vine:210,spring-garden-broad:300,girard:435,erie:675,olney:930,fern-rock:1215
 D|monday,tuesday,wednesday,thursday,friday|t:22635,23670,24750;f:25185:33585:420;t:34065,34725,35385,35985,36585,50265,50865,51705,52425;f:53205:57405:840;t:58185;f:58890:64770:420;t:65205,65610,66045,66645
 P|B3-southbound-olney-8th-and-market-7|B|B3|spur|southbound|8th-Market|south|100
 O|olney:0,erie:255,north-philadelphia:375,girard:570,fairmount:690,chinatown:825,8th-and-market:930
@@ -1213,21 +1214,21 @@ P|G1-northbound-girard-av-and-63rd-st-mbfs-richmond-st-and-westmoreland-st-loop-
 O|girard-av-and-63rd-st-mbfs:0,girard-av-and-62nd-st:24,girard-av-and-61st-st:59,girard-av-and-60th-st:91,girard-av-and-59th-st:123,girard-av-and-57th-st:180,girard-av-and-56th-st:208,girard-av-and-54th-st:276,girard-av-and-52nd-st:327,girard-av-and-51st-st:366,girard-av-and-lancaster-av:461,girard-av-and-merion-av:501,girard-av-and-belmont-av-fs:580,girard-av-and-42nd-st:633,girard-av-and-41st-st:676,girard-av-and-40th-st:720,girard-av-and-39th-st:761,girard-av-and-34th-st-mbfs:838,girard-av-and-31st-st:991,girard-av-and-29th-st:1039,girard-av-and-28th-st:1064,girard-av-and-27th-st:1086,girard-av-and-26th-st:1112,26th-st-and-poplar-st:1136,poplar-st-and-stillman-st:1151,college-av-and-24th-st-fs:1193,girard-av-and-corinthian-av:1269,girard-av-and-20th-st:1289,girard-av-and-19th-st:1312,girard-av-and-ridge-av:1326,girard-av-and-17th-st:1360,girard-av-and-16th-st:1383,girard:1440,girard-av-and-12th-st:1499,girard-av-and-11th-st:1523,girard-av-and-8th-st:1587,girard-av-and-7th-st:1615,girard-av-and-5th-st:1662,girard-av-and-3rd-st:1716,girard-av-and-2nd-st:1743,front-girard:1800,girard-av-and-frankford-av-fs:1835,girard-av-and-columbia-av:1902,girard-av-and-palmer-st:1938,girard-av-and-berks-st:1983,girard-av-and-richmond-st:2096,richmond-st-and-cumberland-st:2133,richmond-st-and-huntingdon-st:2182,richmond-st-and-lehigh-av:2230,richmond-st-and-somerset-st:2278,richmond-st-and-cambria-st:2314,richmond-st-and-ann-st:2345,richmond-st-and-clearfield-st:2415,richmond-st-and-allegheny-av:2464,richmond-st-and-westmoreland-st-loop:2520
 D|monday,tuesday,wednesday,thursday,friday|t:19260
 P|L1-southbound-69th-st-transit-center-frankford-transit-center-28|L|L1|local|southbound|Frankford Transit Center|east|32
-O|69th-st-transit-center:0,millbourne:74,63rd-st:135,60th-st:196,56th-st:277,52nd-st:360,46th-st:472,40th-st:600,34th-st:700,drexel-station-at-30th-st:780,city-hall:900,13th-st:942,11th-st:976,8th-and-market:1028,5th-st-independence-hall:1079,2nd-st:1137,spring-garden:1320,front-girard:1440,berks:1580,york-dauphin:1678,huntingdon:1749,somerset:1812,kensington-allegheny:1932,tioga:2024,erie-torresdale:2160,church:2265,arrott-transit-center:2355,frankford-transit-center:2460
+O|69th-st-transit-center:0,millbourne:74,63rd-st:135,60th-st:196,56th-st:277,52nd-st:360,46th-st:472,40th-st:600,34th-st:700,drexel-station-at-30th-st:780,city-hall:900,13th-st:942,11th-st:976,8th-and-market:1028,5th-st-independence-hall:1079,2nd-st:1137,spring-garden-front:1320,front-girard:1440,berks:1580,york-dauphin:1678,huntingdon:1749,somerset:1812,kensington-allegheny:1932,tioga:2024,erie-torresdale:2160,church:2265,arrott-transit-center:2355,frankford-transit-center:2460
 D|monday,tuesday,wednesday,thursday,friday|t:18060,18900,19560,20100,20640,21120;f:21540:68700:360;t:69180,69660,70140,70620;f:71160:74160:600;f:74880:82800:720;t:83700,84600,85500,86400
 D|saturday,sunday|t:18300,19440,20520,21540,22440,23340,24240;f:25140:29460:720;f:30060:69660:600;f:70320:77520:720;f:78300:86400:900
 P|L1-southbound-69th-st-transit-center-frankford-transit-center-19|L|L1|local|southbound|Frankford Transit Center|east|32
-O|69th-st-transit-center:0,city-hall:900,13th-st:942,11th-st:976,8th-and-market:1028,5th-st-independence-hall:1079,2nd-st:1137,spring-garden:1320,front-girard:1440,berks:1580,york-dauphin:1678,huntingdon:1749,somerset:1812,kensington-allegheny:1932,tioga:2024,erie-torresdale:2160,church:2265,arrott-transit-center:2355,frankford-transit-center:2460
+O|69th-st-transit-center:0,city-hall:900,13th-st:942,11th-st:976,8th-and-market:1028,5th-st-independence-hall:1079,2nd-st:1137,spring-garden-front:1320,front-girard:1440,berks:1580,york-dauphin:1678,huntingdon:1749,somerset:1812,kensington-allegheny:1932,tioga:2024,erie-torresdale:2160,church:2265,arrott-transit-center:2355,frankford-transit-center:2460
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:17100
 P|L1-southbound-69th-st-transit-center-frankford-transit-center-28-v2|L|L1|local|southbound|Frankford Transit Center|east|32
-O|69th-st-transit-center:0,millbourne:74,63rd-st:135,60th-st:196,56th-st:277,52nd-st:360,46th-st:472,40th-st:600,34th-st:700,drexel-station-at-30th-st:780,city-hall:1140,13th-st:1182,11th-st:1216,8th-and-market:1268,5th-st-independence-hall:1319,2nd-st:1377,spring-garden:1560,front-girard:1680,berks:1820,york-dauphin:1918,huntingdon:1989,somerset:2052,kensington-allegheny:2172,tioga:2264,erie-torresdale:2400,church:2505,arrott-transit-center:2595,frankford-transit-center:2700
+O|69th-st-transit-center:0,millbourne:74,63rd-st:135,60th-st:196,56th-st:277,52nd-st:360,46th-st:472,40th-st:600,34th-st:700,drexel-station-at-30th-st:780,city-hall:1140,13th-st:1182,11th-st:1216,8th-and-market:1268,5th-st-independence-hall:1319,2nd-st:1377,spring-garden-front:1560,front-girard:1680,berks:1820,york-dauphin:1918,huntingdon:1989,somerset:2052,kensington-allegheny:2172,tioga:2264,erie-torresdale:2400,church:2505,arrott-transit-center:2595,frankford-transit-center:2700
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:87060
 P|L1-northbound-frankford-transit-center-69th-st-transit-center-28|L|L1|local|northbound|69th St Transit Center|west|32
-O|frankford-transit-center:0,arrott-transit-center:104,church:194,erie-torresdale:300,tioga:406,kensington-allegheny:480,somerset:596,huntingdon:657,york-dauphin:726,berks:822,front-girard:960,spring-garden:1080,2nd-st:1284,5th-st-independence-hall:1350,8th-and-market:1409,11th-st:1469,13th-st:1508,city-hall:1560,drexel-station-at-30th-st:1680,34th-st:1739,40th-st:1814,46th-st:1901,52nd-st:1980,56th-st:2088,60th-st:2196,63rd-st:2278,millbourne:2359,69th-st-transit-center:2460
+O|frankford-transit-center:0,arrott-transit-center:104,church:194,erie-torresdale:300,tioga:406,kensington-allegheny:480,somerset:596,huntingdon:657,york-dauphin:726,berks:822,front-girard:960,spring-garden-front:1080,2nd-st:1284,5th-st-independence-hall:1350,8th-and-market:1409,11th-st:1469,13th-st:1508,city-hall:1560,drexel-station-at-30th-st:1680,34th-st:1739,40th-st:1814,46th-st:1901,52nd-st:1980,56th-st:2088,60th-st:2196,63rd-st:2278,millbourne:2359,69th-st-transit-center:2460
 D|monday,tuesday,wednesday,thursday,friday|t:17880,18720,19440,20160,20880,21480,22080,22560;f:22980:69420:360;f:69840:73680:480;t:74280,74880,75480,76080;f:76680:83160:720;t:83940,84840,85740
 D|saturday,sunday|t:17880,18840,20040,21240;f:22440:26940:900;t:27720,28440,29160,29880,30600;f:31260:71460:600;f:72180:78660:720;f:79440:85740:900
 P|L1-northbound-frankford-transit-center-69th-st-transit-center-28-v2|L|L1|local|northbound|69th St Transit Center|west|32
-O|frankford-transit-center:0,arrott-transit-center:104,church:194,erie-torresdale:300,tioga:406,kensington-allegheny:480,somerset:596,huntingdon:657,york-dauphin:726,berks:822,front-girard:960,spring-garden:1080,2nd-st:1412,5th-st-independence-hall:1520,8th-and-market:1616,11th-st:1714,13th-st:1778,city-hall:1860,drexel-station-at-30th-st:1980,34th-st:2039,40th-st:2114,46th-st:2201,52nd-st:2280,56th-st:2388,60th-st:2496,63rd-st:2578,millbourne:2659,69th-st-transit-center:2760
+O|frankford-transit-center:0,arrott-transit-center:104,church:194,erie-torresdale:300,tioga:406,kensington-allegheny:480,somerset:596,huntingdon:657,york-dauphin:726,berks:822,front-girard:960,spring-garden-front:1080,2nd-st:1412,5th-st-independence-hall:1520,8th-and-market:1616,11th-st:1714,13th-st:1778,city-hall:1860,drexel-station-at-30th-st:1980,34th-st:2039,40th-st:2114,46th-st:2201,52nd-st:2280,56th-st:2388,60th-st:2496,63rd-st:2578,millbourne:2659,69th-st-transit-center:2760
 D|monday,tuesday,wednesday,thursday,friday,saturday,sunday|t:86340
 P|L1-northbound-frankford-transit-center-69th-st-transit-center-12|L|L1|local|northbound|69th St Transit Center|west|42
 O|frankford-transit-center:0,city-hall:1440,drexel-station-at-30th-st:1560,34th-st:1619,40th-st:1694,46th-st:1781,52nd-st:1860,56th-st:1968,60th-st:2076,63rd-st:2158,millbourne:2239,69th-st-transit-center:2340
@@ -1245,9 +1246,9 @@ D|sunday|t:17100,19800;f:72600:81600:1800;t:82800,85800,88500,92520
 P|M1-southbound-69th-st-transit-center-norristown-transit-center-22-v3|M|M1|local|southbound|Bridgeport|north|41
 O|69th-st-transit-center:0,parkview:113,township-line-rd:180,penfield:230,beechwood-brookline:293,wynnewood-rd:360,ardmore-junction:407,ardmore-av:461,haverford-south:561,bryn-mawr-south:660,roberts-rd:723,garrett-hill:803,stadium:860,villanova-south:889,radnor-south:1020,county-line:1089,matsonford:1165,gulph-mills:1260,hughes-park:1380,dekalb-st:1552,bridgeport:1620,norristown-transit-center:1800
 D|monday,tuesday,wednesday,thursday,friday|f:20400:32100:900;t:33180;f:34800:52800:1800;t:53700,54600,55500,56400
-P|M1-northbound-norristown-transit-center-69th-st-transit-center-22|M|M1|local|northbound|69th St Transit Center|south|41
 """,
 """
+P|M1-northbound-norristown-transit-center-69th-st-transit-center-22|M|M1|local|northbound|69th St Transit Center|south|41
 O|norristown-transit-center:0,bridgeport:120,dekalb-st:187,hughes-park:360,gulph-mills:420,matsonford:490,county-line:547,radnor-south:600,villanova-south:707,stadium:731,garrett-hill:778,roberts-rd:844,bryn-mawr-south:900,haverford-south:997,ardmore-av:1098,ardmore-junction:1151,wynnewood-rd:1200,beechwood-brookline:1266,penfield:1329,township-line-rd:1380,parkview:1511,69th-st-transit-center:1740
 D|monday,tuesday,wednesday,thursday,friday|t:16740,18300,68160,69120,70020,71100,72300;f:73560:80760:1200;t:81900,83760,84960,87060,88920,91440,94320
 D|saturday|t:19200,21480;f:22800:68400:1200;t:70080;f:71160:81960:1800;t:83700,85260,87840,90600,94560
@@ -1647,9 +1648,9 @@ D|saturday|t:31080,34680,87000
 D|sunday|t:29160
 P|T3-northbound-13th-st-darby-transit-center-47-v4|T|T3|local|northbound|Darby Transit Center|west|15
 O|13th-st:0,city-hall:60,19th-st:147,22nd-st:218,drexel-station-at-30th-st:310,33rd-st:398,36th-sansom:493,37th-spruce:569,40th-st-portal:660,chester-av-and-42nd-st:738,chester-av-and-43rd-st:777,chester-av-and-45th-st:827,chester-av-and-46th-st:859,chester-av-and-47th-st:892,chester-av-and-48th-st:926,chester-av-and-49th-st:960,chester-av-and-51st-st:1034,chester-av-and-52nd-st:1067,chester-av-and-53rd-st:1108,chester-av-and-54th-st:1149,chester-av-and-55th-st:1189,chester-av-and-56th-st:1230,chester-av-and-57th-st:1275,chester-av-and-58th-st:1320,chester-av-and-59th-st:1352,chester-av-and-60th-st:1393,60th-st-and-kingsessing-av:1432,kingsessing-av-and-61st-st:1480,kingsessing-av-and-62nd-st:1517,mt-moriah:1560,kingsessing-av-and-65th-st:1600,65th-st-and-chester-st:1637,65th-st-and-belmar-st:1692,chester-av-and-65th-st-fs:1766,chester-av-and-church-ln:1847,chester-av-and-yeadon-av:1873,chester-av-and-duncan-av:1906,chester-av-and-stetser-av:1939,yeadon:1980,chester-av-and-alfred-av:2014,chester-av-and-cedar-av:2049,10th-st-and-mulberry-av:2086,10th-st-and-wycombe-av:2108,10th-st-and-summit-st:2131,10th-st-and-ridge-av:2172,10th-st-and-main-st:2211,darby-transit-center:2280
-D|saturday|t:49020,56940,58380,61260,65760
 """,
 """
+D|saturday|t:49020,56940,58380,61260,65760
 P|T3-northbound-13th-st-darby-transit-center-47-v5|T|T3|local|northbound|Darby Transit Center|west|15
 O|13th-st:0,city-hall:49,19th-st:120,22nd-st:178,drexel-station-at-30th-st:253,33rd-st:325,36th-sansom:403,37th-spruce:465,40th-st-portal:540,chester-av-and-42nd-st:602,chester-av-and-43rd-st:633,chester-av-and-45th-st:673,chester-av-and-46th-st:698,chester-av-and-47th-st:725,chester-av-and-48th-st:752,chester-av-and-49th-st:780,chester-av-and-51st-st:829,chester-av-and-52nd-st:851,chester-av-and-53rd-st:878,chester-av-and-54th-st:905,chester-av-and-55th-st:932,chester-av-and-56th-st:959,chester-av-and-57th-st:989,chester-av-and-58th-st:1020,chester-av-and-59th-st:1052,chester-av-and-60th-st:1093,60th-st-and-kingsessing-av:1132,kingsessing-av-and-61st-st:1180,kingsessing-av-and-62nd-st:1217,mt-moriah:1260,kingsessing-av-and-65th-st:1288,65th-st-and-chester-st:1314,65th-st-and-belmar-st:1353,chester-av-and-65th-st-fs:1406,chester-av-and-church-ln:1464,chester-av-and-yeadon-av:1483,chester-av-and-duncan-av:1507,chester-av-and-stetser-av:1531,yeadon:1560,chester-av-and-alfred-av:1587,chester-av-and-cedar-av:1615,10th-st-and-mulberry-av:1645,10th-st-and-wycombe-av:1662,10th-st-and-summit-st:1680,10th-st-and-ridge-av:1713,10th-st-and-main-st:1744,darby-transit-center:1800
 D|tuesday,wednesday,thursday,friday,saturday|t:88920

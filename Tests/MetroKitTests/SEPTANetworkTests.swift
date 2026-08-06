@@ -22,7 +22,7 @@ final class SEPTANetworkTests: XCTestCase {
     private let broadStreetStations: [StationID] = [
         "fern-rock", "olney", "logan", "wyoming", "hunting-park", "erie", "allegheny",
         "north-philadelphia", "susquehanna-dauphin", "cecil-b-moore", "girard",
-        "fairmount", "spring-garden", "race-vine", "city-hall", "walnut-locust",
+        "fairmount", "spring-garden-broad", "race-vine", "city-hall", "walnut-locust",
         "lombard-south", "ellsworth-federal", "tasker-morris", "snyder", "oregon", "nrg",
     ]
 
@@ -235,10 +235,52 @@ final class SEPTANetworkTests: XCTestCase {
             let alight = journey.alightStation
             XCTAssertNotEqual(alight, "fairmount", "the express cannot stop at Fairmount")
             XCTAssertTrue(
-                alight == "girard" || alight == "spring-garden",
+                alight == "girard" || alight == "spring-garden-broad",
                 "an express rider bound for Fairmount gets off at Girard or Spring Garden, not \(alight?.rawValue ?? "nil")"
             )
         }
+    }
+
+    // MARK: - Stations that share a name
+
+    /// Two SEPTA stations are called Spring Garden: the Broad Street Line's, at Broad
+    /// & Spring Garden, and the Market-Frankford Line's, at Front & Spring Garden,
+    /// 1.8 km east. Station ids are derived from names, which quietly collapsed them
+    /// into one station at the midpoint — a place that is not there, ~900 m from
+    /// either platform, offering a B-to-L change that does not exist.
+    func testTheTwoSpringGardensAreDifferentStations() throws {
+        let broad = try XCTUnwrap(network.station("spring-garden-broad"))
+        let front = try XCTUnwrap(network.station("spring-garden-front"))
+
+        XCTAssertEqual(broad.name, front.name, "they really do share a name")
+        XCTAssertNotEqual(broad.subtitle, front.subtitle, "so the subtitle has to separate them")
+        XCTAssertGreaterThan(
+            broad.coordinate.distance(to: front.coordinate), 1_500,
+            "a mile and an eighth apart — not one station"
+        )
+        XCTAssertTrue(broad.lines.contains("B"))
+        XCTAssertTrue(front.lines.contains("L"))
+        XCTAssertTrue(
+            Set(broad.lines).isDisjoint(with: Set(front.lines)),
+            "no line calls at both"
+        )
+    }
+
+    /// The general form of that bug: any station where the Broad Street Line meets the
+    /// Market-Frankford Line is an interchange the planner will route riders through
+    /// in seventy-five seconds, so there had better be one there.
+    ///
+    /// SEPTA has exactly two — the City Hall/15th St concourse, and 8th & Market where
+    /// the Ridge Spur meets the L. A third would mean two stations had been merged on
+    /// a shared name again.
+    func testOnlyTheRealInterchangesConnectBroadAndTheMarketFrankfordLine() {
+        let connecting = network.stations
+            .filter { $0.lines.contains("B") && $0.lines.contains("L") }
+            .map(\.id)
+        XCTAssertEqual(
+            Set(connecting), ["city-hall", "8th-and-market"],
+            "an unexpected B-to-L interchange is almost always two stations merged by name"
+        )
     }
 
     /// Cecil B. Moore serves Temple's main campus and the express skips it, so a

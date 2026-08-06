@@ -565,7 +565,7 @@ final class CommuteModel: ObservableObject {
     // MARK: - Derived view state
 
     /// Stations grouped by line, each in travel order — the only arrangement that
-    /// makes sense once there are 585 of them. Lines the rider's own places sit on
+    /// makes sense once there are 586 of them. Lines the rider's own places sit on
     /// come first, then SEPTA's own order: L, B, trolleys, Girard, Media-Sharon Hill,
     /// Norristown, then the trackless trolleys. Sorting by badge put route 59 at the
     /// top of the Philadelphia rapid-transit network.

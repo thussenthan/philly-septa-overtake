@@ -7,7 +7,7 @@ import XCTest
 extension ServicePattern {
     /// First, middle and last stop — the zero-offset, mid-offset and full-offset
     /// cases. Enough to catch an indexing or offset bug without walking every stop
-    /// of every pattern on a 585-station network.
+    /// of every pattern on a 586-station network.
     var sampledStops: [PatternStop] {
         guard stops.count > 2 else { return stops }
         return [stops[0], stops[stops.count / 2], stops[stops.count - 1]]
@@ -177,7 +177,7 @@ final class TimetableIndexTests: XCTestCase {
         ]
         // Every pattern, but the interesting stops rather than all of them: first,
         // middle and last exercise the zero, mid- and full-offset cases, which is
-        // where this can differ. Exhausting 585 stations' worth of stops took 13
+        // where this can differ. Exhausting 586 stations' worth of stops took 13
         // seconds of a 20-second suite for no extra coverage.
         for pattern in network.patterns {
             for stop in pattern.sampledStops {
