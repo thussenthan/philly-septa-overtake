@@ -9,10 +9,18 @@ import SwiftUI
 /// also all reasons to read instead of deciding, so each of them is a tap away.
 struct PlanView: View {
     @EnvironmentObject private var model: CommuteModel
-    @State private var showingSettings = false
-    @State private var showingDestinationPicker = false
-    @State private var showingOriginPicker = false
-    @State private var showingNotes = false
+    /// One sheet at a time, named.
+    ///
+    /// SwiftUI supports a single `.sheet` per view. Four of them stacked on this one
+    /// mostly worked, right up until a sheet tried to present a sheet of its own —
+    /// then the presentation machinery dismissed the parent instead. One modifier
+    /// driven by an enum is the shape that has always been supported.
+    private enum ActiveSheet: String, Identifiable {
+        case settings, notes, destination, origin
+        var id: String { rawValue }
+    }
+
+    @State private var activeSheet: ActiveSheet?
 
     /// Alternatives shown inline before the rest move behind "all options".
     private let inlineAlternatives = 2
@@ -48,7 +56,7 @@ struct PlanView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        showingSettings = true
+                        activeSheet = .settings
                     } label: {
                         Image(systemName: "gearshape")
                     }
@@ -56,28 +64,28 @@ struct PlanView: View {
                 }
             }
             .refreshable { await model.refresh() }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showingNotes) {
-                ServiceNotesView()
-            }
-            .sheet(isPresented: $showingDestinationPicker) {
-                DestinationPickerView(
-                    title: "Going to",
-                    selection: Binding(
-                        get: { model.target },
-                        set: { model.chooseTarget($0) }
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .settings:
+                    SettingsView()
+                case .notes:
+                    ServiceNotesView()
+                case .destination:
+                    DestinationPickerView(
+                        title: "Going to",
+                        selection: Binding(
+                            get: { model.target },
+                            set: { model.chooseTarget($0) }
+                        )
                     )
-                )
-            }
-            .sheet(isPresented: $showingOriginPicker) {
-                OriginPickerView(
-                    selection: Binding(
-                        get: { model.source },
-                        set: { model.source = $0; model.replan() }
+                case .origin:
+                    OriginPickerView(
+                        selection: Binding(
+                            get: { model.source },
+                            set: { model.source = $0; model.replan() }
+                        )
                     )
-                )
+                }
             }
         }
         .onAppear { model.onAppear() }
@@ -94,7 +102,7 @@ struct PlanView: View {
     /// pickers, which is where a rider is actually choosing between them.
     private var tripRow: some View {
         HStack(spacing: 10) {
-            Button { showingOriginPicker = true } label: {
+            Button { activeSheet = .origin } label: {
                 endpoint(symbol: originSymbol, text: originDescription, detail: nil, alignment: .leading)
             }
             .buttonStyle(.plain)
@@ -103,7 +111,7 @@ struct PlanView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.tertiary)
 
-            Button { showingDestinationPicker = true } label: {
+            Button { activeSheet = .destination } label: {
                 // The one caption worth keeping: when the app guessed the
                 // destination, the rider needs to see that it guessed.
                 endpoint(
@@ -277,7 +285,7 @@ struct PlanView: View {
                     message: "Turn on location access to plan from where you are — or pick a starting station instead.",
                     tint: Theme.color(for: .leaveSoon)
                 )
-                Button("Choose a starting station") { showingOriginPicker = true }
+                Button("Choose a starting station") { activeSheet = .origin }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
             }
@@ -291,7 +299,7 @@ struct PlanView: View {
         default:
             VStack(spacing: 12) {
                 ProgressView("Finding you…")
-                Button("Pick a starting station instead") { showingOriginPicker = true }
+                Button("Pick a starting station instead") { activeSheet = .origin }
                     .font(.footnote)
             }
             .frame(maxWidth: .infinity)
@@ -305,7 +313,7 @@ struct PlanView: View {
     /// caveats, where the timetable came from. Counted rather than quoted, so the
     /// screen stays the same height whether there are none or nine.
     private var statusRow: some View {
-        Button { showingNotes = true } label: {
+        Button { activeSheet = .notes } label: {
             HStack(spacing: 10) {
                 Image(systemName: statusSymbol)
                     .font(.footnote)

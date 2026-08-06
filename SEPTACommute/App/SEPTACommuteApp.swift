@@ -24,12 +24,15 @@ struct SEPTACommuteApp: App {
     }
 }
 
-/// Shows onboarding until the rider has told us where at least one anchor is.
+/// Shows onboarding until the rider says they are done with it.
+///
+/// Gating on "has any address" swapped this view out the moment the first one was
+/// saved, halfway through a screen that asks for two.
 struct RootView: View {
     @EnvironmentObject private var places: PlaceStore
 
     var body: some View {
-        if places.isConfigured {
+        if places.hasFinishedSetup {
             PlanView()
         } else {
             OnboardingView()

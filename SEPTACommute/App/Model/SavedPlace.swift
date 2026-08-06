@@ -82,10 +82,19 @@ final class PlaceStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let storageKey = "savedPlaces.v1"
+    private let setupKey = "hasFinishedSetup.v1"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         load()
+        // Installs from before this flag existed have already been through setup, and
+        // sending them back through it would be a worse bug than the one being fixed.
+        // Both anchors present is the state onboarding was trying to reach, so it
+        // counts as having reached it.
+        if defaults.object(forKey: setupKey) == nil, home != nil, school != nil {
+            defaults.set(true, forKey: setupKey)
+        }
+        hasFinishedSetup = defaults.bool(forKey: setupKey)
     }
 
     var home: SavedPlace? { places.first { $0.role == .home } }
@@ -93,8 +102,24 @@ final class PlaceStore: ObservableObject {
     var custom: [SavedPlace] { places.filter { $0.role == .custom } }
 
     /// True once the rider has told us where at least one of their anchors is.
-    /// Until then the app has nothing to route to and shows onboarding.
+    /// Below this the app has nothing at all to route to.
     var isConfigured: Bool { home != nil || school != nil }
+
+    /// Whether setup is behind us.
+    ///
+    /// Deliberately not "has an address". Onboarding asks for two, and gating the
+    /// root view on `isConfigured` meant saving the first one tore the screen away
+    /// mid-flow — the rider never reached the second field, and the Done button
+    /// underneath it could not be pressed because it no longer existed. Finishing is
+    /// now something the rider does, not something that happens to them.
+    @Published private(set) var hasFinishedSetup: Bool = false
+
+    /// Called by onboarding's Done button.
+    func finishSetup() {
+        guard !hasFinishedSetup else { return }
+        hasFinishedSetup = true
+        defaults.set(true, forKey: setupKey)
+    }
 
     func place(for role: SavedPlace.Role) -> SavedPlace? {
         places.first { $0.role == role }
@@ -123,8 +148,14 @@ final class PlaceStore: ObservableObject {
         persist()
     }
 
+    /// Wipes the rider's places and puts them back at setup.
+    ///
+    /// Leaving `hasFinishedSetup` standing would strand them on a plan screen with
+    /// nowhere to plan to and no way back to the screen that asks.
     func removeAll() {
         places.removeAll()
+        hasFinishedSetup = false
+        defaults.removeObject(forKey: setupKey)
         persist()
     }
 

@@ -121,6 +121,14 @@ struct OnboardingView: View {
         }
     }
 
+    /// Nudges towards adding both without making the second one compulsory — a
+    /// rider who only ever goes one way should still be able to get past this screen.
+    private var doneButtonTitle: String {
+        if !places.isConfigured { return "Add an address to continue" }
+        if places.home == nil || places.school == nil { return "Continue with one address" }
+        return "Done"
+    }
+
     private func nearestStationBlurb(for place: SavedPlace) -> String {
         guard let nearest = model.network.nearestStation(to: place.coordinate) else {
             return "No SEPTA Metro station nearby"
@@ -163,8 +171,9 @@ struct OnboardingView: View {
             } else {
                 Button {
                     model.locationService.requestPermissionIfNeeded()
+                    places.finishSetup()
                 } label: {
-                    Text(places.isConfigured ? "Done" : "Add an address to continue")
+                    Text(doneButtonTitle)
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }

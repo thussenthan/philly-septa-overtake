@@ -7,8 +7,6 @@ struct SettingsView: View {
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var addingRole: SavedPlace.Role?
-
     var body: some View {
         NavigationStack {
             Form {
@@ -26,14 +24,6 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            // On the Form, not on the section that owns the button. A Form realises
-            // its sections lazily, so a presentation modifier attached to one is torn
-            // down whenever the list re-lays out — and this screen observes a model
-            // that republishes on a thirty-second replan, on every location update and
-            // on every alert refresh. The sheet opened and vanished in the same breath.
-            .sheet(item: $addingRole) { role in
-                AddPlaceSheet(role: role).environmentObject(places)
-            }
         }
     }
 
@@ -42,7 +32,11 @@ struct SettingsView: View {
     private var placesSection: some View {
         Section {
             ForEach([SavedPlace.Role.home, .school], id: \.self) { role in
-                placeRow(role: role)
+                NavigationLink {
+                    PlaceEditor(role: role)
+                } label: {
+                    placeRow(role: role)
+                }
             }
             ForEach(places.custom) { place in
                 HStack {
@@ -60,8 +54,8 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
             }
-            Button {
-                addingRole = .custom
+            NavigationLink {
+                PlaceEditor(role: .custom)
             } label: {
                 Label("Add another place", systemImage: "plus.circle")
             }
@@ -73,24 +67,17 @@ struct SettingsView: View {
     }
 
     private func placeRow(role: SavedPlace.Role) -> some View {
-        Button {
-            addingRole = role
-        } label: {
-            HStack {
-                Image(systemName: role.symbol).foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 1) {
-                    // The rider's own name for it once they have given one.
-                    Text(places.place(for: role)?.name ?? role.unsetTitle)
-                        .foregroundStyle(.primary)
-                    Text(places.place(for: role)?.address ?? "Not set")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+        HStack {
+            Image(systemName: role.symbol).foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 1) {
+                // The rider's own name for it once they have given one.
+                Text(places.place(for: role)?.name ?? role.unsetTitle)
+                    .foregroundStyle(.primary)
+                Text(places.place(for: role)?.address ?? "Not set")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
         }
     }
 
@@ -224,8 +211,13 @@ struct RankingExplainerView: View {
     }
 }
 
-/// Sheet for setting or replacing one saved place.
-struct AddPlaceSheet: View {
+/// Sets or replaces one saved place.
+///
+/// Pushed onto the Settings stack rather than presented as a sheet. Settings is
+/// itself a sheet, and a sheet presenting a sheet is the arrangement that was
+/// closing both of them — a push has no such problem, and reads better besides:
+/// this is a detail of the row you tapped, not a separate errand.
+struct PlaceEditor: View {
     var role: SavedPlace.Role
 
     @EnvironmentObject private var places: PlaceStore
@@ -233,47 +225,50 @@ struct AddPlaceSheet: View {
     @State private var chosenName = ""
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if role.isRenameable {
-                        PlaceNameField(role: role, name: $chosenName)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if role.isRenameable {
+                    PlaceNameField(role: role, name: $chosenName)
+                }
 
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel(text: "Address")
+                    AddressField(role: role, prompt: promptText) { address, coordinate in
+                        let typed = chosenName.trimmingCharacters(in: .whitespaces)
+                        places.save(SavedPlace(
+                            role: role,
+                            name: resolvedName(typed: typed, address: address),
+                            address: address,
+                            latitude: coordinate.latitude,
+                            longitude: coordinate.longitude
+                        ))
+                        dismiss()
+                    }
+                }
+
+                if let existing = places.place(for: role) {
                     VStack(alignment: .leading, spacing: 6) {
-                        SectionLabel(text: "Address")
-                        AddressField(role: role, prompt: promptText) { address, coordinate in
-                            let typed = chosenName.trimmingCharacters(in: .whitespaces)
-                            places.save(SavedPlace(
-                                role: role,
-                                name: resolvedName(typed: typed, address: address),
-                                address: address,
-                                latitude: coordinate.latitude,
-                                longitude: coordinate.longitude
-                            ))
-                            dismiss()
-                        }
+                        SectionLabel(text: "Currently")
+                        Text(existing.address)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
 
-                    Text("Start typing and pick a match. Results are biased to the Philadelphia area.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
+                Text("Start typing and pick a match. Results are biased to the Philadelphia area.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-            // Pre-filled with whatever it is called now, so reopening the row to
-            // correct an address doesn't silently rename the place.
-            .onAppear {
-                if chosenName.isEmpty {
-                    chosenName = places.place(for: role)?.name ?? (role == .custom ? "" : role.title)
-                }
+            .padding(20)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        // Pre-filled with whatever it is called now, so reopening the row to correct
+        // an address doesn't silently rename the place.
+        .onAppear {
+            if chosenName.isEmpty {
+                chosenName = places.place(for: role)?.name ?? (role == .custom ? "" : role.title)
             }
         }
     }
