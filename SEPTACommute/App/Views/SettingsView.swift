@@ -61,8 +61,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("Places")
-        } footer: {
-            Text("Stored on this device only. Nothing is uploaded — the app has no server and makes no network calls other than Apple's map lookups.")
         }
     }
 
@@ -108,8 +106,6 @@ struct SettingsView: View {
             Toggle("Use real walking directions", isOn: $model.preferences.useMeasuredWalkTimes)
         } header: {
             Text("Walking")
-        } footer: {
-            Text("With walking directions off, walks are estimated from straight-line distance with an allowance for the street grid — accurate enough to choose between stations, and it works with no signal.")
         }
     }
 
@@ -131,8 +127,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("Routing")
-        } footer: {
-            Text("Turning off train changes hides the local-then-express trick, which is often the fastest way out of a station the express skips.\n\nStep-free routing uses only stations SEPTA lists as having elevators, for changes as well as for the two ends. On the Broad Street Line that rules out Erie and Fairmount, so it can change the answer rather than just narrow it — the app says when it costs you time.")
         }
     }
 
@@ -152,8 +146,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("Timetable")
-        } footer: {
-            Text("Built from SEPTA's published GTFS feed. These are scheduled times — the app does not know about delays, so check SEPTA's alerts if something looks wrong.")
         }
     }
 
@@ -167,8 +159,6 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
         } header: {
             Text("Appearance")
-        } footer: {
-            Text("Line colours keep SEPTA's hues in both themes, lightened or darkened only as far as they need to be to stay readable.")
         }
     }
 
@@ -192,7 +182,8 @@ struct RankingExplainerView: View {
 
                 paragraph("Every option shown is one you can still catch. If the walk to the station is longer than the time until the train leaves, it isn't listed.")
                 paragraph("An option is hidden only when another is at least as good on all of: arrival time, number of train changes, walking time, and how late you can leave. That last one is why a slower train sometimes still appears — it may let you leave ten minutes later.")
-                paragraph("Two options that get you there the same minute are shown as one: the one that takes less time to make. Arriving together, the longer of the two only asks you to set off earlier for nothing — usually it is the nearer station, where you'd stand on the platform for the difference.")
+                paragraph("Two options that get you there the same minute are shown as one. Arriving together, the longer of the two only asks you to set off earlier for nothing — usually it is the nearer station, where you'd stand on the platform for the difference.")
+                paragraph("Below arrival time, the order is: the trip that takes less of your day, then the one that walks you less, then the one that keeps you on a train for less of it, then the one that leaves you waiting less.")
                 paragraph("\"Leave in …\" counts down to the last moment you can set off and still make the train, including the walk and a safety margin you can adjust.")
                 paragraph("On the Broad Street Line, the express skips fourteen of the line's twenty-two stations and only runs weekday peaks between Fern Rock and Walnut-Locust. It never goes to South Philadelphia, so for anything south of Walnut-Locust the local is the only train.")
                 paragraph("The Broad-Ridge Spur also runs fast on Broad St and stops at Fairmount, which the express skips — so for some trips the Spur beats both.")

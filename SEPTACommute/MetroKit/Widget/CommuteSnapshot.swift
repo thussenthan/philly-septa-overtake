@@ -270,7 +270,7 @@ public struct RiderTuning: Codable, Hashable, Sendable {
 
     public init(
         walkingMilesPerHour: Double = 3.0,
-        maxWalkMinutes: Double = 18,
+        maxWalkMinutes: Double = 15,
         boardingBufferSeconds: Double = 30,
         allowTransfers: Bool = true,
         stepFreeOnly: Bool = false

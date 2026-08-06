@@ -699,6 +699,30 @@ final class JourneyPlannerTests: XCTestCase {
         XCTAssertEqual(ranked.first?.boardStation, "b", "the shorter one, not the one arriving first")
     }
 
+    /// The rider's stated order below arrival: total time, then walking, then time on
+    /// the train, then waiting. Each test fixes everything above the axis it probes.
+    func testEqualTravelTimesPreferLessWalking() {
+        let planner = Fixture.planner()
+        // Same arrival, same 20-minute trip; one walks five minutes more.
+        let ranked = planner.rank([
+            arrival(at: 30, leavingAt: 10, boarding: "a", walkSeconds: 600),
+            arrival(at: 30, leavingAt: 10, boarding: "b", walkSeconds: 300),
+        ])
+        XCTAssertEqual(ranked.count, 1)
+        XCTAssertEqual(ranked.first?.walkingTime, 300, "less walking wins the tie")
+    }
+
+    /// Travel time beats walking, not the other way round: a shorter trip wins even
+    /// when it walks you further.
+    func testLessTravelTimeBeatsLessWalking() {
+        let planner = Fixture.planner()
+        let ranked = planner.rank([
+            arrival(at: 30, leavingAt: 0, boarding: "a", walkSeconds: 120),   // 30 min, short walk
+            arrival(at: 30, leavingAt: 14, boarding: "b", walkSeconds: 600),  // 16 min, long walk
+        ])
+        XCTAssertEqual(ranked.first?.totalDuration, 16 * 60)
+    }
+
     /// The real shape of the complaint, run through the whole planner: standing
     /// between two stations, no two options may claim the same arrival minute.
     func testNoTwoOptionsShareAnArrivalMinute() {

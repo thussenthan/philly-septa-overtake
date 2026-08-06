@@ -688,12 +688,37 @@ public struct JourneyPlanner: Sendable {
             }
         }
 
-        return collapseTiedArrivals(pareto).sorted { lhs, rhs in
-            if lhs.arrivalTime != rhs.arrivalTime { return lhs.arrivalTime < rhs.arrivalTime }
-            if lhs.transferCount != rhs.transferCount { return lhs.transferCount < rhs.transferCount }
-            if lhs.walkingTime != rhs.walkingTime { return lhs.walkingTime < rhs.walkingTime }
-            return lhs.departureTime > rhs.departureTime
-        }
+        return collapseTiedArrivals(pareto).sorted { isBetter($0, than: $1) }
+    }
+
+    /// The rider's order of preference, in one place.
+    ///
+    /// When you get there comes first, because that is the question. Everything after
+    /// it separates options that answer it identically, cheapest-to-obtain first: the
+    /// trip that takes less of your day, then the one that walks you less, then the one
+    /// that keeps you on a train for less of it, then the one that leaves you standing
+    /// on a platform for less of it.
+    ///
+    /// The last two barely ever decide anything, and that is fine — with the total and
+    /// the walk already equal, riding and waiting are what is left of the same number,
+    /// so shortening one lengthens the other. They are here to say which way round the
+    /// rider would rather have it.
+    ///
+    /// Ends on the id, so the order never depends on how a dictionary happened to
+    /// enumerate its values.
+    func isBetter(_ a: Journey, than b: Journey) -> Bool {
+        if a.arrivalTime != b.arrivalTime { return a.arrivalTime < b.arrivalTime }
+        return isBetterIgnoringArrival(a, than: b)
+    }
+
+    /// The same order with the first question already settled, for choosing between
+    /// options that arrive together.
+    private func isBetterIgnoringArrival(_ a: Journey, than b: Journey) -> Bool {
+        if a.totalDuration != b.totalDuration { return a.totalDuration < b.totalDuration }
+        if a.walkingTime != b.walkingTime { return a.walkingTime < b.walkingTime }
+        if a.ridingTime != b.ridingTime { return a.ridingTime < b.ridingTime }
+        if a.waitingTime != b.waitingTime { return a.waitingTime < b.waitingTime }
+        return a.id < b.id
     }
 
     /// One option per arrival minute: the one that takes the least time to make.
@@ -719,25 +744,13 @@ public struct JourneyPlanner: Sendable {
         for journey in journeys {
             let minute = Int((journey.arrivalTime.timeIntervalSinceReferenceDate / 60).rounded(.down))
             if let incumbent = best[minute] {
-                if prefersOnTiedArrival(journey, over: incumbent) { best[minute] = journey }
+                if isBetterIgnoringArrival(journey, than: incumbent) { best[minute] = journey }
             } else {
                 best[minute] = journey
                 order.append(minute)
             }
         }
         return order.compactMap { best[$0] }
-    }
-
-    /// Which of two same-minute arrivals to keep.
-    ///
-    /// Total door-to-door time first, since that is the whole point of dropping one.
-    /// The rest are tie-breaks, ending on the id so the survivor does not depend on
-    /// the order a dictionary happened to yield its values in.
-    private func prefersOnTiedArrival(_ a: Journey, over b: Journey) -> Bool {
-        if a.totalDuration != b.totalDuration { return a.totalDuration < b.totalDuration }
-        if a.transferCount != b.transferCount { return a.transferCount < b.transferCount }
-        if a.walkingTime != b.walkingTime { return a.walkingTime < b.walkingTime }
-        return a.id < b.id
     }
 
     /// Identifies journeys that are "the same plan" from a rider's point of view:

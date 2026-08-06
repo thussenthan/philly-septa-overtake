@@ -2,6 +2,14 @@ import SwiftUI
 
 /// Step-by-step instructions for one option.
 struct JourneyDetailView: View {
+    /// Rides whose full stop list the rider has opened, by board station.
+    ///
+    /// Collapsed by default because the summary — "7 stops, 14 min" — is what most
+    /// riders want, and a wall of station names between the steps buries the steps.
+    /// But "7 stops" is not checkable, and the home screen's compressed strip openly
+    /// hides some of them, so there has to be somewhere the whole list exists.
+    @State private var expandedRides: Set<String> = []
+
     var journey: Journey
     var summary: JourneySummary
     var narrator: JourneyNarrator
@@ -36,10 +44,9 @@ struct JourneyDetailView: View {
                 .font(.title2.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Label("\(originName) → \(destinationName)", systemImage: "arrow.forward")
+            Text("\(originName) → \(destinationName)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
 
             HStack(spacing: 18) {
                 stat("Leave", Format.clock(journey.departureTime))
@@ -182,9 +189,26 @@ struct JourneyDetailView: View {
                 Text(ride.platformDescription)
                     .font(.subheadline.weight(.medium))
             }
-            Text("\(stationName(ride.boardStation)) → \(stationName(ride.alightStation)) · \(Format.stops(ride.stopCount)) · \(Format.minutes(ride.duration))")
-                .font(.caption)
+            Button {
+                let key = rideKey(ride)
+                if expandedRides.contains(key) { expandedRides.remove(key) } else { expandedRides.insert(key) }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("\(stationName(ride.boardStation)) → \(stationName(ride.alightStation)) · \(Format.stops(ride.stopCount)) · \(Format.minutes(ride.duration))")
+                        .font(.caption)
+                        .multilineTextAlignment(.leading)
+                    Image(systemName: expandedRides.contains(rideKey(ride)) ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                }
                 .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(expandedRides.contains(rideKey(ride)) ? "Hide the stops" : "Show every stop")
+
+            if expandedRides.contains(rideKey(ride)) {
+                stopList(for: ride)
+            }
             let skipped = narrator.skippedStations(on: ride)
             if !skipped.isEmpty {
                 Text("Passes without stopping: \(skipped.map(stationName).joined(separator: ", "))")
@@ -197,6 +221,48 @@ struct JourneyDetailView: View {
                     .foregroundStyle(Theme.color(for: .leaveSoon))
             }
         }
+    }
+
+    /// Offsets are measured from the trip's own start, so these are the same
+    /// timetable the countdown on the home screen is counting to.
+    private func arrivalTime(of station: StationID, on ride: RideLeg, in pattern: ServicePattern?) -> Date? {
+        guard let pattern, let index = pattern.stopIndex(of: station) else { return nil }
+        return ride.trip.startTime.addingTimeInterval(pattern.stops[index].arrivalOffset)
+    }
+
+    private func rideKey(_ ride: RideLeg) -> String {
+        "\(ride.trip.id)|\(ride.boardStation)"
+    }
+
+    /// Every station this ride calls at, with the time it reaches each.
+    ///
+    /// Times come from the pattern's own offsets rather than being re-derived, so they
+    /// are the same timetable the countdown on the home screen is counting to.
+    private func stopList(for ride: RideLeg) -> some View {
+        let pattern = network.pattern(ride.patternID)
+        return VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(ride.stationsServed.enumerated()), id: \.offset) { index, station in
+                let isEnd = index == 0 || index == ride.stationsServed.count - 1
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(isEnd ? Theme.color(for: network.line(ride.lineID)) : Color.secondary.opacity(0.4))
+                        .frame(width: isEnd ? 7 : 5)
+                        .frame(width: 9)
+                    Text(stationName(station))
+                        .font(.caption2)
+                        .foregroundStyle(isEnd ? .primary : .secondary)
+                    Spacer(minLength: 4)
+                    if let time = arrivalTime(of: station, on: ride, in: pattern) {
+                        Text(Format.clock(time))
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .padding(.top, 2)
+        .padding(.leading, 2)
     }
 
     private func walkTitle(_ walk: WalkLeg) -> String {
@@ -214,11 +280,12 @@ struct JourneyDetailView: View {
     private var breakdown: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Where the time goes")
-            row("On the train", journey.ridingTime)
-            row("Walking", journey.walkingTime)
-            row("Waiting", journey.waitingTime)
+            row("On the train", "tram.fill", journey.ridingTime)
+            row("Walking", "figure.walk", journey.walkingTime)
+            row("Waiting", "hourglass", journey.waitingTime)
             if journey.transferCount > 0 {
-                HStack {
+                HStack(spacing: 8) {
+                    icon("arrow.triangle.swap")
                     Text("Changes of train")
                     Spacer()
                     Text("\(journey.transferCount)")
@@ -227,33 +294,14 @@ struct JourneyDetailView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
-            if let fare = journey.fare(network.fare) {
-                HStack {
-                    Text(fare.mediumMatters ? "Fare, with a free transfer" : "Fare")
-                    Spacer()
-                    Text(Format.money(fare.withFreeTransfers, currency: fare.currency))
-                        .monospacedDigit()
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                if fare.mediumMatters {
-                    HStack {
-                        Text("Paying for each boarding")
-                        Spacer()
-                        Text(Format.money(fare.perBoarding, currency: fare.currency))
-                            .monospacedDigit()
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
-            }
         }
         .padding(16)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func row(_ label: String, _ seconds: TimeInterval) -> some View {
-        HStack {
+    private func row(_ label: String, _ symbol: String, _ seconds: TimeInterval) -> some View {
+        HStack(spacing: 8) {
+            icon(symbol)
             Text(label)
             Spacer()
             Text(Format.minutes(seconds))
@@ -261,6 +309,15 @@ struct JourneyDetailView: View {
         }
         .font(.subheadline)
         .foregroundStyle(.secondary)
+    }
+
+    /// Fixed width so the labels line up in a column rather than stepping in and out
+    /// with each glyph's width.
+    private func icon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.caption)
+            .foregroundStyle(Theme.accent)
+            .frame(width: 18)
     }
 
     // MARK: - Helpers

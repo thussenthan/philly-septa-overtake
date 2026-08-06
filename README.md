@@ -349,7 +349,11 @@ filter purely because it bought 90 seconds of extra slack while arriving seven
 minutes later. It's two minutes now, and there's a regression test named after the
 behaviour.
 
-6. **One option per arrival minute**, the one that takes least time door to door.
+6. **One option per arrival minute**, the best of them by the rider's order of
+   preference: least door-to-door time, then least walking, then least time on the
+   train, then least waiting. The last two rarely decide anything — with the total
+   and the walk equal, shortening one lengthens the other — but they say which way
+   round to have it. The same order sorts what survives.
    Pareto cannot separate two ways of reaching the door at the same moment — walking
    further up the line to a station the train reaches later costs more walking and
    less waiting, so neither is better on every axis — and both would be listed. But
