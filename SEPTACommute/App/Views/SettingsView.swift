@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var model: CommuteModel
@@ -165,6 +166,9 @@ struct SettingsView: View {
     private var aboutSection: some View {
         Section {
             NavigationLink("How the ranking works") { RankingExplainerView() }
+            Link(destination: BugReport.url(network: model.network)) {
+                Label("Report a bug", systemImage: "ladybug")
+            }
         } header: {
             Text("About")
         }
@@ -333,5 +337,56 @@ struct PlaceNameField: View {
 
     private var placeholder: String {
         role == .custom ? "Clinic, gym, a friend's place…" : "Work"
+    }
+}
+
+
+/// Where a bug report goes, and what rides along with it.
+///
+/// A GitHub issue rather than an email: there is no server behind this app and no
+/// address worth publishing in it, and an issue is somewhere the fix can be tracked
+/// in the open.
+///
+/// The body is pre-filled with the four things every report needs and nobody thinks
+/// to include. None of them say anything about the rider — not where they live, not
+/// where they were, not where they were going. A bug report is exactly the moment an
+/// app is most tempted to collect all of that, and it doesn't.
+enum BugReport {
+    static func url(network: Network) -> URL {
+        let bundle = Bundle.main
+        let version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = bundle.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let body = """
+        **What happened?**
+
+
+        **What did you expect?**
+
+
+        ---
+        \(AppIdentity.name.capitalized) \(version) (\(build))
+        iOS \(UIDevice.current.systemVersion) · \(deviceModel)
+        Timetable \(network.provenance.source)
+        """
+
+        var components = URLComponents(string: "https://github.com/thussenthan/philly-septa/issues/new")!
+        components.queryItems = [
+            URLQueryItem(name: "title", value: ""),
+            URLQueryItem(name: "body", value: body),
+        ]
+        // Falls back to the plain issues page: a button that opens the wrong thing is
+        // still better than one that does nothing.
+        return components.url ?? URL(string: "https://github.com/thussenthan/philly-septa/issues")!
+    }
+
+    /// The hardware identifier — "iPhone15,3" — which is what actually distinguishes
+    /// a layout bug on a Pro Max from one everywhere.
+    private static var deviceModel: String {
+        var info = utsname()
+        uname(&info)
+        let identifier = withUnsafeBytes(of: &info.machine) { raw in
+            raw.prefix { $0 != 0 }.map { Character(UnicodeScalar($0)) }
+        }
+        return String(identifier)
     }
 }

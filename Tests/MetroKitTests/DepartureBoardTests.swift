@@ -12,12 +12,14 @@ final class DepartureBoardTests: XCTestCase {
         to destinations: Set<StationID> = ["f"],
         at hour: Int,
         _ minute: Int,
+        aimingAt: StationID? = nil,
         limit: Int = 8
     ) -> [BoardDeparture] {
         Fixture.planner().departureBoard(
             from: origin,
             to: destinations,
             after: Fixture.date(hour, minute),
+            aimingAt: aimingAt,
             limit: limit
         )
     }
@@ -52,7 +54,9 @@ final class DepartureBoardTests: XCTestCase {
         let now = Fixture.date(8, 5)
         for entry in board(at: 8, 5) {
             XCTAssertGreaterThanOrEqual(entry.departure, now)
-            XCTAssertGreaterThan(entry.arrival, entry.departure)
+            if let arrival = entry.arrival {
+                XCTAssertGreaterThan(arrival, entry.departure)
+            }
         }
     }
 
@@ -63,10 +67,21 @@ final class DepartureBoardTests: XCTestCase {
     // MARK: - What doesn't belong on it
 
     /// A board for a destination this station's trains don't reach is empty, not
-    /// wrong. The northbound local from F never gets to F from A's platform.
-    func testTrainsThatDoNotReachTheDestinationAreExcluded() {
-        XCTAssertTrue(board(from: "f", to: ["a"], at: 8, 0).allSatisfy { $0.alightStation == "a" })
+    /// wrong — there is no platform to point at.
+    func testABoardWithNoUsefulTrainAtAllIsEmpty() {
         XCTAssertTrue(board(from: "a", to: ["a"], at: 8, 0).isEmpty, "you are already there")
+    }
+
+    /// Only the platform the rider wants. A train going the other way is not a worse
+    /// option, it is a different station, and putting it on the board would be a lie
+    /// about which side to stand on.
+    func testTrainsGoingTheOtherWayAreNotOnTheBoard() {
+        let southbound = board(at: 8, 0)
+        XCTAssertFalse(southbound.isEmpty)
+        XCTAssertTrue(
+            southbound.allSatisfy { $0.compass == southbound.first?.compass },
+            "one board, one direction: \(southbound.map { $0.compass?.label ?? "?" })"
+        )
     }
 
     func testAnEmptyDestinationSetProducesNothing() {
@@ -77,15 +92,37 @@ final class DepartureBoardTests: XCTestCase {
         XCTAssertTrue(board(at: 23, 30).isEmpty)
     }
 
-    /// The express skips E, so a board towards E must not offer it — that is exactly
-    /// the mistake a rider makes unaided, and the reason the app exists.
-    func testATrainThatSkipsTheDestinationIsNotOffered() {
-        let towardsE = board(to: ["e"], at: 8, 0)
-        XCTAssertFalse(towardsE.isEmpty)
+    /// The express skips E, so a board towards E must not *offer* it — but it must
+    /// still show it.
+    ///
+    /// Dropping it made the app disagree with the sign the rider is standing under:
+    /// the express really is pulling in first. Showing it greyed says the thing the
+    /// sign cannot, which is why that train is no good to them — and that is the
+    /// mistake the whole app exists to prevent.
+    func testATrainThatSkipsTheDestinationIsShownButNotOffered() {
+        let towardsE = board(to: ["e"], at: 8, 0, aimingAt: "e")
+        let express = towardsE.filter { $0.kind == .express }
+        XCTAssertFalse(express.isEmpty, "the express is on the platform sign, so it is on this one")
+
+        for entry in express {
+            XCTAssertFalse(entry.isUseful, "it skips E")
+            XCTAssertNil(entry.alightStation)
+            XCTAssertNil(entry.arrival)
+            XCTAssertEqual(entry.missedDestination, StationID("e"), "the row has to be able to say why")
+        }
         XCTAssertTrue(
-            towardsE.allSatisfy { $0.kind == .local },
-            "the express skips E: \(towardsE.map(\.routeBadge))"
+            towardsE.contains { $0.kind == .local && $0.isUseful },
+            "and the train that does work is still there"
         )
+    }
+
+    /// Without being told which stop matters, a row can say it is no use but not
+    /// which stop it misses — and naming the wrong one would be worse than silence.
+    func testTheMissedStopIsOnlyNamedWhenTheCallerSaysWhichItIs() throws {
+        let unnamed = board(to: ["e"], at: 8, 0)
+        let express = try XCTUnwrap(unnamed.first { $0.kind == .express })
+        XCTAssertFalse(express.isUseful)
+        XCTAssertNil(express.missedDestination)
     }
 
     // MARK: - What each row says
@@ -94,7 +131,7 @@ final class DepartureBoardTests: XCTestCase {
     /// offered — the earliest it reaches, because that is the one a rider would use.
     func testEachRowNamesWhereItWouldPutYouOff() throws {
         let entry = try XCTUnwrap(board(to: ["c", "f"], at: 8, 0).first { $0.kind == .express })
-        XCTAssertEqual(entry.alightStation, "c", "C comes before F on the express")
+        XCTAssertEqual(entry.alightStation, StationID("c"), "C comes before F on the express")
     }
 
     func testRowsUseTheSameWordsAsTheItinerary() throws {
@@ -106,15 +143,36 @@ final class DepartureBoardTests: XCTestCase {
         XCTAssertEqual(local.platformHeadline, "Southbound", "a local doesn't announce being one")
     }
 
+    /// The rows drop the direction, because the header carries it. Repeating
+    /// "Southbound" down every line spends the widest column on the one word they
+    /// all share.
+    func testRowsLeaveTheDirectionToTheHeader() throws {
+        let entries = board(at: 8, 0)
+        for entry in entries {
+            XCTAssertFalse(
+                entry.serviceHeadline.contains("bound"),
+                "\(entry.serviceHeadline) repeats what the header already said"
+            )
+        }
+        XCTAssertEqual(entries.first { $0.kind == .express }?.serviceHeadline, "Express")
+
+        let direction = BoardDeparture.direction(of: entries)
+        XCTAssertEqual(direction?.label, "Southbound", "and the header can state it")
+    }
+
+    /// A board whose trains disagree about direction names none, rather than picking
+    /// one and pointing the rider at the wrong platform.
+    func testAMixedBoardClaimsNoDirection() {
+        XCTAssertNil(BoardDeparture.direction(of: []))
+    }
+
     /// The arrival is what makes a later train visibly better or worse, so it has to
     /// be the time at the station the row names.
     func testTheArrivalIsAtTheStationTheRowNames() throws {
         let entry = try XCTUnwrap(board(at: 8, 0).first)
+        let alight = try XCTUnwrap(entry.alightStation)
         let timetable = Timetable(network: Fixture.network, calendar: Fixture.calendar)
-        XCTAssertEqual(
-            entry.arrival,
-            timetable.arrival(of: entry.trip, at: entry.alightStation)
-        )
+        XCTAssertEqual(entry.arrival, timetable.arrival(of: entry.trip, at: alight))
     }
 
     /// The one on the board that the recommendation actually puts you on has to be

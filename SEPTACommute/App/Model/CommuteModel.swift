@@ -470,7 +470,13 @@ final class CommuteModel: ObservableObject {
         let destinations = Set(plan.journeys.compactMap { $0.rides.first?.alightStation })
         guard !destinations.isEmpty else { return [] }
         return JourneyPlanner(network: network, options: options)
-            .departureBoard(from: origin, to: destinations, after: now, limit: 8)
+            .departureBoard(
+                from: origin,
+                to: destinations,
+                after: now,
+                aimingAt: plan.best?.rides.first?.alightStation,
+                limit: 8
+            )
     }
 
     /// Hand the widget the trip, not the answer.
@@ -599,6 +605,17 @@ final class CommuteModel: ObservableObject {
     /// The station the board is for, named.
     var boardStationName: String? {
         plan?.best?.boardStation.map { network.station($0)?.name ?? $0.rawValue }
+    }
+
+    /// The platform this board is for: "Southbound from Erie".
+    ///
+    /// One direction, said once at the top, instead of the same word opening every
+    /// row. It is also the thing a rider standing in a station most needs — which
+    /// side to be on — so it belongs where the eye lands first.
+    var boardHeading: String {
+        guard let station = boardStationName else { return "Departures" }
+        guard let compass = BoardDeparture.direction(of: departures) else { return "From \(station)" }
+        return "\(compass.label) from \(station)"
     }
 
     /// True for the train the recommendation actually puts the rider on, so the board

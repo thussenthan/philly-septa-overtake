@@ -26,7 +26,7 @@ struct DepartureBoardView: View {
 
     private var header: some View {
         HStack {
-            SectionLabel(text: model.boardStationName.map { "Leaving \($0)" } ?? "Departures")
+            SectionLabel(text: model.boardHeading)
             Spacer()
             Text("arrive")
                 .font(.caption2)
@@ -48,6 +48,9 @@ struct DepartureBoardView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        // Faded, not hidden. This train is really pulling in first and the rider can
+        // see it; what they cannot see is that it will go straight past their stop.
+        .opacity(departure.isUseful ? 1 : 0.45)
         .background(recommended ? Theme.accent.opacity(0.12) : Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenLabel(for: departure, recommended: recommended))
@@ -65,14 +68,22 @@ struct DepartureBoardView: View {
 
     private func service(_ departure: BoardDeparture, recommended: Bool) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(departure.platformHeadline)
+            // No direction here: the whole board is one platform and the header says
+            // which. What is left is the part that differs between rows.
+            Text(departure.serviceHeadline)
                 .font(.caption.weight(recommended ? .semibold : .regular))
                 .lineLimit(1)
-            Text(stationName(departure.alightStation))
+            Text(subtitle(for: departure))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    private func subtitle(for departure: BoardDeparture) -> String {
+        if let alight = departure.alightStation { return stationName(alight) }
+        if let missed = departure.missedDestination { return "skips \(stationName(missed))" }
+        return "no use to you"
     }
 
     /// The number a rider is actually reading, so it ticks.
@@ -92,12 +103,21 @@ struct DepartureBoardView: View {
         }
     }
 
+    @ViewBuilder
     private func arrival(_ departure: BoardDeparture, recommended: Bool) -> some View {
-        Text(Format.clock(departure.arrival))
-            .font(.caption.weight(.medium))
-            .monospacedDigit()
-            .foregroundStyle(recommended ? Color.primary : Color.secondary)
-            .frame(width: 62, alignment: .trailing)
+        if let arrival = departure.arrival {
+            Text(Format.clock(arrival))
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(recommended ? Color.primary : Color.secondary)
+                .frame(width: 62, alignment: .trailing)
+        } else {
+            // An em dash rather than a blank, so the column still reads as a column.
+            Text("—")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: 62, alignment: .trailing)
+        }
     }
 
     /// Built with statements rather than one interpolated expression: concatenating
@@ -105,7 +125,11 @@ struct DepartureBoardView: View {
     private func spokenLabel(for departure: BoardDeparture, recommended: Bool) -> String {
         var parts: [String] = [departure.routeBadge, departure.platformHeadline]
         parts.append("leaves \(Format.clock(departure.departure))")
-        parts.append("reaches \(stationName(departure.alightStation)) at \(Format.clock(departure.arrival))")
+        if let alight = departure.alightStation, let arrival = departure.arrival {
+            parts.append("reaches \(stationName(alight)) at \(Format.clock(arrival))")
+        } else if let missed = departure.missedDestination {
+            parts.append("does not stop at \(stationName(missed))")
+        }
         if recommended { parts.append("recommended") }
         return parts.joined(separator: ", ")
     }

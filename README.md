@@ -108,14 +108,26 @@ them northbound and southbound, and `direction_id` 0 means southbound on route 5
 northbound on route 66. There is a test asserting the published words for all sixteen
 routes, and another asserting that D1's own geometry contradicts them.
 
-Below it is the platform sign: every train leaving that station soon that can
-actually get you where you're going, in departure order, with a live countdown and the
-time it lands. It answers the question a rider asks *after* the recommendation —
-what else is coming, and what does waiting cost me — and it is deliberately
-**unfiltered**. The planner hides an option another beats outright, which is right for
-a recommendation and wrong for a board: the slow train you're going to take anyway
-because it's pulling in belongs on it. There's a test asserting the board keeps a train
-the planner correctly drops.
+Below it is the platform sign, headed with the one thing a rider standing in a
+station most needs — **which platform**, as in "Southbound from Erie". The direction
+is said once there rather than repeated down every row, which frees the widest column
+for what actually differs between them.
+
+It answers the question a rider asks *after* the recommendation — what else is coming,
+and what does waiting cost me — and it is deliberately **unfiltered**. The planner
+hides an option another beats outright, which is right for a recommendation and wrong
+for a board: the slow train you're going to take anyway because it's pulling in
+belongs on it. There's a test asserting the board keeps a train the planner correctly
+drops.
+
+It goes one further and keeps the trains that are **no use at all**, greyed out and
+labelled "skips Fairmount" rather than dropped. Omitting them made the app disagree
+with the sign the rider was standing under — the express really is pulling in first —
+and a rider who cross-checks and finds trains missing concludes the app is broken,
+which is fatal for one whose whole value is being trusted over the sign. Showing them
+also says out loud the single most useful thing the app knows: that express is no good
+to you *because it goes straight past your stop*. Only trains on the same platform are
+kept; one going the other way is a different station, not a worse option.
 
 It's also the honest way to use a screen with room to spare, which stretching the
 recommendation into a taller box was not.

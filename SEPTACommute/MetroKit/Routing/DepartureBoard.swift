@@ -10,13 +10,34 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
     public var compass: CompassDirection?
     public var headsign: String
     public var departure: Date
-    /// Where this train would put the rider down, of the stations that work.
-    public var alightStation: StationID
-    /// When it gets there. The board is sorted by departure, so this is what makes a
-    /// later train visibly better or worse than an earlier one.
-    public var arrival: Date
+    /// Where this train would put the rider down, of the stations that work — or nil
+    /// when it stops at none of them.
+    ///
+    /// Those trains are on the board on purpose. A board that quietly omitted them
+    /// would disagree with the sign the rider is standing under, and the difference is
+    /// the single most useful thing this app knows: the express pulling in first is no
+    /// good to you *because it skips your stop*. Hiding it answers the question
+    /// silently; showing it greyed out answers it out loud.
+    public var alightStation: StationID?
+    /// When it gets there, for the trains that do.
+    public var arrival: Date?
+    /// The stop it fails to make, so the row can say why it is no use.
+    public var missedDestination: StationID?
 
-    public var id: String { "\(trip.id)|\(alightStation.rawValue)" }
+    /// Whether this train is one the rider could actually take.
+    public var isUseful: Bool { alightStation != nil }
+
+    public var id: String { "\(trip.id)|\(alightStation?.rawValue ?? "skips")" }
+
+    /// The one direction a board is for, when its trains agree on one.
+    ///
+    /// They almost always do — a board is built from a single platform — but a station
+    /// where two routes diverge can offer both, and a header naming one of them would
+    /// be worse than a header naming neither.
+    public static func direction(of board: [BoardDeparture]) -> CompassDirection? {
+        let compasses = Set(board.compactMap(\.compass))
+        return compasses.count == 1 ? compasses.first : nil
+    }
 
     /// "B2", or "OWL" for the night bus, matching the badge on a journey.
     public var routeBadge: String {
@@ -29,6 +50,15 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
         return parts.isEmpty ? "toward \(headsign)" : parts.joined(separator: " · ")
     }
 
+    /// The same line with the direction taken out.
+    ///
+    /// A board is one platform, so its direction is a property of the board and is
+    /// said once at the top. Repeating "Southbound" down every row spends the widest
+    /// part of each line on the one word they all share.
+    public var serviceHeadline: String {
+        kind == .local ? "toward \(headsign)" : kind.label
+    }
+
     public init(
         trip: Trip,
         lineID: LineID,
@@ -37,8 +67,9 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
         compass: CompassDirection?,
         headsign: String,
         departure: Date,
-        alightStation: StationID,
-        arrival: Date
+        alightStation: StationID?,
+        arrival: Date?,
+        missedDestination: StationID? = nil
     ) {
         self.trip = trip
         self.lineID = lineID
@@ -49,13 +80,14 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
         self.departure = departure
         self.alightStation = alightStation
         self.arrival = arrival
+        self.missedDestination = missedDestination
     }
 }
 
 public extension JourneyPlanner {
 
-    /// Every train leaving this station soon that can get the rider to one of these
-    /// stations, in departure order.
+    /// Every train leaving this station soon on the platform the rider wants, in
+    /// departure order, each one marked with whether it is any use.
     ///
     /// Deliberately *not* the planner's ranked list. `plan` answers "what should I
     /// do", which means hiding options that another option beats outright — right for
@@ -63,32 +95,63 @@ public extension JourneyPlanner {
     /// lets you look at it; the slow train you're going to take anyway because it's
     /// here now belongs on the board even though the express beats it.
     ///
+    /// It goes one further and keeps the trains that cannot help at all, greyed by the
+    /// view rather than dropped. Omitting them made the app disagree with the sign the
+    /// rider is standing under — the express really is pulling in first — and left the
+    /// most useful fact on the platform unsaid, which is *why* that express is no good
+    /// to them. Only trains going the same way are kept: a northbound train at this
+    /// station is a different platform, not a worse option.
+    ///
     /// One entry per train, taking the earliest station it serves of the ones offered,
     /// because that is the one a rider would use.
     func departureBoard(
         from origin: StationID,
         to destinations: Set<StationID>,
         after time: Date,
+        /// The stop the rider is actually aiming at, named on the rows that miss it.
+        /// Without it those rows can say they are no use but not why.
+        aimingAt: StationID? = nil,
         limit: Int = 8,
         horizon: TimeInterval = 90 * 60
     ) -> [BoardDeparture] {
         guard !destinations.isEmpty else { return [] }
         let window = DateInterval(start: time, end: time.addingTimeInterval(horizon))
 
-        var board: [BoardDeparture] = []
-        for pattern in network.patterns(serving: origin) {
+        // Which patterns can do the job, and where each would drop the rider.
+        var alightIndexByPattern: [PatternID: Int] = [:]
+        var usefulDirections: Set<Direction> = []
+        let boarding = network.patterns(serving: origin).filter { pattern in
             guard let boardIndex = pattern.stopIndex(of: origin),
-                  pattern.stops[boardIndex].allowsBoarding else { continue }
-
-            // The first station of the offered set this train reaches after boarding.
-            var alightIndex: Int?
+                  pattern.stops[boardIndex].allowsBoarding else { return false }
+            var best: Int?
             for destination in destinations {
                 guard let index = pattern.stopIndex(of: destination),
                       index > boardIndex,
                       pattern.stops[index].allowsAlighting else { continue }
-                if alightIndex == nil || index < alightIndex! { alightIndex = index }
+                if best == nil || index < best! { best = index }
             }
-            guard let alightIndex else { continue }
+            if let best {
+                alightIndexByPattern[pattern.id] = best
+                usefulDirections.insert(pattern.direction)
+            }
+            return true
+        }
+
+        // Nothing works from here, so there is no platform to show and no direction to
+        // judge the rest against.
+        guard !usefulDirections.isEmpty else { return [] }
+
+        // Only name the stop being missed when the caller said which one matters. Any
+        // other choice out of the offered set would be arbitrary, and a row that named
+        // the wrong station would be worse than one that named none.
+        let missed = aimingAt.flatMap { destinations.contains($0) ? $0 : nil }
+
+        var board: [BoardDeparture] = []
+        for pattern in boarding {
+            let alightIndex = alightIndexByPattern[pattern.id]
+            // A train that helps is always shown. One that doesn't is shown only if it
+            // leaves from the same platform, where the rider will watch it go past.
+            guard alightIndex != nil || usefulDirections.contains(pattern.direction) else { continue }
 
             for trip in timetable.trips(of: pattern, departingFrom: origin, in: window) {
                 guard let departure = timetable.departure(of: trip, at: origin) else { continue }
@@ -100,14 +163,18 @@ public extension JourneyPlanner {
                     compass: pattern.compass,
                     headsign: pattern.headsign,
                     departure: departure,
-                    alightStation: pattern.stops[alightIndex].station,
-                    arrival: trip.departure(atOffset: pattern.stops[alightIndex].arrivalOffset)
+                    alightStation: alightIndex.map { pattern.stops[$0].station },
+                    arrival: alightIndex.map { trip.departure(atOffset: pattern.stops[$0].arrivalOffset) },
+                    missedDestination: alightIndex == nil ? missed : nil
                 ))
             }
         }
 
         board.sort { lhs, rhs in
-            lhs.departure == rhs.departure ? lhs.arrival < rhs.arrival : lhs.departure < rhs.departure
+            if lhs.departure != rhs.departure { return lhs.departure < rhs.departure }
+            // Same minute: the one you can take goes first.
+            if lhs.isUseful != rhs.isUseful { return lhs.isUseful }
+            return (lhs.arrival ?? .distantFuture) < (rhs.arrival ?? .distantFuture)
         }
         return Array(board.prefix(limit))
     }
