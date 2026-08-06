@@ -587,4 +587,130 @@ final class JourneyPlannerTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Two ways to arrive at the same minute
+
+    /// A journey boarding at `board`, with departure and arrival set outright.
+    ///
+    /// It carries a ride rather than being a plain walk because `rank` first collapses
+    /// journeys that are "the same plan" — same trains, same board and alight — and
+    /// every walk-only journey hashes to that same key. Two walks would therefore
+    /// never reach the rule under test.
+    private func arrival(
+        at arrivalMinutes: Double,
+        leavingAt departureMinutes: Double,
+        boarding board: StationID,
+        walkSeconds: TimeInterval
+    ) -> Journey {
+        let origin = Fixture.date(8, 0)
+        let start = origin.addingTimeInterval(departureMinutes * 60)
+        let end = origin.addingTimeInterval(arrivalMinutes * 60)
+        let pattern = Fixture.network.patterns.first { $0.stops.count > 3 }!
+        let walk = WalkLeg(
+            purpose: .access, fromName: "origin", toName: board.rawValue,
+            straightLineMeters: walkSeconds, routedMeters: walkSeconds,
+            duration: walkSeconds, startTime: start
+        )
+        let ride = RideLeg(
+            trip: Trip(
+                patternID: pattern.id,
+                startTime: start,
+                scheduledStartSecondsAfterMidnight: 8 * 3600,
+                dayType: .wednesday
+            ),
+            patternID: pattern.id,
+            lineID: pattern.lineID,
+            routeID: pattern.routeID,
+            kind: pattern.kind,
+            direction: pattern.direction,
+            headsign: pattern.headsign,
+            boardStation: board,
+            alightStation: "f",
+            departure: start.addingTimeInterval(walkSeconds),
+            arrival: end,
+            stationsServed: [board, "f"]
+        )
+        return Journey(
+            legs: [.walk(walk), .ride(ride)],
+            departureTime: start,
+            arrivalTime: end,
+            urgency: Urgency(leaveBy: start, boardingDeparture: start, slack: 0)
+        )
+    }
+
+    /// The rule: arriving at the same minute is one option, not two. Whichever takes
+    /// longer only asks the rider to set off earlier for nothing.
+    func testTiedArrivalsKeepOnlyTheShorterTrip() {
+        let planner = Fixture.planner()
+        let ranked = planner.rank(nearAndFarStation(arrivingAt: 30, and: 30))
+        XCTAssertEqual(ranked.count, 1, "one arrival minute, one option")
+        XCTAssertEqual(ranked.first?.boardStation, "b", "the one that doesn't make you set off early")
+    }
+
+    /// Two ways to reach the same door: the near station is a short walk and a long
+    /// wait, the far one up the line is a longer walk and a later start.
+    ///
+    /// Neither dominates the other — the far one walks five minutes further, the near
+    /// one sets off twelve minutes earlier — which is precisely why Pareto filtering
+    /// left both on screen and why this rule exists.
+    private func nearAndFarStation(arrivingAt near: Double, and far: Double) -> [Journey] {
+        [
+            arrival(at: near, leavingAt: 0, boarding: "a", walkSeconds: 300),
+            arrival(at: far, leavingAt: 12, boarding: "b", walkSeconds: 600),
+        ]
+    }
+
+    /// The control. Same pair, same walking asymmetry, arrivals a few minutes apart —
+    /// and now both survive. So it is the tie in arrival that removes one, not
+    /// ordinary domination, which would have removed it in both tests.
+    func testTheSamePairSurvivesWhenTheArrivalsDiffer() {
+        let ranked = Fixture.planner().rank(nearAndFarStation(arrivingAt: 30, and: 34))
+        XCTAssertEqual(ranked.count, 2, "neither dominates the other; only a tied arrival collapses them")
+    }
+
+    /// Order of discovery must not decide it — the candidate set comes out of a
+    /// dictionary, whose ordering is not stable between runs.
+    func testTheSurvivorDoesNotDependOnTheOrderTheyWereFoundIn() {
+        let planner = Fixture.planner()
+        let pair = nearAndFarStation(arrivingAt: 30, and: 30)
+        XCTAssertEqual(
+            planner.rank(pair).map(\.id),
+            planner.rank(pair.reversed()).map(\.id)
+        )
+    }
+
+    /// Different minutes are different answers and both stay, or the app would hide a
+    /// later train a rider might well prefer to catch.
+    func testDifferentArrivalMinutesBothSurvive() {
+        let planner = Fixture.planner()
+        let ranked = planner.rank(nearAndFarStation(arrivingAt: 30, and: 34))
+        XCTAssertEqual(ranked.count, 2)
+    }
+
+    /// Seconds apart but shown as the same minute. A rider reading "8:31" twice has no
+    /// way to tell them apart, so listing both is noise.
+    func testArrivalsInTheSameMinuteCollapseEvenWhenSecondsDiffer() {
+        let planner = Fixture.planner()
+        let ranked = planner.rank([
+            arrival(at: 30.1, leavingAt: 0, boarding: "a", walkSeconds: 300),
+            arrival(at: 30.9, leavingAt: 14, boarding: "b", walkSeconds: 600),
+        ])
+        XCTAssertEqual(ranked.count, 1)
+        XCTAssertEqual(ranked.first?.boardStation, "b", "the shorter one, not the one arriving first")
+    }
+
+    /// The real shape of the complaint, run through the whole planner: standing
+    /// between two stations, no two options may claim the same arrival minute.
+    func testNoTwoOptionsShareAnArrivalMinute() {
+        let planner = Fixture.planner()
+        for minute in [1, 3, 7, 12, 18, 25] {
+            let plan = planner.plan(PlanRequest(
+                origin: .place(name: "Between two stations", coordinate: Fixture.coordinate(of: "a", offsetMeters: 300)),
+                destination: .station("f"),
+                departAt: Fixture.date(8, minute)
+            ))
+            let minutes = plan.journeys.map { Int(($0.arrivalTime.timeIntervalSinceReferenceDate / 60).rounded(.down)) }
+            XCTAssertEqual(Set(minutes).count, minutes.count, "duplicate arrival minute at 08:\(minute)")
+        }
+    }
 }

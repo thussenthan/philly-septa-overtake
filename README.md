@@ -349,6 +349,14 @@ filter purely because it bought 90 seconds of extra slack while arriving seven
 minutes later. It's two minutes now, and there's a regression test named after the
 behaviour.
 
+6. **One option per arrival minute**, the one that takes least time door to door.
+   Pareto cannot separate two ways of reaching the door at the same moment — walking
+   further up the line to a station the train reaches later costs more walking and
+   less waiting, so neither is better on every axis — and both would be listed. But
+   once the arrivals agree, the axes stop mattering: the longer of the two is asking
+   you to set off earlier and giving you nothing for it. Minutes rather than seconds,
+   because a rider who reads "8:31" twice has no way to tell the two apart.
+
 ### Walking times
 
 Walks are estimated from straight-line distance × 1.25 for the street grid, plus

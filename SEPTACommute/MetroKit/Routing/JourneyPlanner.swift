@@ -688,12 +688,56 @@ public struct JourneyPlanner: Sendable {
             }
         }
 
-        return pareto.sorted { lhs, rhs in
+        return collapseTiedArrivals(pareto).sorted { lhs, rhs in
             if lhs.arrivalTime != rhs.arrivalTime { return lhs.arrivalTime < rhs.arrivalTime }
             if lhs.transferCount != rhs.transferCount { return lhs.transferCount < rhs.transferCount }
             if lhs.walkingTime != rhs.walkingTime { return lhs.walkingTime < rhs.walkingTime }
             return lhs.departureTime > rhs.departureTime
         }
+    }
+
+    /// One option per arrival minute: the one that takes the least time to make.
+    ///
+    /// Landing at the door at the same minute is not two choices. Whichever takes
+    /// longer is asking the rider to set off earlier and gain nothing by it, and the
+    /// pair are usually the same trip anyway — two stations a similar walk away, one
+    /// of them further along the line, so the train reaches the destination at the
+    /// same moment either way.
+    ///
+    /// Pareto filtering could not remove them, and correctly so on its own terms: the
+    /// further station costs more walking, the nearer one costs a longer wait, so
+    /// neither is better on every axis. But the axes are the wrong thing to weigh once
+    /// the arrivals match. Arrival is the question this app answers, and when two
+    /// answers agree the only thing left to compare is what each one costs to obtain.
+    ///
+    /// Minutes, not seconds, because that is the resolution a rider is shown. Two
+    /// options they both read as "8:31" must not both be listed on the strength of a
+    /// difference they cannot see.
+    private func collapseTiedArrivals(_ journeys: [Journey]) -> [Journey] {
+        var best: [Int: Journey] = [:]
+        var order: [Int] = []
+        for journey in journeys {
+            let minute = Int((journey.arrivalTime.timeIntervalSinceReferenceDate / 60).rounded(.down))
+            if let incumbent = best[minute] {
+                if prefersOnTiedArrival(journey, over: incumbent) { best[minute] = journey }
+            } else {
+                best[minute] = journey
+                order.append(minute)
+            }
+        }
+        return order.compactMap { best[$0] }
+    }
+
+    /// Which of two same-minute arrivals to keep.
+    ///
+    /// Total door-to-door time first, since that is the whole point of dropping one.
+    /// The rest are tie-breaks, ending on the id so the survivor does not depend on
+    /// the order a dictionary happened to yield its values in.
+    private func prefersOnTiedArrival(_ a: Journey, over b: Journey) -> Bool {
+        if a.totalDuration != b.totalDuration { return a.totalDuration < b.totalDuration }
+        if a.transferCount != b.transferCount { return a.transferCount < b.transferCount }
+        if a.walkingTime != b.walkingTime { return a.walkingTime < b.walkingTime }
+        return a.id < b.id
     }
 
     /// Identifies journeys that are "the same plan" from a rider's point of view:
