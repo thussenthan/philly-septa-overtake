@@ -138,9 +138,10 @@ dependencies and nothing to install.
 open SEPTACommute.xcodeproj
 ```
 
-Pick a simulator and run. On first launch the app asks for a **Home** and a
-**Work / School** address — it ships with no addresses in it, and they're stored
-only in this device's `UserDefaults`.
+Pick a simulator and run. On first launch the app asks for a **Home** address and
+one for the other end of your day, which you name yourself — Work, School, Hospital,
+whatever it is. It ships with no addresses in it, and they're stored only in this
+device's `UserDefaults`.
 
 To run the engine's tests without a simulator:
 

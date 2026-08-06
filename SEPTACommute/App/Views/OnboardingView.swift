@@ -6,6 +6,8 @@ struct OnboardingView: View {
     @EnvironmentObject private var model: CommuteModel
 
     @State private var page = 0
+    /// What the rider calls the far end of their day. Defaults to "Work" on save.
+    @State private var awayName = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,7 +82,7 @@ struct OnboardingView: View {
 
     private func addressSection(role: SavedPlace.Role, prompt: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: role.title)
+            SectionLabel(text: places.place(for: role)?.name ?? role.unsetTitle)
             if let existing = places.place(for: role) {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
@@ -100,9 +102,16 @@ struct OnboardingView: View {
                 .padding(12)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             } else {
+                if role == .school {
+                    // Asked here rather than after the fact: naming it is one tap, and
+                    // the name is what every later screen calls this end of the trip.
+                    PlaceNameField(role: role, name: $awayName)
+                }
                 AddressField(role: role, prompt: prompt) { address, coordinate in
+                    let typed = awayName.trimmingCharacters(in: .whitespaces)
                     places.save(SavedPlace(
                         role: role,
+                        name: role == .school && !typed.isEmpty ? typed : role.title,
                         address: address,
                         latitude: coordinate.latitude,
                         longitude: coordinate.longitude

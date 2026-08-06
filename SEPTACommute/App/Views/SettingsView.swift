@@ -26,6 +26,14 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            // On the Form, not on the section that owns the button. A Form realises
+            // its sections lazily, so a presentation modifier attached to one is torn
+            // down whenever the list re-lays out — and this screen observes a model
+            // that republishes on a thirty-second replan, on every location update and
+            // on every alert refresh. The sheet opened and vanished in the same breath.
+            .sheet(item: $addingRole) { role in
+                AddPlaceSheet(role: role).environmentObject(places)
+            }
         }
     }
 
@@ -62,9 +70,6 @@ struct SettingsView: View {
         } footer: {
             Text("Stored on this device only. Nothing is uploaded — the app has no server and makes no network calls other than Apple's map lookups.")
         }
-        .sheet(item: $addingRole) { role in
-            AddPlaceSheet(role: role).environmentObject(places)
-        }
     }
 
     private func placeRow(role: SavedPlace.Role) -> some View {
@@ -74,7 +79,9 @@ struct SettingsView: View {
             HStack {
                 Image(systemName: role.symbol).foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(role.title).foregroundStyle(.primary)
+                    // The rider's own name for it once they have given one.
+                    Text(places.place(for: role)?.name ?? role.unsetTitle)
+                        .foregroundStyle(.primary)
                     Text(places.place(for: role)?.address ?? "Not set")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -223,29 +230,23 @@ struct AddPlaceSheet: View {
 
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
-    @State private var customName = ""
+    @State private var chosenName = ""
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if role == .custom {
-                        VStack(alignment: .leading, spacing: 6) {
-                            SectionLabel(text: "Name")
-                            TextField("Clinic, gym, a friend's place…", text: $customName)
-                                .padding(12)
-                                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
-                        }
+                    if role.isRenameable {
+                        PlaceNameField(role: role, name: $chosenName)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
                         SectionLabel(text: "Address")
                         AddressField(role: role, prompt: promptText) { address, coordinate in
+                            let typed = chosenName.trimmingCharacters(in: .whitespaces)
                             places.save(SavedPlace(
                                 role: role,
-                                name: role == .custom
-                                    ? (customName.isEmpty ? address : customName)
-                                    : role.title,
+                                name: resolvedName(typed: typed, address: address),
                                 address: address,
                                 latitude: coordinate.latitude,
                                 longitude: coordinate.longitude
@@ -260,13 +261,36 @@ struct AddPlaceSheet: View {
                 }
                 .padding(20)
             }
-            .navigationTitle(role == .custom ? "New place" : role.title)
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
             }
+            // Pre-filled with whatever it is called now, so reopening the row to
+            // correct an address doesn't silently rename the place.
+            .onAppear {
+                if chosenName.isEmpty {
+                    chosenName = places.place(for: role)?.name ?? (role == .custom ? "" : role.title)
+                }
+            }
+        }
+    }
+
+    /// A custom place falls back to its address, which is at least identifiable. The
+    /// second anchor falls back to the role's default, since a blank label would
+    /// leave an unnamed row on the home screen.
+    private func resolvedName(typed: String, address: String) -> String {
+        if !typed.isEmpty { return typed }
+        return role == .custom ? address : role.title
+    }
+
+    private var navigationTitle: String {
+        switch role {
+        case .home: return role.title
+        case .school: return places.place(for: role)?.name ?? role.unsetTitle
+        case .custom: return "New place"
         }
     }
 
@@ -276,5 +300,51 @@ struct AddPlaceSheet: View {
         case .school: return "Work or school address"
         case .custom: return "Address"
         }
+    }
+}
+
+/// Names a saved place: tap a common one, or type your own.
+///
+/// The second anchor used to be labelled "Work / School" — a slash standing in for a
+/// choice nobody had been asked to make, and which read as two places when it is one.
+/// A resident calls it the hospital; a student calls it campus. So it asks.
+struct PlaceNameField: View {
+    var role: SavedPlace.Role
+    @Binding var name: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Call it")
+            TextField(placeholder, text: $name)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+
+            if role == .school {
+                HStack(spacing: 8) {
+                    ForEach(SavedPlace.Role.awayLabelSuggestions, id: \.self) { suggestion in
+                        Button {
+                            name = suggestion
+                        } label: {
+                            Text(suggestion)
+                                .font(.footnote.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    name == suggestion ? Theme.accent.opacity(0.18) : Color.secondary.opacity(0.12),
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(name == suggestion ? Theme.accent : .primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var placeholder: String {
+        role == .custom ? "Clinic, gym, a friend's place…" : "Work"
     }
 }

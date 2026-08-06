@@ -13,13 +13,31 @@ struct SavedPlace: Identifiable, Codable, Hashable {
 
         var id: String { rawValue }
 
+        /// The default name for a place in this role, before the rider renames it.
+        ///
+        /// The second anchor is one place, not two — but what to call it depends on
+        /// whose phone this is. "Work / School" was a slash standing in for a choice
+        /// nobody had been asked to make, so the rider makes it and this is only
+        /// where it starts.
         var title: String {
             switch self {
             case .home: return "Home"
-            case .school: return "Work / School"
+            case .school: return "Work"
             case .custom: return "Saved place"
             }
         }
+
+        /// What to call the row while the rider hasn't set it yet, where naming it
+        /// "Work" would be presuming.
+        var unsetTitle: String {
+            self == .school ? "Work or school" : title
+        }
+
+        /// Whether the rider gets to name a place in this role.
+        var isRenameable: Bool { self != .home }
+
+        /// One tap instead of typing, for the two that cover almost everyone.
+        static let awayLabelSuggestions = ["Work", "School", "Hospital", "Campus"]
 
         var symbol: String {
             switch self {

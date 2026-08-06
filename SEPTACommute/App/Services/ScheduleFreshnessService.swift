@@ -73,15 +73,20 @@ final class ScheduleFreshnessService: ObservableObject {
                 return
             }
             defaults.set(Date(), forKey: Self.checkedAtKey)
-            if ScheduleFreshness.isSuperseded(bundled: bundledVersion, remote: remote) {
+            let superseded = ScheduleFreshness.isSuperseded(bundled: bundledVersion, remote: remote)
+            if superseded {
                 defaults.set(remote, forKey: Self.versionKey)
-                publishedVersion = remote
             } else {
                 // Covers the case that matters after an app update: the build caught
                 // up, so the notice has to go away by itself.
                 defaults.removeObject(forKey: Self.versionKey)
-                publishedVersion = nil
             }
+            // Assigned only on a real change. `@Published` publishes on every write,
+            // including a write of the value it already held, and everything observing
+            // the model redraws — which was enough to close a sheet the rider had just
+            // opened. A daily check should be invisible when the answer is "no".
+            let updated = superseded ? remote : nil
+            if publishedVersion != updated { publishedVersion = updated }
         } catch {
             return
         }
