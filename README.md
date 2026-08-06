@@ -513,7 +513,7 @@ forgotten:
   and `CommuteSnapshot` — and ticking Target Membership on a *subfolder* of an existing
   synchronized group is the one case Xcode's UI handles badly.
 - **Sharing the container.** `SEPTACommute.entitlements` and
-  `SEPTACommuteWidget.entitlements` both declare `group.com.example.SEPTACommute`, and
+  `SEPTACommuteWidget.entitlements` both declare `group.com.thussenthan.Overtake`, and
   `CODE_SIGN_ENTITLEMENTS` names them in all four build configurations. They sit at the
   repository root rather than inside either target's folder, since both folders are
   synchronized groups and a stray `.entitlements` in one gets picked up as a resource

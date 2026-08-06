@@ -308,7 +308,7 @@ public struct RiderTuning: Codable, Hashable, Sendable {
 /// isn't provisioned, so the fallback to `.standard` keeps the *app* working; only
 /// the widget goes quiet.
 public enum SharedStore {
-    public static let appGroupID = "group.com.example.SEPTACommute"
+    public static let appGroupID = "group.com.thussenthan.Overtake"
 
     private static let snapshotKey = "commuteSnapshot.v1"
     private static let appearanceKey = "appearance.v1"
