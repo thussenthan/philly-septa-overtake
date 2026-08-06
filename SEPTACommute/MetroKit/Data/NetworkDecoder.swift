@@ -14,7 +14,7 @@ import Foundation
 ///
 /// The format is one record per line, fields separated by `|`:
 ///
-///     M|feedVersion|feedStart|feedEnd|generated|source
+///     M|feedVersion|feedStart|feedEnd|generated|source|advisoryEnd
 ///     L|id|badge|name|colorHex
 ///     S|id|name|subtitle|intersection|lat|lon|lineIDs,csv|1 (accessible), 0, or -
 ///     P|id|lineID|routeID|kind|direction|headsign
@@ -110,6 +110,9 @@ public enum NetworkDecoder {
                         source: fields[5],
                         generated: fields[4],
                         validUntil: fields[3],
+                        // Optional, so a blob generated before the advisory window was
+                        // recorded still decodes rather than failing the whole feed.
+                        servicesUntil: fields.count > 6 && !fields[6].isEmpty ? fields[6] : nil,
                         notes: "Regenerate with tools/build_schedule.py"
                     )
 

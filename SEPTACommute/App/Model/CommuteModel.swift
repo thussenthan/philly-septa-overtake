@@ -124,6 +124,7 @@ final class CommuteModel: ObservableObject {
     let locationService: LocationService
     let walkTimes: WalkTimeService
     let alertService: AlertService
+    let scheduleFreshness: ScheduleFreshnessService
     let places: PlaceStore
 
     private var cancellables: Set<AnyCancellable> = []
@@ -162,6 +163,7 @@ final class CommuteModel: ObservableObject {
         locationService: LocationService? = nil,
         walkTimes: WalkTimeService? = nil,
         alertService: AlertService? = nil,
+        scheduleFreshness: ScheduleFreshnessService? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.network = network
@@ -170,6 +172,7 @@ final class CommuteModel: ObservableObject {
         self.locationService = locationService ?? LocationService()
         self.walkTimes = walkTimes ?? WalkTimeService()
         self.alertService = alertService ?? AlertService()
+        self.scheduleFreshness = scheduleFreshness ?? ScheduleFreshnessService()
         self.defaults = defaults
 
         if let data = defaults.data(forKey: RiderPreferences.storageKey),
@@ -196,6 +199,10 @@ final class CommuteModel: ObservableObject {
         self.alertService.$digest
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+
+        self.scheduleFreshness.$publishedVersion
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     // MARK: - Lifecycle
@@ -205,6 +212,7 @@ final class CommuteModel: ObservableObject {
         startTicking()
         replan()
         alertService.refreshIfNeeded()
+        scheduleFreshness.refreshIfNeeded()
         // An install that already had addresses saved before the widget existed has
         // never published them, and a rider with no location fix would never trigger
         // a plan to do it either. Same for the appearance, which existed as a setting
@@ -737,7 +745,7 @@ final class CommuteModel: ObservableObject {
             case .nightServiceOnly:
                 return "Trains have stopped for the night. These are the B1 Owl bus times, which runs along Broad St at street level."
             case .scheduleOutOfDate(let end):
-                return "This timetable was published through \(Self.humanDate(end)) and may be out of date. Check septa.org before relying on it."
+                return "This timetable runs out after \(Self.humanDate(end)). Update Overtake, or check septa.org."
             case .originTooFarFromLine(let station, let meters):
                 return "You're \(Format.distance(meters: meters)) from the nearest station (\(network.station(station)?.name ?? station.rawValue)) — too far to walk within your limit."
             case .destinationTooFarFromLine(let station, let meters):
@@ -759,6 +767,32 @@ final class CommuteModel: ObservableObject {
             text += " · valid through \(Self.humanDate(until))"
         }
         return text
+    }
+
+    /// Set when SEPTA has published a newer timetable than the one in this build.
+    ///
+    /// Distinct from the planner's out-of-date note, which fires only once the
+    /// bundled data has run out altogether. This is the softer and far more common
+    /// case: the times still work, they are simply no longer the newest ones, and
+    /// installing an update is worth doing but not worth interrupting anyone over.
+    var newerScheduleNote: String? {
+        guard let published = scheduleFreshness.publishedVersion else { return nil }
+        return "SEPTA has published a newer timetable (\(published)). This build has \(SEPTAData.feedVersion) — update Overtake when you can."
+    }
+
+    /// How much of the bundled timetable SEPTA still stands behind.
+    ///
+    /// Two windows, because SEPTA publishes two: a fortnight it calls authoritative
+    /// and a couple of weeks past that it labels advisory. Riders reading this screen
+    /// deserve the distinction rather than a single date that makes the app look
+    /// broken a fortnight after every release.
+    var scheduleWindowNote: String? {
+        let provenance = network.provenance
+        guard let services = provenance.servicesUntil, services != provenance.validUntil else { return nil }
+        if provenance.isStale(asOf: Date()) {
+            return "Past SEPTA's confirmed window. These are its own advisory times, which run through \(Self.humanDate(services))."
+        }
+        return "SEPTA also publishes advisory times through \(Self.humanDate(services)), used once the confirmed window above ends."
     }
 
     private static func humanDate(_ yyyymmdd: String) -> String {

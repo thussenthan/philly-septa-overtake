@@ -238,6 +238,24 @@ def read_fares(feed: Feed) -> dict:
     }
 
 
+def advisory_end_date(feed: Feed) -> dt.date:
+    """The last date the feed defines any service for.
+
+    SEPTA publishes two windows and says so in its changelog. ``feed_info.txt``
+    carries the *authoritative* one — a fortnight — while ``calendar.txt`` and
+    ``calendar_dates.txt`` run a couple of weeks past it as "advisory only": real
+    timetables SEPTA expects to hold but has not committed to.
+
+    Both matter to the app. Past the authoritative end its times are SEPTA's own
+    projection rather than its promise, which is worth knowing but not worth an
+    alarm. Past *this* date there is no data at all, which is.
+    """
+    end = max(parse_date(r["end_date"]) for r in feed.table("calendar.txt"))
+    for row in feed.table("calendar_dates.txt"):
+        end = max(end, parse_date(row["date"]))
+    return end
+
+
 def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
     """Every date each service ID runs on, over the whole span the feed describes.
 
@@ -570,6 +588,7 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         "route_ids": route_ids,
         "runtime_spread": runtime_spread[:6],
         "feed_info": feed.table("feed_info.txt")[0],
+        "advisory_end": advisory_end_date(feed).strftime("%Y%m%d"),
         "representative_dates": {k: v.isoformat() for k, v in dates.items()},
         "calendar_mismatches": calendar_mismatches,
         "skipped_no_service": skipped_no_service,
@@ -945,6 +964,7 @@ def emit_swift(data: dict) -> str:
         encode_field(info["feed_end_date"]),
         encode_field(dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")),
         encode_field("SEPTA GTFS " + info["feed_version"]),
+        encode_field(data["advisory_end"]),
     ]))
     for line in sorted(line_rows.values(), key=lambda l: (l["sort"], l["badge"])):
         records.append("|".join(["L", encode_field(line["id"]), encode_field(line["badge"]),
@@ -1080,7 +1100,8 @@ def emit_swift(data: dict) -> str:
 def report(data: dict) -> None:
     stations = data["stations"]
     info = data["feed_info"]
-    print(f"feed {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}")
+    print(f"feed {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}"
+          f"  (advisory service data through {data['advisory_end']})")
     print("representative dates: "
           + ", ".join(f"{k} {v}" for k, v in sorted(data["representative_dates"].items(),
                                                     key=lambda kv: DAY_TYPES.index(kv[0]))))

@@ -71,7 +71,7 @@ public enum PlanNote: Sendable, Hashable {
     case walkingIsFaster(saving: TimeInterval)
     /// Express exists on this line but is not running at the requested time.
     case expressNotRunningNow(nextDeparture: Date?)
-    /// The bundled timetable has passed its published validity date.
+    /// The bundled timetable has run out of service data entirely.
     case scheduleOutOfDate(feedEndDate: String)
     /// Trains have stopped for the night; a replacement bus is running.
     case nightServiceOnly
@@ -766,8 +766,15 @@ public struct JourneyPlanner: Sendable {
             notes.append(.nightServiceOnly)
         }
 
-        if network.provenance.isStale(asOf: request.departAt) {
-            notes.append(.scheduleOutOfDate(feedEndDate: network.provenance.validUntil ?? ""))
+        // Deliberately the *exhaustion* date, not the authoritative one. SEPTA's
+        // rail timetables change a few times a year while its feed windows are a
+        // fortnight wide, so warning at the fortnight would mean warning almost
+        // always — and a notice a rider has learned to scroll past is worse than no
+        // notice at all. Whether a newer feed actually exists is a question only the
+        // network can answer, and the app asks it separately.
+        if network.provenance.hasNoServiceData(asOf: request.departAt) {
+            let end = network.provenance.servicesUntil ?? network.provenance.validUntil ?? ""
+            notes.append(.scheduleOutOfDate(feedEndDate: end))
         }
 
         return notes

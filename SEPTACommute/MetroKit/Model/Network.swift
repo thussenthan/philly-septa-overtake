@@ -139,11 +139,20 @@ public struct DataProvenance: Sendable, Hashable {
     public var source: String
     /// When the data was generated, `yyyy-MM-dd`.
     public var generated: String
-    /// Last date the operator declares the timetable valid, `yyyyMMdd`.
+    /// Last date the operator declares the timetable *authoritative*, `yyyyMMdd`.
     ///
-    /// SEPTA's feed covers about two weeks at a time, so this is how the app
-    /// knows to stop implying its departure times are gospel.
+    /// SEPTA commits to about a fortnight at a time, so this is how the app knows
+    /// to stop implying its departure times are gospel.
     public var validUntil: String?
+    /// Last date the feed defines any service at all, `yyyyMMdd`.
+    ///
+    /// SEPTA publishes two windows and labels the difference itself: `feed_info.txt`
+    /// carries the authoritative fortnight, while `calendar.txt` runs a couple of
+    /// weeks further as "advisory only" — timetables it expects to hold but has not
+    /// committed to. Past `validUntil` the times are a projection, which is worth
+    /// saying quietly. Past *this* there is nothing left to route on, which is worth
+    /// saying loudly, and the two should not be confused.
+    public var servicesUntil: String?
     public var notes: String?
 
     public init(
@@ -151,23 +160,30 @@ public struct DataProvenance: Sendable, Hashable {
         source: String,
         generated: String,
         validUntil: String? = nil,
+        servicesUntil: String? = nil,
         notes: String? = nil
     ) {
         self.fidelity = fidelity
         self.source = source
         self.generated = generated
         self.validUntil = validUntil
+        self.servicesUntil = servicesUntil
         self.notes = notes
     }
 
     public var isEstimate: Bool { fidelity == .estimated }
 
-    /// End of the last valid service day, in the agency's time zone.
-    public var feedExpiryDate: Date? {
-        guard let validUntil, validUntil.count == 8,
-              let year = Int(validUntil.prefix(4)),
-              let month = Int(validUntil.dropFirst(4).prefix(2)),
-              let day = Int(validUntil.suffix(2)) else { return nil }
+    /// End of the last authoritative service day, in the agency's time zone.
+    public var feedExpiryDate: Date? { Self.endOfServiceDay(validUntil) }
+
+    /// End of the last day the feed describes any service for.
+    public var serviceExpiryDate: Date? { Self.endOfServiceDay(servicesUntil) }
+
+    private static func endOfServiceDay(_ yyyymmdd: String?) -> Date? {
+        guard let yyyymmdd, yyyymmdd.count == 8,
+              let year = Int(yyyymmdd.prefix(4)),
+              let month = Int(yyyymmdd.dropFirst(4).prefix(2)),
+              let day = Int(yyyymmdd.suffix(2)) else { return nil }
         var components = DateComponents()
         components.year = year
         components.month = month
@@ -179,8 +195,22 @@ public struct DataProvenance: Sendable, Hashable {
         return calendar.date(from: components)
     }
 
+    /// Past the fortnight SEPTA commits to. The times are its own projection now.
     public func isStale(asOf date: Date) -> Bool {
         guard let expiry = feedExpiryDate else { return false }
+        return date > expiry
+    }
+
+    /// Past every date the feed describes, so there is nothing left to route on.
+    ///
+    /// This is the one worth interrupting a rider for. Being merely `isStale` is not:
+    /// SEPTA's rail timetables change a few times a year while its feed windows are a
+    /// fortnight wide, so an app that cried out every fortnight would be crying wolf
+    /// for months at a stretch and be ignored by the time it mattered.
+    public func hasNoServiceData(asOf date: Date) -> Bool {
+        // Fall back to the authoritative end when the feed didn't state an advisory
+        // one — better to over-warn than to route on data that isn't there.
+        guard let expiry = serviceExpiryDate ?? feedExpiryDate else { return false }
         return date > expiry
     }
 

@@ -66,10 +66,23 @@ struct ServiceNotesView: View {
                     }
                 }
 
+                if let update = model.newerScheduleNote {
+                    Section {
+                        Label(update, systemImage: "arrow.down.circle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Timetable") {
                     Text(model.scheduleFootnote)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    if let window = model.scheduleWindowNote {
+                        Text(window)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     Text("Scheduled times, not live train positions.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

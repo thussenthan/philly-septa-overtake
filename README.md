@@ -22,7 +22,7 @@ screen. You can override it whenever you like.
 Coverage is the whole SEPTA Metro rail map: the **B** Broad Street Line, **L**
 Market-Frankford, **M** Norristown High Speed, **T1–T5** subway-surface trolleys,
 **G** Girard, **D** Media-Sharon Hill, the trackless trolleys, and the B1 Owl
-night bus — 585 stations, 309 stopping patterns.
+night bus — 586 stations, 321 stopping patterns.
 
 So the app works it out door-to-door, and shows you the tradeoff instead of just a
 single answer:
@@ -611,3 +611,10 @@ have measured walk times switched on.
 Schedule data is SEPTA's, used under their
 [developer licence](https://www.septa.org/license-agreement/). Regenerating it is
 a download away; it isn't committed as a feed, only as derived Swift.
+
+SEPTA's name, its line and route names, and its line colours appear here to
+describe its services. **Overtake is not affiliated with, endorsed by, or
+supported by SEPTA.**
+
+The code itself is not open source — see [LICENSE](LICENSE). It is published to be
+read, not reused.

@@ -1,0 +1,38 @@
+Copyright (c) 2026 thussenthan
+
+All rights reserved.
+
+This source code is published so that it can be read. It is not open source.
+No permission is granted to use, copy, modify, merge, publish, distribute,
+sublicense, or sell copies of this software or any substantial portion of it,
+whether in source or binary form.
+
+Reading the code, and quoting short excerpts of it for discussion, review, or
+teaching, is fine.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Third-party data
+----------------
+
+The timetable, station and fare data in
+SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift is derived from the
+Southeastern Pennsylvania Transportation Authority's published GTFS feed:
+
+    https://github.com/septadev/GTFS
+
+That data is SEPTA's, not the author's, and the copyright notice above does not
+extend to it. It is used under SEPTA's developer licence:
+
+    https://www.septa.org/license-agreement/
+
+SEPTA's name, the names of its lines and routes, and its line colours are used
+here to describe its services. This project is not affiliated with, endorsed by,
+or supported by SEPTA.
