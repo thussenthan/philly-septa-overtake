@@ -155,6 +155,18 @@ one for the other end of your day, which you name yourself — Work, School, Hos
 whatever it is. It ships with no addresses in it, and they're stored only in this
 device's `UserDefaults`.
 
+### Putting it on a phone
+
+```sh
+tools/install-device.sh
+```
+
+Builds, installs and launches on a connected iPhone. It exists because a free Apple
+ID signs development builds with a certificate Apple expires after **seven days** —
+the app stops working and has to be reinstalled, weekly, forever. Nothing is broken
+when that happens. Membership of the Apple Developer Program raises it to a year and
+makes the script unnecessary.
+
 To run the engine's tests without a simulator:
 
 ```sh
