@@ -327,7 +327,7 @@ tests now lock in:
 - **Special-event trips are excluded.** SEPTA adds express trips to NRG whenever
   there's a game at the sports complex. They're real, but they run on a handful of
   named dates, and taken at face value they'd tell a rider on an ordinary Sunday
-  that Sunday express service exists. Services covering fewer than three dates are
+  that Sunday express service exists. Services covering three dates or fewer are
   dropped, which catches them all without needing to know what the event was.
 - **Platform suffixes are merged.** Express and local use separate tracks at Olney
   and City Hall, and the feed names them `Olney Transit Center - B1` and

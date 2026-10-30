@@ -170,6 +170,36 @@ final class JourneyPlannerTests: XCTestCase {
         XCTAssertEqual(cost.penalty, 12 * 60, accuracy: 1)
     }
 
+    /// Walking is always a fallback, but not from the moment of planning: a rider who
+    /// has just missed the train sets off at its leave-by at the earliest. Timing the
+    /// walk from "now" understated what the miss costs by however much slack was left.
+    func testAWalkingFallbackStartsWhenTheTrainIsMissed() throws {
+        let planner = Fixture.planner()
+        let origin = Endpoint.place(name: "Near A", coordinate: Fixture.coordinate(of: "a"))
+        let destination = Endpoint.place(name: "Near B", coordinate: Fixture.coordinate(of: "b"))
+
+        var walkingFallbacks = 0
+        for minute in stride(from: 0, to: 120, by: 2) {
+            let plan = planner.plan(PlanRequest(
+                origin: origin,
+                destination: destination,
+                departAt: Fixture.date(7, 0).addingTimeInterval(TimeInterval(minute * 60))
+            ))
+            let walk = plan.journeys.first(where: \.isWalkOnly)
+            for journey in plan.journeys where !journey.isWalkOnly {
+                guard let cost = journey.missedCost, cost.fallbackIsWalking, let walk else { continue }
+                walkingFallbacks += 1
+                XCTAssertGreaterThanOrEqual(
+                    cost.fallbackArrival,
+                    journey.urgency.leaveBy.addingTimeInterval(walk.totalDuration - 1),
+                    "the walk can't start before the train it replaces was missed"
+                )
+                XCTAssertEqual(cost.penalty, cost.fallbackArrival.timeIntervalSince(journey.arrivalTime), accuracy: 1)
+            }
+        }
+        XCTAssertGreaterThan(walkingFallbacks, 0, "the sweep has to exercise a walking fallback")
+    }
+
     /// Tight *and* expensive is the only combination that justifies telling someone
     /// to run. At 08:03, the 08:04 express is a minute away and costs twelve
     /// minutes to miss.

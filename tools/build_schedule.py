@@ -314,9 +314,18 @@ def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
 RECURRING_DATE_THRESHOLD = 3
 
 
+def is_special_event(days: set[dt.date]) -> bool:
+    """True for a service on RECURRING_DATE_THRESHOLD dates or fewer.
+
+    One definition for both places that ask. They used ``<``, which kept a
+    three-date event service in the timetable despite the rule above.
+    """
+    return len(days) <= RECURRING_DATE_THRESHOLD
+
+
 def recurring_services(feed: Feed) -> tuple[dict[str, set[dt.date]], set[str]]:
     dates = service_dates(feed)
-    rare = {sid for sid, days in dates.items() if len(days) < RECURRING_DATE_THRESHOLD}
+    rare = {sid for sid, days in dates.items() if is_special_event(days)}
     return dates, rare
 
 
@@ -364,7 +373,7 @@ def representative_dates(feed: Feed, dates: dict[str, set[dt.date]]) -> dict[str
 
     active: dict[dt.date, set[str]] = defaultdict(set)
     for service_id, days in dates.items():
-        if len(days) < RECURRING_DATE_THRESHOLD:
+        if is_special_event(days):
             continue
         for day in days:
             if start <= day <= end:
