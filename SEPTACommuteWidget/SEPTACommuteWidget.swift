@@ -30,7 +30,10 @@ struct SEPTACommuteWidget: Widget {
         }
         .configurationDisplayName("Next train")
         .description("When to leave for your commute — out in the morning, back in the afternoon.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
+        .supportedFamilies([
+            .systemSmall, .systemMedium,
+            .accessoryRectangular, .accessoryInline, .accessoryCircular,
+        ])
     }
 }
 
@@ -249,6 +252,8 @@ struct CommuteWidgetView: View {
         Group {
             switch family {
             case .accessoryRectangular: accessory
+            case .accessoryInline: inline
+            case .accessoryCircular: circular
             case .systemMedium: medium
             default: small
             }
@@ -384,6 +389,52 @@ struct CommuteWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The line above the lock-screen clock: one run of text, nothing else fits.
+    @ViewBuilder
+    private var inline: some View {
+        if let step = entry.step {
+            let lines = step.lines.map(\.badge).joined(separator: "→")
+            if step.isWalkOnly {
+                Text("Walk · arrive \(Format.clock(step.arrival))")
+            } else if let countdown = entry.countdown {
+                Text("\(lines) · leave in \(countdown)")
+            } else {
+                Text("\(lines) · leave in \(Text(step.leaveBy, style: .timer))")
+            }
+        } else {
+            Text(entry.placeholder ?? "Next train")
+        }
+    }
+
+    /// A route and a countdown, in the lock screen's circle.
+    private var circular: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            if let step = entry.step {
+                VStack(spacing: 0) {
+                    Text(step.isWalkOnly ? "WALK" : (step.lines.first?.badge ?? ""))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    Group {
+                        if let countdown = entry.countdown {
+                            Text(countdown)
+                        } else {
+                            Text(step.leaveBy, style: .timer)
+                        }
+                    }
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                }
+                .padding(.horizontal, 5)
+            } else {
+                Image(systemName: "tram.fill")
+                    .font(.title3)
+            }
+        }
     }
 
     // MARK: Pieces

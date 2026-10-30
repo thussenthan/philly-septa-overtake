@@ -174,12 +174,17 @@ private struct StationChooser: View {
     var body: some View {
         NavigationStack {
             List {
+                if search.isEmpty {
+                    NearbyStationsSection(isSelected: { _ in false }, onChoose: onChoose)
+                }
                 ForEach(filtered, id: \.line.id) { section in
-                    Section(section.line.name) {
+                    Section {
                         ForEach(section.stations) { station in
-                            Button(station.name) { onChoose(station.id) }
+                            Button(station.displayName) { onChoose(station.id) }
                                 .foregroundStyle(.primary)
                         }
+                    } header: {
+                        LineSectionHeader(line: section.line)
                     }
                 }
                 if filtered.isEmpty && !search.isEmpty {
@@ -200,11 +205,6 @@ private struct StationChooser: View {
     }
 
     private var filtered: [(line: Line, stations: [Station])] {
-        let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return sections }
-        return sections.compactMap { section in
-            let matches = section.stations.filter { $0.name.localizedCaseInsensitiveContains(query) }
-            return matches.isEmpty ? nil : (line: section.line, stations: matches)
-        }
+        StationSearch.sections(sections, matching: search)
     }
 }

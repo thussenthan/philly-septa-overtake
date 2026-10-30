@@ -34,6 +34,44 @@ struct JourneyDetailView: View {
         }
         .navigationTitle("Your trip")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: shareText, subject: Text("\(originName) → \(destinationName)")) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share this trip")
+            }
+        }
+    }
+
+    // MARK: - Sharing
+
+    /// The itinerary as plain text, for whoever is waiting at the other end: when
+    /// the rider sets off, which trains, and when they will walk in the door.
+    private var shareText: String {
+        var lines = ["\(originName) → \(destinationName)"]
+        if !journey.isWalkOnly {
+            lines.append("Leave by \(Format.clock(journey.urgency.leaveBy))")
+        }
+        for leg in journey.legs {
+            switch leg {
+            case .walk(let walk) where walk.duration >= 60:
+                lines.append("Walk \(Format.minutes(walk.duration)) to \(walk.toName)")
+            case .wait(let wait) where wait.overtake != nil:
+                lines.append("Wait \(Format.minutes(wait.duration)) at \(stationName(wait.stationID)) for the faster train")
+            case .ride(let ride):
+                lines.append(
+                    "\(ride.routeBadge) \(ride.platformDescription): "
+                        + "\(stationName(ride.boardStation)) \(Format.clock(ride.departure)) → "
+                        + "\(stationName(ride.alightStation)) \(Format.clock(ride.arrival))"
+                )
+            default:
+                break
+            }
+        }
+        lines.append("Arrive \(Format.clock(journey.arrivalTime))")
+        lines.append("Scheduled times from SEPTA's published timetable.")
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Overview

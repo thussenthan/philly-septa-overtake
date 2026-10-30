@@ -200,8 +200,10 @@ struct HeroCard: View {
                     Rectangle().fill(isLast ? Color.clear : Theme.color(for: line))
                 }
                 .frame(width: 2.5)
+                // Hollow stops are filled with the card's own colour, so they read as
+                // rings rather than as dots of the page behind it.
                 Circle()
-                    .fill(isFirst || isLast ? Theme.color(for: line) : Color(.systemBackground))
+                    .fill(isFirst || isLast ? Theme.color(for: line) : Color(.secondarySystemBackground))
                     .frame(width: isFirst || isLast ? 9 : 6)
                     .overlay(Circle().strokeBorder(Theme.color(for: line), lineWidth: 2))
             }

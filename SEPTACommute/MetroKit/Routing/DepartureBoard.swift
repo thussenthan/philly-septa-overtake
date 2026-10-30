@@ -86,6 +86,11 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
 
 public extension JourneyPlanner {
 
+    /// A line and its feed direction: the platform, when there is no compass word.
+    private static func platformKey(_ pattern: ServicePattern) -> String {
+        "\(pattern.lineID.rawValue)|\(pattern.direction)"
+    }
+
     /// Every train leaving this station soon on the platform the rider wants, in
     /// departure order, each one marked with whether it is any use.
     ///
@@ -119,7 +124,12 @@ public extension JourneyPlanner {
 
         // Which patterns can do the job, and where each would drop the rider.
         var alightIndexByPattern: [PatternID: Int] = [:]
-        var usefulDirections: Set<Direction> = []
+        // Which platform is "the rider's". By the signed compass word where there is
+        // one, because `direction_id` is only comparable within a line: 0 is east on
+        // the L and west on the G1, so judging by it put westbound trolleys on an
+        // eastbound L board as trains that "skip your stop".
+        var usefulCompasses: Set<CompassDirection> = []
+        var usefulLineDirections: Set<String> = []
         let boarding = network.patterns(serving: origin).filter { pattern in
             // A train that ends here, or won't open its doors here, isn't a departure.
             guard let boardIndex = pattern.stopIndex(of: origin),
@@ -134,14 +144,22 @@ public extension JourneyPlanner {
             }
             if let best {
                 alightIndexByPattern[pattern.id] = best
-                usefulDirections.insert(pattern.direction)
+                if let compass = pattern.compass { usefulCompasses.insert(compass) }
+                usefulLineDirections.insert(Self.platformKey(pattern))
             }
             return true
         }
 
         // Nothing works from here, so there is no platform to show and no direction to
         // judge the rest against.
-        guard !usefulDirections.isEmpty else { return [] }
+        guard !usefulLineDirections.isEmpty else { return [] }
+
+        func sharesPlatform(_ pattern: ServicePattern) -> Bool {
+            if let compass = pattern.compass, !usefulCompasses.isEmpty {
+                return usefulCompasses.contains(compass)
+            }
+            return usefulLineDirections.contains(Self.platformKey(pattern))
+        }
 
         // Only name the stop being missed when the caller said which one matters. Any
         // other choice out of the offered set would be arbitrary, and a row that named
@@ -153,7 +171,7 @@ public extension JourneyPlanner {
             let alightIndex = alightIndexByPattern[pattern.id]
             // A train that helps is always shown. One that doesn't is shown only if it
             // leaves from the same platform, where the rider will watch it go past.
-            guard alightIndex != nil || usefulDirections.contains(pattern.direction) else { continue }
+            guard alightIndex != nil || sharesPlatform(pattern) else { continue }
 
             for trip in timetable.trips(of: pattern, departingFrom: origin, in: window) {
                 guard let departure = timetable.departure(of: trip, at: origin) else { continue }

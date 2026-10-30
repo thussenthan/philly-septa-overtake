@@ -131,9 +131,7 @@ struct PlanView: View {
             .accessibilityLabel("Starting from \(originDescription)")
             .accessibilityHint("Double tap to change where you start")
 
-            Image(systemName: "arrow.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.tertiary)
+            swapControl
 
             Button { activeSheet = .destination } label: {
                 // The one caption worth keeping: when the app guessed the
@@ -153,6 +151,32 @@ struct PlanView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// The arrow between the ends, which turns the trip round when it can be.
+    @ViewBuilder
+    private var swapControl: some View {
+        if model.canSwapEnds {
+            Button {
+                withAnimation(.snappy) { model.swapEnds() }
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.accent.opacity(0.12), in: Circle())
+                    .frame(width: 36, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Swap start and destination")
+            .accessibilityHint("Plans the trip the other way round")
+        } else {
+            Image(systemName: "arrow.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
     }
 
     private func endpoint(
@@ -235,9 +259,10 @@ struct PlanView: View {
             // The reason is already worked out — too far from a station, no step-free
             // route, a timetable that has run out — but it lived behind "1 note" on the
             // status row, while the card here said only to check septa.org.
+            let empty = emptyPlanCopy
             MessageCard(
-                symbol: "moon.zzz",
-                title: "Nothing running",
+                symbol: empty.symbol,
+                title: empty.title,
                 message: model.noteMessages.first
                     ?? "No trips found in the next hour and a half. Check septa.org for service alerts."
             )
@@ -245,6 +270,21 @@ struct PlanView: View {
             ProgressView("Working out your options…")
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
+        }
+    }
+
+    /// "Nothing running" under a moon was the heading whatever the reason — including
+    /// an address too far from any station, where service is running perfectly well.
+    private var emptyPlanCopy: (symbol: String, title: String) {
+        switch model.plan?.notes.first {
+        case .originTooFarFromLine?, .destinationTooFarFromLine?:
+            return ("figure.walk", "Too far from a station")
+        case .noStepFreeRouteFound?:
+            return ("figure.roll", "No step-free route")
+        case .scheduleOutOfDate?:
+            return ("calendar.badge.exclamationmark", "Timetable has run out")
+        default:
+            return ("moon.zzz", "Nothing running")
         }
     }
 

@@ -96,10 +96,12 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    Button("Edit") { places.remove(existing) }
+                    // "Change", not "Edit": it clears the address for a new one rather
+                    // than opening this one for editing, and the label should say so.
+                    Button("Change") { places.remove(existing) }
                         .font(.footnote)
                         .frame(minWidth: 44, minHeight: 44)
-                        .accessibilityHint("Removes this address so you can enter another")
+                        .accessibilityHint("Clears this address so you can enter another")
                 }
                 .padding(12)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
@@ -134,6 +136,11 @@ struct OnboardingView: View {
     private func nearestStationBlurb(for place: SavedPlace) -> String {
         guard let nearest = model.network.nearestStation(to: place.coordinate) else {
             return "No SEPTA Metro station nearby"
+        }
+        // Past a half-hour walk "about 94 min on foot" is a number nobody would act
+        // on; the distance says the same thing honestly.
+        guard nearest.meters <= 2_500 else {
+            return "Nearest Metro station is \(nearest.station.name), \(Format.distance(meters: nearest.meters)) away"
         }
         let walk = WalkingModel().egressSeconds(straightLineMeters: nearest.meters)
         return "Nearest station: \(nearest.station.name), about \(Format.minutes(walk)) on foot"

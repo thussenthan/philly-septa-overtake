@@ -45,9 +45,14 @@ public struct Network: Sendable {
         var index: [StationID: [ServicePattern]] = [:]
         var routes: [StationID: Set<RouteID>] = [:]
         for pattern in patterns {
+            // Once per station, not once per call: a loop (the G1 round Delaware Av)
+            // visits a station twice, and indexing both visits listed every one of its
+            // trains twice on the boards — two rows with one identity.
+            var indexed = Set<StationID>()
             for stop in pattern.stops {
-                index[stop.station, default: []].append(pattern)
                 routes[stop.station, default: []].insert(pattern.routeID)
+                guard indexed.insert(stop.station).inserted else { continue }
+                index[stop.station, default: []].append(pattern)
             }
         }
         self.patternsByStation = index

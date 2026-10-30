@@ -45,7 +45,8 @@ public enum Format {
     /// up says "5 min" with 4:31 left, and the one thing this number must never do is
     /// promise time the rider doesn't have.
     public static func countdown(_ seconds: TimeInterval) -> String {
-        if seconds <= 0 { return "now" }
+        // Under a second is "now", not "0:00".
+        if seconds < 1 { return "now" }
         let whole = Int(seconds.rounded(.down))
         if seconds > countdownSecondsThreshold {
             let total = whole / 60

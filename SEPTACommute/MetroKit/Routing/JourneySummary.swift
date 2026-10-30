@@ -273,9 +273,12 @@ public struct JourneyNarrator: Sendable {
     public func advisoryText(_ advisory: Advisory) -> String {
         switch advisory {
         case .run(let penalty, let secondsLeft):
-            let when = secondsLeft <= 30 ? "Go now" : "Leave in \(Format.compactMinutes(secondsLeft))"
+            // Floored like every other countdown: rounding said "2m" with 91 s left.
+            let when = secondsLeft <= 30 ? "Go now" : "Leave \(Format.relativeLeave(secondsLeft))"
             return "\(when) — miss this and you lose \(Format.minutes(penalty))"
         case .dontRush(let penalty):
+            // "only under a minute behind" is what `Format.minutes` makes of a tie.
+            guard penalty >= 60 else { return "No need to run — the next option gets you there just as soon" }
             return "No need to run — the next option is only \(Format.minutes(penalty)) behind"
         case .worthCatching(let penalty):
             return "Worth catching: the next option arrives \(Format.minutes(penalty)) later"
@@ -311,7 +314,8 @@ public struct JourneyNarrator: Sendable {
 
         // Cheap insurance: the second option costs almost nothing.
         if penalty <= 120, extraSlack >= 120 {
-            return "\(summary(for: runnerUp).title) is only \(Format.minutes(penalty)) slower and gives you "
+            let cost = penalty < 60 ? "gets you there just as soon" : "is only \(Format.minutes(penalty)) slower"
+            return "\(summary(for: runnerUp).title) \(cost) and gives you "
                 + "\(Format.minutes(extraSlack)) more to get there — no need to run."
         }
 
@@ -326,7 +330,9 @@ public struct JourneyNarrator: Sendable {
                 + "Leave \(Format.relativeLeave(bestLeave))."
         }
         if !best.usesExpress, runnerUp.usesExpress {
-            return "Don't wait for the express — \(bestSummary.title.lowercased()) gets you there "
+            // The title as written, not lowercased: that turned "the B1" into "the b1"
+            // and "Broad-Ridge Spur" into "broad-ridge spur".
+            return "Don't wait for the express: \(bestSummary.title) gets you there "
                 + "\(Format.minutes(penalty)) sooner."
         }
 

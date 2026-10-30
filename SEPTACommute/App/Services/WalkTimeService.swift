@@ -9,6 +9,10 @@ import MapKit
 /// does, so the app measures the handful of walks that matter and hands the
 /// numbers back to the planner.
 ///
+/// What is kept is the route's *length*, not MapKit's time for it: MapKit walks at
+/// its own pace, and a rider who has told the app they walk at 4 mph should get a
+/// countdown at 4 mph — the same pace the widget, which has no MapKit, plans with.
+///
 /// Results are cached and rounded to a 50 m grid, because a rider who has moved
 /// two metres does not need their walk re-measured.
 @MainActor
@@ -22,7 +26,8 @@ final class WalkTimeService: ObservableObject {
         var toCell: Int
     }
 
-    private var cache: [CacheKey: TimeInterval] = [:]
+    /// Metres along the street, per measured walk.
+    private var cache: [CacheKey: Double] = [:]
     private var inFlight: Set<CacheKey> = []
     /// When a failed measurement may be tried again. The plan is recomputed every
     /// thirty seconds and on every fix; without this, an offline or throttled phone
@@ -43,22 +48,24 @@ final class WalkTimeService: ObservableObject {
         from coordinate: Coordinate?,
         to destination: Coordinate?,
         accessStations: [Station],
-        egressStations: [Station]
+        egressStations: [Station],
+        metersPerSecond: Double
     ) -> WalkTimeOverrides {
         var overrides = WalkTimeOverrides()
+        guard metersPerSecond > 0 else { return overrides }
         if let coordinate {
             for station in accessStations {
                 let key = cacheKey(coordinate, station.coordinate)
-                if let cached = cache[key] {
-                    overrides[.access(station.id)] = cached
+                if let meters = cache[key] {
+                    overrides[.access(station.id)] = meters / metersPerSecond
                 }
             }
         }
         if let destination {
             for station in egressStations {
                 let key = cacheKey(station.coordinate, destination)
-                if let cached = cache[key] {
-                    overrides[.egress(station.id)] = cached
+                if let meters = cache[key] {
+                    overrides[.egress(station.id)] = meters / metersPerSecond
                 }
             }
         }
@@ -94,14 +101,14 @@ final class WalkTimeService: ObservableObject {
         for (key, from, to) in work.prefix(maxRequestsPerPlan) {
             inFlight.insert(key)
             Task { [weak self] in
-                let seconds = await Self.walkingSeconds(from: from, to: to)
+                let meters = await Self.walkingMeters(from: from, to: to)
                 guard let self else { return }
                 self.inFlight.remove(key)
-                guard let seconds else {
+                guard let meters else {
                     self.retryAfter[key] = Date().addingTimeInterval(Self.retryInterval)
                     return
                 }
-                self.cache[key] = seconds
+                self.cache[key] = meters
                 onUpdate()
             }
         }
@@ -120,7 +127,7 @@ final class WalkTimeService: ObservableObject {
         return lat &* 1_000_003 &+ lon
     }
 
-    private static func walkingSeconds(from: Coordinate, to: Coordinate) async -> TimeInterval? {
+    private static func walkingMeters(from: Coordinate, to: Coordinate) async -> Double? {
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(
             coordinate: CLLocationCoordinate2D(latitude: from.latitude, longitude: from.longitude)
@@ -133,8 +140,8 @@ final class WalkTimeService: ObservableObject {
 
         do {
             let response = try await MKDirections(request: request).calculate()
-            guard let route = response.routes.first else { return nil }
-            return route.expectedTravelTime
+            guard let route = response.routes.first, route.distance > 0 else { return nil }
+            return route.distance
         } catch {
             // Offline, throttled, or no walking route: the estimate stands.
             return nil

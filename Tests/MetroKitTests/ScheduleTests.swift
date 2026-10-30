@@ -188,6 +188,7 @@ final class FormatTests: XCTestCase {
 
     func testCountdown() {
         XCTAssertEqual(Format.countdown(-5), "now")
+        XCTAssertEqual(Format.countdown(0.4), "now", "not \"0:00\"")
         XCTAssertEqual(Format.countdown(12), "0:12")
         XCTAssertEqual(Format.countdown(247), "4 min")
         XCTAssertEqual(Format.countdown(3725), "1 hr 2 min")

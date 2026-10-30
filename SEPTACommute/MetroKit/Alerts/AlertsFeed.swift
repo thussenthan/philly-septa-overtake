@@ -294,8 +294,11 @@ enum HTMLText {
         return output
     }
 
-    private static let namedEntities: [String: String] = [
-        "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'",
+    /// In order, and without `&amp;`, which is decoded last: a dictionary's order
+    /// changes from launch to launch, and decoding `&amp;` first turned the literal
+    /// text `&amp;nbsp;` into a space on some launches and not others.
+    private static let namedEntities: KeyValuePairs<String, String> = [
+        "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'",
         "&nbsp;": " ", "&ndash;": "–", "&mdash;": "—", "&hellip;": "…",
         "&rsquo;": "’", "&lsquo;": "‘", "&rdquo;": "”", "&ldquo;": "“",
         "&bull;": "•", "&deg;": "°",
@@ -307,7 +310,8 @@ enum HTMLText {
         for (entity, replacement) in namedEntities {
             output = output.replacingOccurrences(of: entity, with: replacement, options: .caseInsensitive)
         }
-        return decodeNumericEntities(in: output)
+        output = decodeNumericEntities(in: output)
+        return output.replacingOccurrences(of: "&amp;", with: "&", options: .caseInsensitive)
     }
 
     /// `&#39;` and `&#x27;` — SEPTA's CMS emits both.
