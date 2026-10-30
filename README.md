@@ -167,6 +167,16 @@ the app stops working and has to be reinstalled, weekly, forever. Nothing is bro
 when that happens. Membership of the Apple Developer Program raises it to a year and
 makes the script unnecessary.
 
+### Without a Mac: SideStore / AltStore
+
+The **Build IPA** workflow (Actions tab → Run workflow) builds an unsigned
+`Overtake.ipa` on GitHub's macOS runners. Download the artifact on the phone and
+open it in [SideStore](https://sidestore.io) or [AltStore](https://altstore.io),
+which re-sign it with your free Apple ID and keep refreshing it in the background,
+so the seven days stop mattering. The widget survives; the free-account limits
+(three sideloaded apps, ten App IDs a week) still apply, and the app and widget
+count as two App IDs.
+
 To run the engine's tests without a simulator:
 
 ```sh

@@ -1,0 +1,45 @@
+# Builds an unsigned Overtake.ipa for sideloading with SideStore or AltStore,
+# which re-sign it with your free Apple ID — so no Mac, and no Xcode, is needed
+# to produce a build. Run it from the Actions tab ("Run workflow"), then download
+# the artifact on the phone and open the .ipa in SideStore / AltStore.
+name: Build IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build without signing
+        run: |
+          xcodebuild \
+            -project SEPTACommute.xcodeproj \
+            -scheme SEPTACommute \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      # An unsigned build carries no entitlements, and the App Group is how the
+      # widget reads the app's data. Stamp them in so the re-signer sees them.
+      - name: Embed entitlements
+        run: |
+          brew install ldid
+          APP=build/Build/Products/Release-iphoneos/SEPTACommute.app
+          ldid -SSEPTACommuteWidget.entitlements "$APP"/PlugIns/*.appex
+          ldid -SSEPTACommute.entitlements "$APP"
+
+      - name: Package
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/SEPTACommute.app Payload/
+          zip -qr Overtake.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Overtake-ipa
+          path: Overtake.ipa
