@@ -12,6 +12,7 @@ import SwiftUI
 /// of them stops where you're going, so a card that says "B" leaves the rider doing
 /// the last and most error-prone step themselves.
 struct HeroCard: View {
+    @ScaledMetric(relativeTo: .largeTitle) private var walkSize: CGFloat = 30
     var journey: Journey
     var summary: JourneySummary
     var narrator: JourneyNarrator
@@ -54,7 +55,7 @@ struct HeroCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             if journey.isWalkOnly {
                 Text("Walk \(Format.minutes(journey.totalDuration))")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: walkSize, weight: .bold, design: .rounded))
             } else {
                 LeaveCountdown(urgency: journey.urgency)
             }
@@ -367,6 +368,12 @@ struct HeroCard: View {
             parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
             for ride in journey.rides {
                 parts.append("\(ride.routeBadge) \(ride.platformDescription) from \(stationName(ride.boardStation)) to \(stationName(ride.alightStation))")
+                if ride.kind == .nightBus { parts.append("boards at the curb, not in the station") }
+            }
+            // The most urgent thing on the card — whether to run — is otherwise only
+            // visible, and the combined label replaces every child's own text.
+            if let advisory = narrator.advisory(for: journey, asOf: Date()) {
+                parts.append(narrator.advisoryText(advisory))
             }
         }
         parts.append("arrive \(Format.clock(journey.arrivalTime))")
@@ -381,6 +388,10 @@ struct HeroCard: View {
 /// thirty seconds stale is a train missed.
 struct LeaveCountdown: View {
     var urgency: Urgency
+    @EnvironmentObject private var model: CommuteModel
+    /// Scales with Dynamic Type; a fixed 32 pt number stayed small beside everything
+    /// else at the larger accessibility sizes.
+    @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 32
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -393,23 +404,35 @@ struct LeaveCountdown: View {
             let tint = Theme.color(for: level)
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                if remaining <= 30 {
+                if remaining < -5 {
+                    // "Go now" past the moment the train left sent a rider running for
+                    // one that had gone. Say so, and find the next one straight away.
+                    Text("Just missed it")
+                        .font(.system(size: numberSize * 0.75, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                } else if remaining <= 30 {
                     Text("Go now")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: numberSize, weight: .bold, design: .rounded))
                         .foregroundStyle(tint)
                 } else {
                     Text("Leave in")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                     Text(Format.countdown(remaining))
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: numberSize, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(tint)
                         .contentTransition(.numericText(countsDown: true))
                 }
             }
+            .onChange(of: remaining < -2) { _, missed in
+                if missed { model.replan() }
+            }
             .accessibilityLabel(
-                remaining <= 30 ? "leave now" : "leave in \(Format.minutes(remaining))"
+                remaining < -5 ? "missed, finding the next train"
+                    : remaining <= 30 ? "leave now" : "leave in \(Format.minutes(remaining))"
             )
         }
     }

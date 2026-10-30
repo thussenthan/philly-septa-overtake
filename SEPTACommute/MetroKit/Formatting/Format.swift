@@ -68,12 +68,10 @@ public enum Format {
 
     /// "8:14 PM", in the agency's time zone.
     public static func clock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("j:mm")
-        return formatter.string(from: date)
+        clockFormatter.string(for: date, timeZone: timeZone)
     }
+
+    private static let clockFormatter = ClockFormatterCache()
 
     /// "now", "in 4 min", "6 min ago" — the phrasing that follows "Leave …".
     public static func relativeLeave(_ seconds: TimeInterval) -> String {
@@ -123,5 +121,48 @@ public enum Format {
     /// "3 stops" / "1 stop".
     public static func stops(_ count: Int) -> String {
         count == 1 ? "1 stop" : "\(count) stops"
+    }
+}
+
+
+/// One `DateFormatter` for `Format.clock`, rebuilt when the phone's locale or its
+/// 12/24-hour setting changes.
+///
+/// Building a `DateFormatter` costs far more than formatting with one, and the clock is
+/// drawn dozens of times per screen — every departure row, every stop on the strip.
+final class ClockFormatterCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var formatter: DateFormatter?
+    private var observer: NSObjectProtocol?
+
+    init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in self?.invalidate() }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    func string(for date: Date, timeZone: TimeZone) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        if formatter == nil || formatter?.timeZone != timeZone {
+            let built = DateFormatter()
+            built.timeZone = timeZone
+            built.locale = .autoupdatingCurrent
+            built.setLocalizedDateFormatFromTemplate("j:mm")
+            formatter = built
+        }
+        return formatter!.string(from: date)
+    }
+
+    private func invalidate() {
+        lock.lock()
+        formatter = nil
+        lock.unlock()
     }
 }

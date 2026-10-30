@@ -26,12 +26,7 @@ struct SEPTACommuteWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: CommuteTimelineProvider()) { entry in
-            let palette = WidgetPalette.current
-            CommuteWidgetView(entry: entry, palette: palette)
-                .containerBackground(palette.background, for: .widget)
-                // Forced rather than inherited: WidgetKit renders against the system
-                // appearance, so without this a dark app sits next to a light widget.
-                .environment(\.colorScheme, palette.colorScheme)
+            CommuteWidgetRoot(entry: entry)
         }
         .configurationDisplayName("Next train")
         .description("When to leave for your commute — out in the morning, back in the afternoon.")
@@ -41,12 +36,29 @@ struct SEPTACommuteWidget: Widget {
 
 // MARK: - Timeline
 
+/// Picks the palette, because only a view can ask what the phone's appearance is.
+struct CommuteWidgetRoot: View {
+    @Environment(\.colorScheme) private var systemScheme
+    var entry: CommuteEntry
+
+    var body: some View {
+        let palette = WidgetPalette.resolve(setting: SharedStore.appearance(), system: systemScheme)
+        CommuteWidgetView(entry: entry, palette: palette)
+            .containerBackground(palette.background, for: .widget)
+            // Forced rather than inherited: WidgetKit renders against the system
+            // appearance, so without this a dark app sits next to a light widget.
+            .environment(\.colorScheme, palette.colorScheme)
+    }
+}
+
 struct CommuteEntry: TimelineEntry {
     var date: Date
     var step: WidgetPlanStep?
     var destinationName: String?
     /// Set when there is nothing to show, and why.
     var placeholder: String?
+    /// What the rider can do about it, when there is something they can.
+    var detail: String? = nil
     /// The countdown to draw, or nil once WidgetKit's live timer takes over. Decided
     /// when the timeline is built, because a widget cannot redraw itself: every value
     /// the number ever shows is an entry, and the switch to seconds is one of them.
@@ -55,12 +67,35 @@ struct CommuteEntry: TimelineEntry {
 
 struct CommuteTimelineProvider: TimelineProvider {
 
+    /// What the widget gallery shows. A real-looking answer sells the widget; the
+    /// "add your addresses" message is for a widget that is actually on a home screen.
     func placeholder(in context: Context) -> CommuteEntry {
-        CommuteEntry(date: Date(), step: nil, destinationName: nil, placeholder: "—")
+        Self.sample(at: Date())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CommuteEntry) -> Void) {
-        completion(entries(from: Date()).first ?? empty(at: Date()))
+        let now = Date()
+        if context.isPreview {
+            completion(Self.sample(at: now))
+        } else {
+            completion(entries(from: now).first ?? empty(at: now))
+        }
+    }
+
+    static func sample(at now: Date) -> CommuteEntry {
+        let step = WidgetPlanStep(
+            validFrom: now,
+            lines: [WidgetLineStyle(badge: "B2", colorHex: "F26100")],
+            title: "Express toward NRG",
+            platformDescription: "Southbound from Erie",
+            boardName: "Erie",
+            leaveBy: now.addingTimeInterval(7 * 60),
+            arrival: now.addingTimeInterval(27 * 60),
+            isWalkOnly: false,
+            penaltyText: "Miss it: +6 min",
+            nextArrival: now.addingTimeInterval(33 * 60)
+        )
+        return CommuteEntry(date: now, step: step, destinationName: "Home", placeholder: nil, countdown: "7 min")
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CommuteEntry>) -> Void) {
@@ -75,13 +110,34 @@ struct CommuteTimelineProvider: TimelineProvider {
             ))
             return
         }
-        // Reload when the last option stops being catchable — exactly when a fresh plan
-        // is needed, and not one entry earlier: the final entry stays on screen through
-        // its own countdown. Unless the rider could have turned around first, in which
-        // case the answer is stale before it is uncatchable.
-        let lastCatchable = (last.step?.leaveBy ?? last.date).addingTimeInterval(60)
-        let deadline = SharedStore.snapshot().map { expiry(for: $0, from: now) } ?? lastCatchable
-        completion(Timeline(entries: entries, policy: .after(min(lastCatchable, deadline))))
+        let deadline = SharedStore.snapshot().map { expiry(for: $0, from: now) } ?? .distantFuture
+
+        // The frame cap cut a long wait short, and the last frame is a held "N min"
+        // that is only true for its own minute. Left alone it would sit there, going
+        // stale, until the deadline — so reload when that minute is up.
+        if last.countdown != nil {
+            completion(Timeline(
+                entries: entries,
+                policy: .after(min(last.date.addingTimeInterval(60), deadline))
+            ))
+            return
+        }
+
+        // Otherwise the last frame runs a live timer to the deadline, and a live timer
+        // *counts up* once it passes — a train that has gone would show "0:47" and
+        // climbing until WidgetKit got round to reloading, which it does late. So the
+        // timeline ends with an entry for the instant after, saying so, and the reload
+        // is requested for when that entry arrives. The same applies where the rider
+        // could have turned around first and the answer is stale before it is missed.
+        let leaves = (last.step?.leaveBy ?? last.date).addingTimeInterval(1)
+        let endsAt = max(min(leaves, deadline), last.date.addingTimeInterval(1))
+        let closing = CommuteEntry(
+            date: endsAt,
+            step: nil,
+            destinationName: last.destinationName,
+            placeholder: "Updating…"
+        )
+        completion(Timeline(entries: entries + [closing], policy: .atEnd))
     }
 
     private func entries(from now: Date) -> [CommuteEntry] {
@@ -130,7 +186,8 @@ struct CommuteTimelineProvider: TimelineProvider {
             // Two different problems, and a rider can act on one of them: "set your
             // addresses" is a thing to go and do, whereas nothing running at 3am is
             // simply the answer.
-            placeholder: snapshot == nil ? "Set your addresses" : "Nothing running"
+            placeholder: snapshot == nil ? "Set your addresses" : "Nothing running",
+            detail: snapshot == nil ? "Add home and work in the app and this fills itself in." : nil
         )
     }
 }
@@ -152,13 +209,15 @@ struct WidgetPalette {
     /// For the "miss it" cost, which has to stand out in either mode.
     var warning: Color
 
-    static var current: WidgetPalette {
-        // Absent (or "system") means follow the phone, which is the platform default
-        // and what the container-unavailable case should fall back to as well.
-        switch SharedStore.appearance() {
+    /// Absent (or "system") means follow the phone, which is the platform default and
+    /// what the container-unavailable case should fall back to as well. The phone's
+    /// appearance comes from the view's environment: `UITraitCollection.current` is
+    /// only meaningful inside UIKit's own drawing and answers "light" here.
+    static func resolve(setting: String?, system: ColorScheme) -> WidgetPalette {
+        switch setting {
         case "light": return .light
         case "dark": return .dark
-        default: return UITraitCollection.current.userInterfaceStyle == .dark ? .dark : .light
+        default: return system == .dark ? .dark : .light
         }
     }
 
@@ -187,11 +246,30 @@ struct CommuteWidgetView: View {
     var palette: WidgetPalette = .dark
 
     var body: some View {
-        switch family {
-        case .accessoryRectangular: accessory
-        case .systemMedium: medium
-        default: small
+        Group {
+            switch family {
+            case .accessoryRectangular: accessory
+            case .systemMedium: medium
+            default: small
+            }
         }
+        // One sentence rather than a badge, a ticking timer and some fragments.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenSummary)
+    }
+
+    private var spokenSummary: String {
+        guard let step = entry.step else {
+            return [entry.placeholder, entry.detail].compactMap { $0 }.joined(separator: ". ")
+        }
+        var parts = [step.lines.map(\.badge).joined(separator: ", then ")]
+        parts.append(step.isWalkOnly ? "walk now" : "leave by \(Format.clock(step.leaveBy))")
+        if let board = step.boardName { parts.append("from \(board)") }
+        var arrival = "arrive \(Format.clock(step.arrival))"
+        if let destination = entry.destinationName { arrival += " at \(destination)" }
+        parts.append(arrival)
+        if let penalty = step.penaltyText { parts.append(penalty) }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: Small
@@ -360,10 +438,12 @@ struct CommuteWidgetView: View {
                 .foregroundStyle(palette.secondary)
             Text(entry.placeholder ?? "—")
                 .font(.caption.weight(.medium))
-            Text("Add home and work in the app and this fills itself in.")
-                .font(.caption2)
-                .foregroundStyle(palette.secondary)
-                .lineLimit(3)
+            if let detail = entry.detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(palette.secondary)
+                    .lineLimit(3)
+            }
         }
     }
 }

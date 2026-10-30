@@ -216,10 +216,14 @@ struct PlanView: View {
                 DepartureBoardView()
             }
         } else if model.plan != nil {
+            // The reason is already worked out — too far from a station, no step-free
+            // route, a timetable that has run out — but it lived behind "1 note" on the
+            // status row, while the card here said only to check septa.org.
             MessageCard(
                 symbol: "moon.zzz",
                 title: "Nothing running",
-                message: "No trips found in the next hour and a half. Check septa.org for service alerts."
+                message: model.noteMessages.first
+                    ?? "No trips found in the next hour and a half. Check septa.org for service alerts."
             )
         } else {
             ProgressView("Working out your options…")
@@ -296,17 +300,28 @@ struct PlanView: View {
                     message: "Turn on location access to plan from where you are — or pick a starting station instead.",
                     tint: Theme.color(for: .leaveSoon)
                 )
-                Button("Choose a starting station") { activeSheet = .origin }
+                Button("Open Settings") { Self.openSystemSettings() }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent)
+                Button("Choose a starting station") { activeSheet = .origin }
+                    .font(.subheadline)
             }
         case .failed(let message):
-            MessageCard(
-                symbol: "exclamationmark.triangle",
-                title: "Couldn't get your location",
-                message: message,
-                tint: Theme.color(for: .leaveSoon)
-            )
+            VStack(spacing: 12) {
+                MessageCard(
+                    symbol: "exclamationmark.triangle",
+                    title: "Couldn't get your location",
+                    message: message,
+                    tint: Theme.color(for: .leaveSoon)
+                )
+                Button("Try again") { model.locationService.start() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accent)
+                Button("Choose a starting station") { activeSheet = .origin }
+                    .font(.subheadline)
+                Button("Open Settings") { Self.openSystemSettings() }
+                    .font(.footnote)
+            }
         default:
             VStack(spacing: 12) {
                 ProgressView("Finding you…")
@@ -316,6 +331,11 @@ struct PlanView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 30)
         }
+    }
+
+    private static func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     // MARK: - Status
@@ -333,7 +353,7 @@ struct PlanView: View {
                 Text(statusSummary)
                     .font(.footnote)
                     .foregroundStyle(statusTint)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
@@ -370,7 +390,7 @@ struct PlanView: View {
         let notes = model.noteMessages.count
         if notes > 0 { parts.append("\(notes) note\(notes == 1 ? "" : "s")") }
         guard parts.isEmpty else { return parts.joined(separator: " · ") }
-        return "Scheduled times · service & data"
+        return "Scheduled times, not live · service & data"
     }
 }
 
