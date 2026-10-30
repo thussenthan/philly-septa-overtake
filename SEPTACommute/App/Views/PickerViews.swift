@@ -216,8 +216,8 @@ enum StationSearch {
         let query = search.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return sections }
         return sections.compactMap { section in
-            let matches = section.stations.filter { matches($0, query) }
-            return matches.isEmpty ? nil : (line: section.line, stations: matches)
+            let found = section.stations.filter { Self.matches($0, query) }
+            return found.isEmpty ? nil : (line: section.line, stations: found)
         }
     }
 
