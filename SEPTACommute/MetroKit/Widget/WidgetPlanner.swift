@@ -144,7 +144,11 @@ public enum WidgetPlanner {
 
         while steps.count < limit {
             let plan = planner.plan(PlanRequest(origin: origin, destination: destination, departAt: instant))
-            guard let best = plan.best else { break }
+            // Not `plan.best`: the planner keeps a train for thirty seconds past its
+            // leave-by, which suits a screen that can say "just missed it", but a
+            // widget entry starting after its own deadline is a timer counting up.
+            guard let best = plan.journeys.first(where: { $0.isWalkOnly || $0.urgency.leaveBy >= instant })
+            else { break }
 
             steps.append(
                 step(for: best, plan: plan, at: instant, narrator: narrator, network: network)
@@ -153,8 +157,11 @@ public enum WidgetPlanner {
             // The next entry begins the moment this one stops being catchable. A
             // walk has no train to miss, so there is nothing after it.
             guard !best.isWalkOnly else { break }
-            let next = best.urgency.leaveBy.addingTimeInterval(1)
-            instant = max(next, instant.addingTimeInterval(60))
+            // Exactly the deadline, not "at least a minute on": that held a step whose
+            // train left forty seconds in for the rest of the minute, its live timer
+            // counting up from zero. Progress is still guaranteed — the next plan
+            // can't offer this train again, because its leave-by is now behind us.
+            instant = best.urgency.leaveBy.addingTimeInterval(1)
         }
         return steps
     }

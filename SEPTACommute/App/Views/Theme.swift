@@ -154,6 +154,7 @@ struct CountdownText: View {
     var target: Date
     var style: Font
     var color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -162,7 +163,7 @@ struct CountdownText: View {
                 .font(style)
                 .monospacedDigit()
                 .foregroundStyle(remaining <= 0 ? Theme.color(for: .missed) : color)
-                .contentTransition(.numericText(countsDown: true))
+                .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
                 .accessibilityLabel(
                     remaining <= 0
                         ? "departed"

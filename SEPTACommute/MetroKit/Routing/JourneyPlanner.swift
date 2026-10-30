@@ -587,7 +587,12 @@ public struct JourneyPlanner: Sendable {
                 // late at night.
                 return !other.isWalkOnly ? false : true
             }
+            // A later train is only a fallback if the rider can still set off for it
+            // having missed this one. A later express from a station further away
+            // can need leaving *earlier*, and pricing against it said "no need to
+            // run" about a miss that really cost the next train after that.
             return otherFirst.departure > firstRide.departure
+                && other.urgency.leaveBy > journey.urgency.leaveBy
         }
 
         var priced: [MissedTrainCost] = []

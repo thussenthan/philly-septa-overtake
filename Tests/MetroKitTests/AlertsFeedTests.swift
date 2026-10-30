@@ -121,6 +121,10 @@ final class AlertsFeedTests: XCTestCase {
         XCTAssertEqual(HTMLText.plain("<b>Bold</b> and <i>italic</i>"), "Bold and italic")
         XCTAssertEqual(HTMLText.plain(""), "")
         XCTAssertEqual(HTMLText.plain("&#notanentity; stays"), "&#notanentity; stays")
+        // An escaped entity is text, decoded exactly once — and the same way on every
+        // launch, which a dictionary's shifting order didn't guarantee.
+        XCTAssertEqual(HTMLText.plain("Write &amp;nbsp; for a space"), "Write &nbsp; for a space")
+        XCTAssertEqual(HTMLText.plain("&amp;#39;"), "&#39;")
     }
 
     /// SEPTA occasionally pastes a whole shuttle timetable into one field. A card

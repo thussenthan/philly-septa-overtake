@@ -473,6 +473,15 @@ public enum SharedStore {
         return true
     }
 
+    /// Forgets the trip on file, for when the rider has no places left to plan between.
+    /// Returns true when there was one, so the caller knows to reload the widget.
+    @discardableResult
+    public static func clearSnapshot(from defaults: UserDefaults = SharedStore.defaults) -> Bool {
+        guard defaults.data(forKey: snapshotKey) != nil else { return false }
+        defaults.removeObject(forKey: snapshotKey)
+        return true
+    }
+
     /// Writes the snapshot, and reports whether it changed the trip on file.
     ///
     /// The return value is what the caller uses to decide whether to reload the

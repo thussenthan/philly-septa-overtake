@@ -7,6 +7,7 @@ struct SettingsView: View {
     // to redraw these rows, and CommuteModel does not republish it.
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmingReset = false
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,7 @@ struct SettingsView: View {
                 appearanceSection
                 dataSection
                 aboutSection
+                resetSection
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -40,13 +42,17 @@ struct SettingsView: View {
                 }
             }
             ForEach(places.custom) { place in
-                HStack {
-                    Image(systemName: place.role.symbol).foregroundStyle(Theme.accent)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(place.name)
-                        Text(place.address).font(.caption).foregroundStyle(.secondary)
+                NavigationLink {
+                    PlaceEditor(role: .custom, editing: place)
+                } label: {
+                    HStack {
+                        Image(systemName: place.role.symbol).foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(place.name)
+                            Text(place.address).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
                     }
-                    Spacer()
                 }
                 // A swipe, with the confirmation that gives: a small red icon beside
                 // the text deleted a saved place on a slightly-off tap, and VoiceOver
@@ -148,7 +154,7 @@ struct SettingsView: View {
             LabeledContent("Source", value: model.network.provenance.source)
             LabeledContent("Generated", value: model.network.provenance.generated)
             if let until = model.network.provenance.validUntil {
-                LabeledContent("Valid through", value: until)
+                LabeledContent("Valid through", value: CommuteModel.humanDate(until))
             }
             LabeledContent("Stations", value: "\(model.network.stations.count)")
             LabeledContent("Stopping patterns", value: "\(model.network.patterns.count)")
@@ -170,6 +176,33 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
         } header: {
             Text("Appearance")
+        }
+    }
+
+    /// Back to the first-launch screen, for a phone changing hands or a move.
+    private var resetSection: some View {
+        Section {
+            Button("Forget my places and start over", role: .destructive) {
+                confirmingReset = true
+            }
+            .confirmationDialog(
+                "Forget every saved place?",
+                isPresented: $confirmingReset,
+                titleVisibility: .visible
+            ) {
+                Button("Forget and start over", role: .destructive) {
+                    // Closed first: wiping the store swaps the screen underneath this
+                    // sheet for onboarding.
+                    dismiss()
+                    let store = places
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        store.removeAll()
+                    }
+                }
+            } message: {
+                Text("Home, \(places.school?.name ?? "work") and any other places are removed from this phone. Your settings are kept.")
+            }
         }
     }
 
@@ -217,7 +250,7 @@ struct RankingExplainerView: View {
     }
 }
 
-/// Sets or replaces one saved place.
+/// Sets, renames or replaces one saved place.
 ///
 /// Pushed onto the Settings stack rather than presented as a sheet. Settings is
 /// itself a sheet, and a sheet presenting a sheet is the arrangement that was
@@ -225,10 +258,37 @@ struct RankingExplainerView: View {
 /// this is a detail of the row you tapped, not a separate errand.
 struct PlaceEditor: View {
     var role: SavedPlace.Role
+    /// The place being changed. Home and Work are found by role; an extra place has
+    /// to be named, because there can be any number of them — looking one up by role
+    /// opened "add another place" pre-filled with the first one.
+    var editing: SavedPlace?
 
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var chosenName = ""
+    @State private var confirmingRemoval = false
+
+    init(role: SavedPlace.Role, editing: SavedPlace? = nil) {
+        self.role = role
+        self.editing = editing
+    }
+
+    /// What is on file now, if anything.
+    private var existing: SavedPlace? {
+        if let editing { return places.places.first { $0.id == editing.id } ?? editing }
+        return role == .custom ? nil : places.place(for: role)
+    }
+
+    private var typedName: String {
+        chosenName.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// A new name for a place that already has an address doesn't need the address
+    /// typed again.
+    private var canRename: Bool {
+        guard role.isRenameable, let existing else { return false }
+        return !typedName.isEmpty && typedName != existing.name
+    }
 
     var body: some View {
         ScrollView {
@@ -238,12 +298,13 @@ struct PlaceEditor: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    SectionLabel(text: "Address")
+                    SectionLabel(text: existing == nil ? "Address" : "New address")
                     AddressField(role: role, prompt: promptText) { address, coordinate in
-                        let typed = chosenName.trimmingCharacters(in: .whitespaces)
                         places.save(SavedPlace(
+                            // Kept, so anything pointing at this place follows the edit.
+                            id: existing?.id ?? UUID(),
                             role: role,
-                            name: resolvedName(typed: typed, address: address),
+                            name: resolvedName(typed: typedName, address: address),
                             address: address,
                             latitude: coordinate.latitude,
                             longitude: coordinate.longitude
@@ -252,7 +313,7 @@ struct PlaceEditor: View {
                     }
                 }
 
-                if let existing = places.place(for: role) {
+                if let existing {
                     VStack(alignment: .leading, spacing: 6) {
                         SectionLabel(text: "Currently")
                         Text(existing.address)
@@ -264,17 +325,50 @@ struct PlaceEditor: View {
                 Text("Start typing and pick a match. Results are biased to the Philadelphia area.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                // Home stays: it is what the whole guess about direction hangs on.
+                if let existing, role != .home {
+                    Button(role: .destructive) {
+                        confirmingRemoval = true
+                    } label: {
+                        Label("Remove \(existing.name)", systemImage: "trash")
+                            .font(.subheadline)
+                    }
+                    .padding(.top, 6)
+                    .confirmationDialog(
+                        "Remove \(existing.name)?",
+                        isPresented: $confirmingRemoval,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Remove", role: .destructive) {
+                            places.remove(existing)
+                            dismiss()
+                        }
+                    }
+                }
             }
             .padding(20)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canRename, let existing {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        var renamed = existing
+                        renamed.name = typedName
+                        places.save(renamed)
+                        dismiss()
+                    }
+                }
+            }
+        }
         // Pre-filled with whatever it is called now, so reopening the row to correct
         // an address doesn't silently rename the place.
         .onAppear {
             if chosenName.isEmpty {
-                chosenName = places.place(for: role)?.name ?? (role == .custom ? "" : role.title)
+                chosenName = existing?.name ?? (role == .custom ? "" : role.title)
             }
         }
     }
@@ -290,8 +384,8 @@ struct PlaceEditor: View {
     private var navigationTitle: String {
         switch role {
         case .home: return role.title
-        case .school: return places.place(for: role)?.name ?? role.unsetTitle
-        case .custom: return "New place"
+        case .school: return existing?.name ?? role.unsetTitle
+        case .custom: return existing?.name ?? "New place"
         }
     }
 

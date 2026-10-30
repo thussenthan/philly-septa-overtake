@@ -28,10 +28,14 @@ struct OptionRow: View {
                             .foregroundStyle(Theme.color(for: .leaveSoon))
                     }
                 }
-                Text(tradeoff)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                // "leave in 8 min" is relative to now, so it has to move with now —
+                // a replan only comes round every thirty seconds.
+                TimelineView(.periodic(from: .now, by: 10)) { context in
+                    Text(tradeoff(asOf: context.date))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
             Image(systemName: "chevron.right")
@@ -42,7 +46,7 @@ struct OptionRow: View {
         .padding(.vertical, 11)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(summary.title), \(tradeoff)")
+        .accessibilityLabel("\(summary.title), \(tradeoff(asOf: Date()))")
     }
 
     private var badges: some View {
@@ -67,7 +71,7 @@ struct OptionRow: View {
     }
 
     /// "+3 min later · leave in 8 min" — cost on the left, slack on the right.
-    private var tradeoff: String {
+    private func tradeoff(asOf now: Date) -> String {
         var parts: [String] = []
         if abs(comparison.arrivalDelta) >= 30 {
             parts.append("\(Format.signedMinutes(comparison.arrivalDelta)) arrival")
@@ -77,7 +81,7 @@ struct OptionRow: View {
         if journey.isWalkOnly {
             parts.append("no train to catch")
         } else {
-            let slack = journey.urgency.secondsUntilLeaveBy(asOf: Date())
+            let slack = journey.urgency.secondsUntilLeaveBy(asOf: now)
             parts.append("leave \(Format.relativeLeave(slack))")
         }
         return parts.joined(separator: " · ")

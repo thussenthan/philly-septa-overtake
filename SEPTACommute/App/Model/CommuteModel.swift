@@ -338,6 +338,45 @@ final class CommuteModel: ObservableObject {
         replan()
     }
 
+    /// Whether the two ends can trade places: both have to be somewhere a trip can
+    /// start and end. "Where I am" only can when that resolves to a station or a
+    /// saved place the rider is standing at.
+    var canSwapEnds: Bool { swappedEnds != nil }
+
+    /// Turn the trip round — the way back, in one tap rather than two pickers.
+    func swapEnds() {
+        guard let swapped = swappedEnds else { return }
+        source = swapped.source
+        chooseTarget(swapped.target)
+    }
+
+    private var swappedEnds: (source: Source, target: Target)? {
+        guard let target else { return nil }
+        let newSource: Source
+        switch target {
+        case .saved(let place): newSource = .saved(place)
+        case .station(let id): newSource = .station(id)
+        }
+        let newTarget: Target
+        switch source {
+        case .saved(let place): newTarget = .saved(place)
+        case .station(let id): newTarget = .station(id)
+        case .currentLocation:
+            if let currentStation {
+                newTarget = .station(currentStation.id)
+            } else if let coordinate = locationService.coordinate,
+                      let here = places.places
+                          .map({ (place: $0, meters: $0.coordinate.distance(to: coordinate)) })
+                          .filter({ $0.meters <= Self.alreadyThereMeters })
+                          .min(by: { $0.meters < $1.meters }) {
+                newTarget = .saved(here.place)
+            } else {
+                return nil
+            }
+        }
+        return (newSource, newTarget)
+    }
+
     /// Hand the choice back to the app.
     func resumeAutomaticTarget() {
         hasManualTarget = false
@@ -356,6 +395,21 @@ final class CommuteModel: ObservableObject {
 
     private func placesChanged(_ updated: [SavedPlace]) {
         publishCommuteOnly()
+        if updated.isEmpty, SharedStore.clearSnapshot() {
+            // Nothing left to plan between; a widget still counting down to the old
+            // trip would be answering for addresses the rider just deleted.
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        // A saved place chosen as the start follows its edits, and a deleted one
+        // hands back to the rider's location rather than planning from an address
+        // that no longer exists.
+        if case .saved(let place) = source {
+            if let refreshed = updated.first(where: { $0.id == place.id }) {
+                if refreshed != place { source = .saved(refreshed) }
+            } else {
+                source = .currentLocation
+            }
+        }
         guard hasManualTarget else {
             updateAutomaticTarget()
             replan()
@@ -391,8 +445,13 @@ final class CommuteModel: ObservableObject {
     // MARK: - Station boards
 
     /// Everything leaving a station, for the full board.
+    ///
+    /// Uncapped in practice: the view keeps a few per platform, and the engine's own
+    /// default of sixty across the whole station let a busy platform fill the list
+    /// before a quieter one got a row — at a station like 15th St a platform could
+    /// vanish from the board altogether.
     func stationBoard(at station: StationID, asOf now: Date) -> [StationDeparture] {
-        boardPlanner.stationBoard(at: station, after: now)
+        boardPlanner.stationBoard(at: station, after: now, limit: 1_000)
     }
 
     /// Where a station board should open: the station the rider is standing in, else
@@ -404,6 +463,14 @@ final class CommuteModel: ObservableObject {
             return nearest.station.id
         }
         return plan?.best?.boardStation
+    }
+
+    /// The few stations closest to the rider, for the top of every station picker —
+    /// the list is otherwise 587 stations long, and the one they want is usually the
+    /// one they are standing near.
+    func nearbyStations(limit: Int = 4) -> [(station: Station, meters: Double)] {
+        guard let coordinate = locationService.coordinate else { return [] }
+        return Array(network.stations(near: coordinate, within: 1_600).prefix(limit))
     }
 
     // MARK: - Endpoints
@@ -469,7 +536,8 @@ final class CommuteModel: ObservableObject {
                 from: origin.coordinate,
                 to: destination.coordinate,
                 accessStations: accessCandidates,
-                egressStations: egressCandidates
+                egressStations: egressCandidates,
+                metersPerSecond: options.walking.metersPerSecond
             )
             : .none
 
@@ -508,13 +576,17 @@ final class CommuteModel: ObservableObject {
         let narrator = self.narrator
 
         planTask = Task { [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
-                JourneyPlanner(network: network, options: options).plan(request)
+            // The board is a second search over the same timetable, so it runs out
+            // here with the plan instead of on the main actor afterwards.
+            let (result, departures) = await Task.detached(priority: .userInitiated) {
+                let planner = JourneyPlanner(network: network, options: options)
+                let result = planner.plan(request)
+                return (result, Self.board(for: result, asOf: request.departAt, planner: planner))
             }.value
 
             guard !Task.isCancelled, let self else { return }
             self.plan = result
-            self.departures = board(for: result, asOf: request.departAt, options: options)
+            self.departures = departures
             self.advice = narrator.advice(for: result, asOf: request.departAt)
             self.lastPlannedAt = request.departAt
             self.publishSnapshot(for: request)
@@ -527,14 +599,14 @@ final class CommuteModel: ObservableObject {
     /// station the app is actually sending the rider to, towards the stations the
     /// plan found usable at the far end. Anything else would be a board for a
     /// different trip.
-    private func board(for plan: Plan, asOf now: Date, options: PlannerOptions) -> [BoardDeparture] {
+    private nonisolated static func board(for plan: Plan, asOf now: Date, planner: JourneyPlanner) -> [BoardDeparture] {
         guard let origin = plan.best?.boardStation else { return [] }
         // Where the *first* train ends, not where the trip does: on an itinerary with
         // a change, the useful board is trains towards the interchange. Each row names
         // the station it arrives at, so there is nothing to misread.
         let destinations = Set(plan.journeys.compactMap { $0.rides.first?.alightStation })
         guard !destinations.isEmpty else { return [] }
-        return JourneyPlanner(network: network, options: options)
+        return planner
             .departureBoard(
                 from: origin,
                 to: destinations,
@@ -917,15 +989,26 @@ final class CommuteModel: ObservableObject {
         return "SEPTA also publishes advisory times through \(Self.humanDate(services)), used once the confirmed window above ends."
     }
 
-    private static func humanDate(_ yyyymmdd: String) -> String {
-        guard yyyymmdd.count == 8 else { return yyyymmdd }
+    /// "Feb 20, 2027" for the feed's "20270220". Settings shows these dates too, and
+    /// printed them raw.
+    static func humanDate(_ yyyymmdd: String) -> String {
+        guard yyyymmdd.count == 8, let date = feedDateParser.date(from: yyyymmdd) else { return yyyymmdd }
+        return humanDateFormatter.string(from: date)
+    }
+
+    // Built once: the status row asks for these on every redraw.
+    private static let feedDateParser: DateFormatter = {
         let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
         parser.dateFormat = "yyyyMMdd"
         parser.timeZone = ServiceCalendar.easternTimeZone
-        guard let date = parser.date(from: yyyymmdd) else { return yyyymmdd }
+        return parser
+    }()
+
+    private static let humanDateFormatter: DateFormatter = {
         let output = DateFormatter()
         output.timeZone = ServiceCalendar.easternTimeZone
         output.dateStyle = .medium
-        return output.string(from: date)
-    }
+        return output
+    }()
 }
