@@ -14,15 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pipefail, or a failing `swift test` is hidden behind the filter after it.
       - name: Engine tests
-        run: swift test 2>&1 | tail -40
+        run: |
+          set -o pipefail
+          swift test 2>&1 | grep -E "error:|Executed [0-9]+ tests|Fatal|crash" | sort -u | tail -80
 
       - name: Build app and widget
         run: |
+          set -o pipefail
           xcodebuild \
             -project SEPTACommute.xcodeproj \
             -scheme SEPTACommute \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build 2>&1 | tail -30
+            build 2>&1 | grep -E "error:|warning: .*(deprecated|unused)|BUILD (SUCCEEDED|FAILED)" | sort -u | tail -60
