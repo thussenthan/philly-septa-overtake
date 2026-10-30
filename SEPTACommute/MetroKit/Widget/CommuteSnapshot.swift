@@ -46,7 +46,7 @@ public struct CommuteSnapshot: Codable, Hashable, Sendable {
     /// idly checked on Sunday. Which way round it points follows the app's rule — near
     /// home means heading out — using the fix the app lends it, since a widget can get
     /// none of its own.
-    public func trip(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> (origin: SnapshotEndpoint, destination: SnapshotEndpoint) {
+    public func trip(at moment: Date, calendar: Calendar = .septa) -> (origin: SnapshotEndpoint, destination: SnapshotEndpoint) {
         guard let commute else { return (origin, destination) }
         return commute.outbound(at: moment, calendar: calendar)
             ? (commute.home, commute.away)
@@ -124,7 +124,7 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     ///
     /// Distance first, clock second. Being within a mile of home is direct evidence
     /// of which way they are facing; the hour of the day is only a proxy for it.
-    public func outbound(at moment: Date, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+    public func outbound(at moment: Date, calendar: Calendar = .septa) -> Bool {
         if let metres = metersFromHome(at: moment) {
             return metres <= Self.nearHomeMeters
         }
@@ -140,7 +140,7 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     public func agrees(
         with other: SavedCommute?,
         at moment: Date,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .septa
     ) -> Bool {
         guard let other else { return false }
         return home == other.home
@@ -159,7 +159,7 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     /// turnaround.
     public func directionStableUntil(
         from moment: Date,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .septa
     ) -> Date {
         if let lastFix, metersFromHome(at: moment) != nil {
             return lastFix.at.addingTimeInterval(Self.fixLifetime)
@@ -290,6 +290,20 @@ public struct RiderTuning: Codable, Hashable, Sendable {
         options.maxTransfers = allowTransfers ? 2 : 0
         options.requiresStepFreeAccess = stepFreeOnly
         return options
+    }
+}
+
+extension Calendar {
+    /// The calendar the timetable is written in.
+    ///
+    /// Everything the rider reads is Eastern time — the schedule, every clock on the
+    /// cards — so "which side of noon is it" has to be Eastern too. With the device's
+    /// own calendar, a phone set to another zone (or a test runner on UTC) flips the
+    /// widget's direction at the wrong hour.
+    public static var septa: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = ServiceCalendar.easternTimeZone
+        return calendar
     }
 }
 

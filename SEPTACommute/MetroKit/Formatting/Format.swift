@@ -79,7 +79,9 @@ public enum Format {
     public static func relativeLeave(_ seconds: TimeInterval) -> String {
         if seconds <= 30 { return "now" }
         if seconds < 90 { return "in about a minute" }
-        return "in \(minutes(seconds))"
+        // Floored, like `countdown`: "in 3 min" with two and a half minutes left
+        // promises time the rider doesn't have.
+        return "in \(minutes((seconds / 60).rounded(.down) * 60))"
     }
 
     // MARK: - Distance

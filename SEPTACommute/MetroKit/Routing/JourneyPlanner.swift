@@ -231,9 +231,21 @@ public struct JourneyPlanner: Sendable {
                     ? .access(candidate.station.id)
                     : .egress(candidate.station.id)
                 let measured = overrides[key]
-                let seconds = measured ?? (role == .access
-                    ? options.walking.accessSeconds(straightLineMeters: candidate.meters)
-                    : options.walking.egressSeconds(straightLineMeters: candidate.meters))
+                // A measured walk is the walk and nothing else: MapKit knows nothing
+                // about getting out of the door or through the station gates, so the
+                // fixed overheads go back on. Substituting it for the whole estimate
+                // made every measured trip about a minute and a half optimistic —
+                // trains that looked catchable were not, and the arrival came early.
+                let seconds: TimeInterval
+                if let measured {
+                    seconds = role == .access
+                        ? options.walking.startupSeconds + measured + options.walking.stationEntrySeconds
+                        : options.walking.stationExitSeconds + measured
+                } else {
+                    seconds = role == .access
+                        ? options.walking.accessSeconds(straightLineMeters: candidate.meters)
+                        : options.walking.egressSeconds(straightLineMeters: candidate.meters)
+                }
                 guard seconds <= limit else { continue }
                 legs.append(TerminalLeg(
                     station: candidate.station,
@@ -370,6 +382,13 @@ public struct JourneyPlanner: Sendable {
             // trip of a pattern is by definition later than the one you are on.
             if let last = rides.last, last.pattern.id == pattern.id { continue }
 
+            // SEPTA marks a few mid-route stops as ones where the train calls but the
+            // doors don't open to board (and others, to alight). The departure board
+            // honours that; the planner has to as well, or the two disagree and a
+            // rider is told to board where they can't.
+            guard let boardIndex = pattern.stopIndex(of: station),
+                  pattern.stops[boardIndex].allowsBoarding else { continue }
+
             let earliest = readyAt.addingTimeInterval(options.boardingBufferSeconds)
             guard earliest <= horizonEnd,
                   let trip = timetable.nextTrip(
@@ -380,8 +399,7 @@ public struct JourneyPlanner: Sendable {
                       serviceDays: serviceDays
                   ),
                   let departure = timetable.departure(of: trip, at: station),
-                  departure <= horizonEnd,
-                  let boardIndex = pattern.stopIndex(of: station)
+                  departure <= horizonEnd
             else { continue }
 
             // Never re-board the trip we just stepped off.
@@ -394,6 +412,10 @@ public struct JourneyPlanner: Sendable {
                 // Any continuation of this branch arrives at or after `arrival`,
                 // so once it is hopeless the rest of the branch is too.
                 if arrival > bestArrival.addingTimeInterval(options.arrivalTolerance) { break }
+
+                // The train calls here but won't let anyone off, so there is neither
+                // an arrival to assemble nor a change to make at this stop.
+                guard stop.allowsAlighting else { continue }
 
                 let ride = PartialRide(
                     trip: trip,

@@ -121,7 +121,9 @@ public extension JourneyPlanner {
         var alightIndexByPattern: [PatternID: Int] = [:]
         var usefulDirections: Set<Direction> = []
         let boarding = network.patterns(serving: origin).filter { pattern in
+            // A train that ends here, or won't open its doors here, isn't a departure.
             guard let boardIndex = pattern.stopIndex(of: origin),
+                  boardIndex + 1 < pattern.stops.count,
                   pattern.stops[boardIndex].allowsBoarding else { return false }
             var best: Int?
             for destination in destinations {

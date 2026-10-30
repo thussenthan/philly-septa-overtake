@@ -13,6 +13,14 @@ import Foundation
 /// report" and the routes this app doesn't carry.
 public enum AlertsFeed {
 
+    /// Decodes to nil rather than throwing, so the array survives a bad element.
+    private struct Lossy: Decodable {
+        let entry: RawEntry?
+        init(from decoder: Decoder) throws {
+            entry = try? RawEntry(from: decoder)
+        }
+    }
+
     public enum DecodingProblem: Error, Sendable {
         /// The body parsed as JSON but wasn't the array of route entries expected.
         case unexpectedShape
@@ -25,7 +33,8 @@ public enum AlertsFeed {
     public static func decode(_ data: Data, fetchedAt: Date) throws -> AlertDigest {
         let raw: [RawEntry]
         do {
-            raw = try JSONDecoder().decode([RawEntry].self, from: data)
+            // Entry by entry: one malformed element costs that alert, not the lot.
+            raw = try JSONDecoder().decode([Lossy].self, from: data).compactMap(\.entry)
         } catch is DecodingError {
             throw DecodingProblem.unexpectedShape
         }
