@@ -1,4 +1,13 @@
-# Overtake
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="">
+</p>
+
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/wordmark-dark.svg">
+    <img src="docs/wordmark-light.svg" width="420" alt="Overtake">
+  </picture>
+</h1>
 
 An iOS app that answers one question about SEPTA: **do I board the train that's
 about to leave, or wait for the faster one?**

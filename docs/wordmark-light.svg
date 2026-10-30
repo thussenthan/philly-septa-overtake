@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 706.00 128.00" width="706" height="128" role="img" aria-label="Overtake">
+  <title>Overtake</title>
+  <polyline points="32.00,14.00 58.00,14.00 76.00,39.00 76.00,89.00 58.00,114.00 32.00,114.00 14.00,89.00 14.00,39.00 32.00,14.00" fill="none" stroke="#DB5800" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="58.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="76.00" cy="39.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="76.00" cy="89.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="58.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="32.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="14.00" cy="89.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="14.00" cy="39.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <polyline points="102.00,14.00 133.00,114.00 164.00,14.00" fill="none" stroke="#0097D6" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="102.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="164.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <polyline points="252.00,14.00 190.00,14.00 190.00,114.00 252.00,114.00" fill="none" stroke="#5A960A" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="190.00,64.00 240.00,64.00" fill="none" stroke="#5A960A" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="252.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#5A960A" stroke-width="3.50"/>
+  <circle cx="252.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#5A960A" stroke-width="3.50"/>
+  <circle cx="190.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#5A960A" stroke-width="3.50"/>
+  <circle cx="240.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#5A960A" stroke-width="3.50"/>
+  <polyline points="278.00,114.00 278.00,14.00 318.00,14.00 340.00,39.00 318.00,64.00 278.00,64.00" fill="none" stroke="#5F249F" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="308.00,64.00 340.00,114.00" fill="none" stroke="#5F249F" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="278.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#5F249F" stroke-width="3.50"/>
+  <circle cx="278.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#5F249F" stroke-width="3.50"/>
+  <circle cx="308.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#5F249F" stroke-width="3.50"/>
+  <circle cx="340.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#5F249F" stroke-width="3.50"/>
+  <polyline points="366.00,14.00 428.00,14.00" fill="none" stroke="#DB2E6B" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="397.00,14.00 397.00,114.00" fill="none" stroke="#DB2E6B" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="366.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB2E6B" stroke-width="3.50"/>
+  <circle cx="428.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB2E6B" stroke-width="3.50"/>
+  <circle cx="397.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB2E6B" stroke-width="3.50"/>
+  <circle cx="397.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DB2E6B" stroke-width="3.50"/>
+  <polyline points="454.00,114.00 485.00,14.00 516.00,114.00" fill="none" stroke="#DBB900" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="469.50,64.00 500.50,64.00" fill="none" stroke="#DBB900" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="454.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DBB900" stroke-width="3.50"/>
+  <circle cx="516.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DBB900" stroke-width="3.50"/>
+  <circle cx="469.50" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#DBB900" stroke-width="3.50"/>
+  <circle cx="500.50" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#DBB900" stroke-width="3.50"/>
+  <polyline points="542.00,14.00 542.00,114.00" fill="none" stroke="#DB5800" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="604.00,14.00 542.00,66.00" fill="none" stroke="#DB5800" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="562.00,58.00 604.00,114.00" fill="none" stroke="#DB5800" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="542.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="542.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="604.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="542.00" cy="66.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="562.00" cy="58.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <circle cx="604.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#DB5800" stroke-width="3.50"/>
+  <polyline points="692.00,14.00 630.00,14.00 630.00,114.00 692.00,114.00" fill="none" stroke="#0097D6" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="630.00,64.00 680.00,64.00" fill="none" stroke="#0097D6" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="692.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="692.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="630.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="680.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+</svg>
