@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" height="128" alt="">
-  <br>&nbsp;
+  <img src="docs/icon.png" width="128" alt="">
 </p>
 
 <h1 align="center">

@@ -8,7 +8,8 @@ with the line colours put through the same contrast adjustment `Theme.adaptive`
 applies in the app, so a pale line still reads on white and a dark one on black.
 
 The icon is the app icon from the asset catalogue, downsampled and given the rounded
-corners iOS would draw on it — the catalogue holds a square, because iOS masks it.
+corners iOS would draw on it — the catalogue holds a square, because iOS masks it —
+and a strip of clear space underneath, to hold the wordmark off it.
 
 Run `tools/make_app_icon.py` first if the icon has changed, then:
 
@@ -25,6 +26,9 @@ NAME = "OVERTAKE"
 OUTPUT = Path("docs")
 ICON_SOURCE = Path("SEPTACommute/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
 ICON_SIZE = 256
+# Clear space under the icon, in the same pixels. GitHub strips style attributes, so
+# this is the only way to set the gap to the wordmark; it shows at half size.
+ICON_GAP = 24
 
 # Wordmark.palette.
 PALETTE = ["F26100", "0097D6", "5A960A", "5F249F", "DC2E6B", "FFD700"]
@@ -121,7 +125,9 @@ def icon() -> Image.Image:
     # iOS's icon corner radius is about 22.37% of the side.
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, big - 1, big - 1], radius=big * 0.2237, fill=255)
     source.putalpha(mask)
-    return source.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+    canvas = Image.new("RGBA", (ICON_SIZE, ICON_SIZE + ICON_GAP), (0, 0, 0, 0))
+    canvas.paste(source.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS))
+    return canvas
 
 
 def main() -> int:
