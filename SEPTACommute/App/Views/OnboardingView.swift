@@ -96,8 +96,10 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
-                    Button("Change") { places.remove(existing) }
+                    Button("Edit") { places.remove(existing) }
                         .font(.footnote)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityHint("Removes this address so you can enter another")
                 }
                 .padding(12)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))

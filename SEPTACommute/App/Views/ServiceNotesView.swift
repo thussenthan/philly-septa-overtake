@@ -100,9 +100,21 @@ struct ServiceNotesView: View {
 
                 if model.serviceAlerts.isEmpty, model.alertFetchProblem == nil {
                     Section {
-                        Label("SEPTA isn't reporting anything on your lines.", systemImage: "checkmark.circle")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        if model.alertsHaveLoaded {
+                            Label("SEPTA isn't reporting anything on your lines.", systemImage: "checkmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            // Not "all clear": nothing has been asked yet, or the answer
+                            // hasn't arrived, and saying otherwise is the one thing an
+                            // alerts screen mustn't do.
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Checking SEPTA's alerts…")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }

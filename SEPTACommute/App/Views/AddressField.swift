@@ -13,6 +13,8 @@ struct AddressField: View {
     @StateObject private var search = AddressSearch()
     @FocusState private var isFocused: Bool
     @State private var resolving = false
+    /// A typed address that has been looked up but not yet accepted.
+    @State private var pending: (address: String, coordinate: Coordinate)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -34,6 +36,8 @@ struct AddressField: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.tertiary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Clear")
@@ -41,11 +45,41 @@ struct AddressField: View {
             }
             .padding(12)
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+            .onChange(of: search.query) { _, _ in pending = nil }
 
             if let error = search.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(Theme.color(for: .leaveNow))
+                    .onAppear { UIAccessibility.post(notification: .announcement, argument: error) }
+            }
+
+            // Return used to save whatever the first search result was, silently — and
+            // "Main Street" resolves to a Main Street, not necessarily the right one.
+            if let pending {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Is this the one?")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(pending.address)
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        Button("Use this address") {
+                            onResolved(pending.address, pending.coordinate)
+                            self.pending = nil
+                            search.query = ""
+                            isFocused = false
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
+                        Button("Not it") { self.pending = nil }
+                            .font(.subheadline)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             }
 
             if !search.suggestions.isEmpty {
@@ -100,8 +134,7 @@ struct AddressField: View {
         resolving = true
         Task {
             if let result = await search.resolveRawQuery() {
-                onResolved(result.address, result.coordinate)
-                search.query = ""
+                pending = (result.address, result.coordinate)
                 isFocused = false
             }
             resolving = false

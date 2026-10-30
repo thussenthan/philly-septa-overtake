@@ -66,6 +66,11 @@ struct DestinationPickerView: View {
                 }
             }
             .searchable(text: $search, prompt: "Find a station")
+            .overlay {
+                if filteredSections.isEmpty && !search.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                }
+            }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -113,6 +118,7 @@ struct DestinationPickerView: View {
                 Image(systemName: symbol)
                     .frame(width: 22)
                     .foregroundStyle(tint)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).foregroundStyle(.primary)
                     if !subtitle.isEmpty {
@@ -216,6 +222,11 @@ struct OriginPickerView: View {
                 }
             }
             .searchable(text: $search, prompt: "Find a station")
+            .overlay {
+                if filteredSections.isEmpty && !search.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                }
+            }
             .navigationTitle("Starting from")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

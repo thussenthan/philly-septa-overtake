@@ -47,12 +47,16 @@ struct SettingsView: View {
                         Text(place.address).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button {
+                }
+                // A swipe, with the confirmation that gives: a small red icon beside
+                // the text deleted a saved place on a slightly-off tap, and VoiceOver
+                // read it as nothing at all.
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
                         places.remove(place)
                     } label: {
-                        Image(systemName: "trash").foregroundStyle(.red)
+                        Label("Delete", systemImage: "trash")
                     }
-                    .buttonStyle(.plain)
                 }
             }
             NavigationLink {
@@ -93,6 +97,8 @@ struct SettingsView: View {
                         .monospacedDigit()
                 }
                 Slider(value: $model.preferences.walkingMilesPerHour, in: 2.0...4.5, step: 0.1)
+                    .accessibilityLabel("Walking pace")
+                    .accessibilityValue(String(format: "%.1f miles per hour", model.preferences.walkingMilesPerHour))
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -103,6 +109,8 @@ struct SettingsView: View {
                         .monospacedDigit()
                 }
                 Slider(value: $model.preferences.maxWalkMinutes, in: 5...30, step: 1)
+                    .accessibilityLabel("Longest walk to a station")
+                    .accessibilityValue("\(Int(model.preferences.maxWalkMinutes)) minutes")
             }
             Toggle("Use real walking directions", isOn: $model.preferences.useMeasuredWalkTimes)
         } header: {
@@ -125,6 +133,8 @@ struct SettingsView: View {
                         .monospacedDigit()
                 }
                 Slider(value: $model.preferences.boardingBufferSeconds, in: 0...180, step: 15)
+                    .accessibilityLabel("Safety margin before boarding")
+                    .accessibilityValue("\(Int(model.preferences.boardingBufferSeconds)) seconds")
             }
         } header: {
             Text("Routing")
