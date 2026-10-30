@@ -24,6 +24,15 @@ final class WalkTimeService: ObservableObject {
 
     private var cache: [CacheKey: TimeInterval] = [:]
     private var inFlight: Set<CacheKey> = []
+    /// When a failed measurement may be tried again. The plan is recomputed every
+    /// thirty seconds and on every fix; without this, an offline or throttled phone
+    /// re-requested the same six walks each time, which is how throttling gets worse.
+    private var retryAfter: [CacheKey: Date] = [:]
+    private static let retryInterval: TimeInterval = 5 * 60
+
+    private func isCoolingDown(_ key: CacheKey) -> Bool {
+        retryAfter[key].map { $0 > Date() } ?? false
+    }
 
     /// Measure walks between `coordinate` and each station, filling in whatever
     /// is already cached immediately and fetching the rest.
@@ -70,14 +79,14 @@ final class WalkTimeService: ObservableObject {
         if let coordinate {
             for station in accessStations {
                 let key = cacheKey(coordinate, station.coordinate)
-                guard cache[key] == nil, !inFlight.contains(key) else { continue }
+                guard cache[key] == nil, !inFlight.contains(key), !isCoolingDown(key) else { continue }
                 work.append((key, coordinate, station.coordinate))
             }
         }
         if let destination {
             for station in egressStations {
                 let key = cacheKey(station.coordinate, destination)
-                guard cache[key] == nil, !inFlight.contains(key) else { continue }
+                guard cache[key] == nil, !inFlight.contains(key), !isCoolingDown(key) else { continue }
                 work.append((key, station.coordinate, destination))
             }
         }
@@ -88,7 +97,10 @@ final class WalkTimeService: ObservableObject {
                 let seconds = await Self.walkingSeconds(from: from, to: to)
                 guard let self else { return }
                 self.inFlight.remove(key)
-                guard let seconds else { return }
+                guard let seconds else {
+                    self.retryAfter[key] = Date().addingTimeInterval(Self.retryInterval)
+                    return
+                }
                 self.cache[key] = seconds
                 onUpdate()
             }

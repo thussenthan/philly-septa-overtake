@@ -66,11 +66,17 @@ public struct CommuteSnapshot: Codable, Hashable, Sendable {
     /// the whole refresh budget saying nothing.
     public func describesSameTrip(as other: CommuteSnapshot?) -> Bool {
         guard let other else { return false }
-        guard origin == other.origin, destination == other.destination, reason == other.reason else {
-            return false
+        // With a commute on file the widget derives the trip from it and never reads
+        // `origin` or `destination`, so comparing them would only measure the rider
+        // walking about: while they are not standing in a station, the origin is
+        // their own coordinate, and every few metres would count as a new trip.
+        if let commute {
+            return reason == other.reason && commute.agrees(with: other.commute, at: savedAt)
         }
-        guard let commute else { return other.commute == nil }
-        return commute.agrees(with: other.commute, at: savedAt)
+        return origin == other.origin
+            && destination == other.destination
+            && reason == other.reason
+            && other.commute == nil
     }
 }
 
@@ -94,10 +100,13 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     /// guessing from the clock and disagreeing with the screen it sits beside.
     public var lastFix: LocationFix?
 
+    /// The hour the clock starts calling a rider homeward when there is no fix.
+    public static let defaultTurnaroundHour = 12
+
     public init(
         home: SnapshotEndpoint,
         away: SnapshotEndpoint,
-        turnaroundHour: Int = 12,
+        turnaroundHour: Int = SavedCommute.defaultTurnaroundHour,
         lastFix: LocationFix? = nil
     ) {
         self.home = home
@@ -125,10 +134,23 @@ public struct SavedCommute: Codable, Hashable, Sendable {
     /// Distance first, clock second. Being within a mile of home is direct evidence
     /// of which way they are facing; the hour of the day is only a proxy for it.
     public func outbound(at moment: Date, calendar: Calendar = .septa) -> Bool {
-        if let metres = metersFromHome(at: moment) {
-            return metres <= Self.nearHomeMeters
+        if metersFromHome(at: moment) != nil, let lastFix, let homePoint = home.coordinate {
+            return Self.isHeadingOut(from: lastFix.coordinate, home: homePoint, away: away.coordinate)
         }
         return calendar.component(.hour, from: moment) < turnaroundHour
+    }
+
+    /// The one rule the app and the widget both apply to a fix.
+    ///
+    /// Within a mile of home means setting out. But someone who lives within a mile
+    /// of where they go is "near home" at the office as well, and would be told to
+    /// travel from the office to the office — so when the other anchor is nearer than
+    /// home, they are at it, and heading back.
+    public static func isHeadingOut(from fix: Coordinate, home: Coordinate, away: Coordinate?) -> Bool {
+        let fromHome = fix.distance(to: home)
+        guard fromHome <= nearHomeMeters else { return false }
+        if let away, fix.distance(to: away) < fromHome { return false }
+        return true
     }
 
     /// Whether this would send the rider the same way as `other` at this moment.

@@ -9,6 +9,7 @@ import SwiftUI
 /// also all reasons to read instead of deciding, so each of them is a tap away.
 struct PlanView: View {
     @EnvironmentObject private var model: CommuteModel
+    @Environment(\.scenePhase) private var scenePhase
     /// One sheet at a time, named.
     ///
     /// SwiftUI supports a single `.sheet` per view. Four of them stacked on this one
@@ -90,6 +91,16 @@ struct PlanView: View {
         }
         .onAppear { model.onAppear() }
         .onDisappear { model.onDisappear() }
+        // Coming back to the app is not an appearance, so without this a plan, a
+        // location and a set of alerts from hours ago sat on screen until the next
+        // thirty-second tick — and the alerts were never refetched at all.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: model.onAppear()
+            case .background: model.onDisappear()
+            default: break
+            }
+        }
     }
 
     // MARK: - Where to where

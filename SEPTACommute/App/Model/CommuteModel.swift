@@ -72,6 +72,23 @@ struct RiderPreferences: Codable, Equatable {
     func plannerOptions() -> PlannerOptions { tuning.plannerOptions() }
 }
 
+extension RiderPreferences {
+    /// Every key optional, so a setting added in a later version doesn't make the
+    /// whole stored blob undecodable — which would silently reset every other setting.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = RiderPreferences()
+        self.init()
+        walkingMilesPerHour = try container.decodeIfPresent(Double.self, forKey: .walkingMilesPerHour) ?? defaults.walkingMilesPerHour
+        maxWalkMinutes = try container.decodeIfPresent(Double.self, forKey: .maxWalkMinutes) ?? defaults.maxWalkMinutes
+        boardingBufferSeconds = try container.decodeIfPresent(Double.self, forKey: .boardingBufferSeconds) ?? defaults.boardingBufferSeconds
+        useMeasuredWalkTimes = try container.decodeIfPresent(Bool.self, forKey: .useMeasuredWalkTimes) ?? defaults.useMeasuredWalkTimes
+        allowTransfers = try container.decodeIfPresent(Bool.self, forKey: .allowTransfers) ?? defaults.allowTransfers
+        stepFreeOnly = try container.decodeIfPresent(Bool.self, forKey: .stepFreeOnly) ?? defaults.stepFreeOnly
+        appearanceRaw = try container.decodeIfPresent(String.self, forKey: .appearanceRaw)
+    }
+}
+
 /// Where the rider is heading.
 enum Target: Hashable, Identifiable {
     case saved(SavedPlace)
@@ -102,8 +119,7 @@ final class CommuteModel: ObservableObject {
     @Published var preferences = RiderPreferences() {
         didSet {
             guard preferences != oldValue else { return }
-            persistPreferences()
-            replan()
+            preferencesChanged()
         }
     }
 
@@ -130,6 +146,8 @@ final class CommuteModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
     private var planTask: Task<Void, Never>?
+    private var preferencesTask: Task<Void, Never>?
+    private var replanScheduled = false
     private let defaults: UserDefaults
 
     /// How close counts as "you are at this station".
@@ -184,12 +202,19 @@ final class CommuteModel: ObservableObject {
 
         // `self.` is load-bearing: the initialiser parameter of the same name is
         // optional, and would shadow the stored property here.
+        // `@Published` publishes *before* the new value is stored, and these handlers
+        // read the service and the store rather than the value they are handed. Without
+        // hopping to the next turn of the run loop every replan used the previous
+        // location and the previous places: the first fix of a launch planned from
+        // nowhere, and saving Work in onboarding planned as though only Home existed.
         self.locationService.$status
             .removeDuplicates()
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.locationChanged() }
             .store(in: &cancellables)
 
         self.places.$places
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] updated in self?.placesChanged(updated) }
             .store(in: &cancellables)
 
@@ -269,6 +294,9 @@ final class CommuteModel: ObservableObject {
         target = guess
     }
 
+    /// Standing this close to the only address on file, the rider is already there.
+    private static let alreadyThereMeters: Double = 300
+
     private static func automaticTarget(
         places: PlaceStore,
         location: Coordinate?,
@@ -276,13 +304,29 @@ final class CommuteModel: ObservableObject {
     ) -> Target? {
         let home = places.home
         let school = places.school
-        // With only one anchor there is nothing to choose between.
-        guard let home else { return school.map(Target.saved) }
-        guard let school else { return .saved(home) }
-        guard let location else { return .saved(home) }
 
-        let distanceFromHome = location.distance(to: home.coordinate)
-        return .saved(distanceFromHome <= nearHomeMeters ? school : home)
+        // With only one anchor there is nothing to choose between — except that a
+        // rider already standing at it has nowhere to go, and a plan from there to
+        // there is nonsense. Leaving the destination empty asks where they're headed.
+        guard let home else {
+            guard let school else { return nil }
+            if let location, location.distance(to: school.coordinate) <= alreadyThereMeters { return nil }
+            return .saved(school)
+        }
+        guard let school else {
+            if let location, location.distance(to: home.coordinate) <= alreadyThereMeters { return nil }
+            return .saved(home)
+        }
+
+        // No fix yet: the same clock rule the widget falls back to, so the two agree
+        // from the first frame instead of the app showing Home until a fix lands.
+        guard let location else {
+            let hour = Calendar.septa.component(.hour, from: Date())
+            return .saved(hour < SavedCommute.defaultTurnaroundHour ? school : home)
+        }
+
+        let headingOut = SavedCommute.isHeadingOut(from: location, home: home.coordinate, away: school.coordinate)
+        return .saved(headingOut ? school : home)
     }
 
     /// The rider picked a destination themselves; stop guessing for this session.
@@ -302,8 +346,8 @@ final class CommuteModel: ObservableObject {
     /// Why the current destination was chosen, for the "To" row.
     var targetReason: String? {
         guard !hasManualTarget, let home = places.home, places.school != nil else { return nil }
-        guard let location = locationService.coordinate else { return nil }
-        return location.distance(to: home.coordinate) <= nearHomeMeters
+        guard let location = locationService.coordinate, let school = places.school else { return nil }
+        return SavedCommute.isHeadingOut(from: location, home: home.coordinate, away: school.coordinate)
             ? "You're near home — heading out"
             : "Heading home"
     }
@@ -427,8 +471,9 @@ final class CommuteModel: ObservableObject {
             egressStations: egressCandidates,
             onUpdate: { [weak self] in
                 // Measured walks can reorder the options, so replan — `measure`
-                // won't re-request anything already cached.
-                self?.replan()
+                // won't re-request anything already cached. Several legs usually land
+                // together, and each used to trigger its own full search.
+                self?.replanSoon()
             }
         )
     }
@@ -511,7 +556,9 @@ final class CommuteModel: ObservableObject {
         return SavedCommute(
             home: SnapshotEndpoint(home.endpoint, name: home.name),
             away: SnapshotEndpoint(away.endpoint, name: away.name),
-            lastFix: locationService.coordinate.map { LocationFix($0, at: Date()) }
+            // The fix's own time, not now: restamping an old fix as fresh would have
+            // the widget trust a location from this morning for another hour and a half.
+            lastFix: locationService.fix.map { LocationFix($0.coordinate, at: $0.at) }
         )
     }
 
@@ -553,6 +600,28 @@ final class CommuteModel: ObservableObject {
         return network.stations(near: coordinate, within: max(radius, 500))
             .prefix(limit)
             .map(\.station)
+    }
+
+    /// Settings arrive a slider tick at a time. Writing them out, reloading the widget
+    /// and replanning on every tick did a full search per step of a drag.
+    private func preferencesChanged() {
+        preferencesTask?.cancel()
+        preferencesTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.persistPreferences()
+            self.replan()
+        }
+    }
+
+    /// Replan once, shortly, however many things asked for it.
+    private func replanSoon() {
+        guard !replanScheduled else { return }
+        replanScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.replanScheduled = false
+            self?.replan()
+        }
     }
 
     private func persistPreferences() {

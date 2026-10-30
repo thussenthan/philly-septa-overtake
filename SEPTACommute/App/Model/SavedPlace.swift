@@ -161,7 +161,20 @@ final class PlaceStore: ObservableObject {
 
     private func load() {
         guard let data = defaults.data(forKey: storageKey) else { return }
-        places = (try? JSONDecoder().decode([SavedPlace].self, from: data)) ?? []
+        // Record by record: one that no longer decodes costs that place, not all of
+        // them. If the whole blob is unreadable it is set aside rather than left to
+        // be overwritten by the next save.
+        if let decoded = try? JSONDecoder().decode([Lossy].self, from: data) {
+            places = decoded.compactMap(\.place)
+        } else {
+            defaults.set(data, forKey: storageKey + ".unreadable")
+            places = []
+        }
+    }
+
+    private struct Lossy: Decodable {
+        let place: SavedPlace?
+        init(from decoder: Decoder) throws { place = try? SavedPlace(from: decoder) }
     }
 
     private func persist() {

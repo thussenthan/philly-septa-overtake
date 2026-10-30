@@ -55,9 +55,12 @@ final class PlannerRegressionTests: XCTestCase {
     }
 
     func testThePlannerNeverAlightsWhereTheDoorsDoNotOpen() {
+        // An address next to D rather than D itself: a rider bound for the *station*
+        // has nowhere else to get off, but one bound for the street can ride to a
+        // neighbouring stop and walk.
         let plan = plannerWithRestrictedStops().plan(PlanRequest(
             origin: .station("a"),
-            destination: .station("d"),
+            destination: .place(name: "Work", coordinate: Fixture.coordinate(of: "d", offsetMeters: 50)),
             departAt: Fixture.date(7, 58)
         ))
         XCTAssertFalse(plan.journeys.isEmpty, "riding to a neighbouring stop and walking is still an option")
@@ -168,5 +171,56 @@ final class PlannerRegressionTests: XCTestCase {
 
     func testAFeedThatIsNotAnArrayIsStillRejected() {
         XCTAssertThrowsError(try AlertsFeed.decode(Data("{}".utf8), fetchedAt: Date()))
+    }
+
+    // MARK: - Which way the rider is facing
+
+    /// Someone who lives a few hundred metres from work is "near home" at work too.
+    func testSomeoneLivingNextToWorkIsHeadingHomeWhenTheyAreAtWork() {
+        let home = Coordinate(latitude: 40.0, longitude: -75.16)
+        let work = Coordinate(latitude: 40.003, longitude: -75.16)   // about 330 m away
+        XCTAssertTrue(SavedCommute.isHeadingOut(from: home, home: home, away: work))
+        XCTAssertFalse(
+            SavedCommute.isHeadingOut(from: work, home: home, away: work),
+            "at work, even within a mile of home, the way is back"
+        )
+        XCTAssertFalse(SavedCommute.isHeadingOut(from: Coordinate(latitude: 40.1, longitude: -75.16), home: home, away: work))
+        XCTAssertTrue(
+            SavedCommute.isHeadingOut(from: Coordinate(latitude: 40.0005, longitude: -75.16), home: home, away: nil),
+            "with no second address there is nothing to be nearer to"
+        )
+    }
+
+    // MARK: - Widget reloads
+
+    /// The origin is the rider's own coordinate whenever they aren't in a station, so
+    /// comparing it made every few metres of walking a new trip and a widget reload.
+    func testWalkingAboutDoesNotCountAsANewTrip() {
+        let home = SnapshotEndpoint(.place(name: "Home", coordinate: Coordinate(latitude: 40.0, longitude: -75.16)), name: "Home")
+        let away = SnapshotEndpoint(.place(name: "School", coordinate: Coordinate(latitude: 39.98, longitude: -75.16)), name: "School")
+        func snapshot(at latitude: Double) -> CommuteSnapshot {
+            let here = Coordinate(latitude: latitude, longitude: -75.16)
+            return CommuteSnapshot(
+                origin: SnapshotEndpoint(.place(name: "Current location", coordinate: here), name: "Where I am"),
+                destination: away,
+                reason: nil,
+                savedAt: Fixture.date(8, 0),
+                commute: SavedCommute(home: home, away: away, lastFix: LocationFix(here, at: Fixture.date(8, 0)))
+            )
+        }
+        XCTAssertTrue(snapshot(at: 40.0010).describesSameTrip(as: snapshot(at: 40.0020)))
+    }
+
+    // MARK: - Time zones
+
+    /// "Morning" is Eastern, wherever the phone thinks it is.
+    func testTheTurnaroundHourIsEasternWhateverTheDeviceZoneIs() {
+        let commute = SavedCommute(
+            home: SnapshotEndpoint(.station("a"), name: "Home"),
+            away: SnapshotEndpoint(.station("f"), name: "School")
+        )
+        // 08:01 Eastern is mid-afternoon in UTC+... and past noon in UTC itself.
+        XCTAssertTrue(commute.outbound(at: Fixture.date(8, 1)))
+        XCTAssertFalse(commute.outbound(at: Fixture.date(17, 30)))
     }
 }

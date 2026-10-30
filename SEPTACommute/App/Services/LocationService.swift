@@ -24,6 +24,13 @@ final class LocationService: NSObject, ObservableObject {
             return nil
         }
 
+        /// The fix and when it was taken, so nothing downstream has to pretend a
+        /// location from this morning is from this second.
+        var fix: (coordinate: Coordinate, at: Date)? {
+            if case .located(let coordinate, _, let at) = self { return (coordinate, at) }
+            return nil
+        }
+
         var isDenied: Bool { self == .denied || self == .restricted }
     }
 
@@ -42,6 +49,13 @@ final class LocationService: NSObject, ObservableObject {
     }
 
     var coordinate: Coordinate? { status.coordinate }
+    var fix: (coordinate: Coordinate, at: Date)? { status.fix }
+
+    /// Gives up waiting for a usable fix, so "Finding you…" can't last forever.
+    private var locatingTimeout: Task<Void, Never>?
+    private static let locatingTimeoutSeconds: UInt64 = 15
+    /// A fix older than this isn't trusted as where the rider is now.
+    private static let staleFixSeconds: TimeInterval = 120
 
     func requestPermissionIfNeeded() {
         switch manager.authorizationStatus {
@@ -58,8 +72,19 @@ final class LocationService: NSObject, ObservableObject {
     }
 
     func start() {
-        guard !status.isDenied else { return }
-        if status.coordinate == nil { status = .locating }
+        // Judged by what the system says now, not by the status last recorded: after
+        // a rider turns location on in Settings the status still reads "denied", and
+        // checking it here meant the app never started again until it was relaunched.
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: break
+        default: return
+        }
+        // Coming back after a while: the old fix says where the rider *was*.
+        let stale = status.fix.map { Date().timeIntervalSince($0.at) > Self.staleFixSeconds } ?? false
+        if status.coordinate == nil || stale {
+            status = .locating
+            armLocatingTimeout()
+        }
         manager.startUpdatingLocation()
         // A cached fix, if there is one, beats an empty screen while the first
         // real update arrives.
@@ -70,12 +95,28 @@ final class LocationService: NSObject, ObservableObject {
 
     func stop() {
         manager.stopUpdatingLocation()
+        locatingTimeout?.cancel()
+    }
+
+    private func armLocatingTimeout() {
+        locatingTimeout?.cancel()
+        locatingTimeout = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.locatingTimeoutSeconds * 1_000_000_000)
+            guard !Task.isCancelled, let self, self.status == .locating else { return }
+            self.status = .failed(
+                self.manager.accuracyAuthorization == .reducedAccuracy
+                    ? "Precise Location is turned off for Overtake."
+                    : "Couldn't get a precise location."
+            )
+        }
     }
 
     /// Ask for one fresh fix, e.g. on a pull-to-refresh.
     func refresh() {
-        guard !status.isDenied else { return }
-        manager.requestLocation()
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: manager.requestLocation()
+        default: return
+        }
     }
 
     private func syncAuthorization() {
@@ -114,6 +155,7 @@ final class LocationService: NSObject, ObservableObject {
         // A fix accurate to only half a kilometre would put the rider at the
         // wrong station; better to keep waiting than to route from the wrong place.
         guard fix.accuracy >= 0, fix.accuracy < 250 else { return }
+        locatingTimeout?.cancel()
         status = .located(
             Coordinate(latitude: fix.latitude, longitude: fix.longitude),
             accuracy: fix.accuracy,
