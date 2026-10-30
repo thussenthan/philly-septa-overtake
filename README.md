@@ -145,6 +145,10 @@ not live positions, and the board says so.
 Everything else is a tap: the two ends open their pickers, the card and the rows
 open the full itinerary with clock times and skipped stations, and the bottom row
 opens SEPTA's alert text, the planner's caveats and where the timetable came from.
+The arrow between the two ends turns the trip round when both are somewhere a trip
+can start; every station picker opens on the stations **nearby**; and the itinerary
+can be shared as plain text — leave by, which trains, arrive — for whoever is
+waiting at the other end.
 
 The name is drawn rather than typeset — each letter is a set of coloured lines with
 white stops, in SEPTA's own palette, so the wordmark reads as a piece of the network
@@ -540,8 +544,9 @@ particular would need a different search strategy, not just a faster one.
 
 ## The widget
 
-Small, medium, and a lock-screen rectangle: the line badges, a live countdown to the
-last moment you can leave, and when you'd arrive.
+Small, medium, and all three lock-screen shapes (rectangle, circle, and the line
+above the clock): the line badges, a live countdown to the last moment you can
+leave, and when you'd arrive.
 
 It doesn't ask the app what the answer is. Widget extensions have no reliable
 location fix, get throttled on the network, and are killed if they take too long —
