@@ -146,6 +146,7 @@ final class CommuteModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
     private var planTask: Task<Void, Never>?
+    private lazy var boardPlanner = JourneyPlanner(network: network)
     private var preferencesTask: Task<Void, Never>?
     private var replanScheduled = false
     private let defaults: UserDefaults
@@ -384,6 +385,24 @@ final class CommuteModel: ObservableObject {
             return
         }
         currentStation = nearest.station
+    }
+
+    // MARK: - Station boards
+
+    /// Everything leaving a station, for the full board.
+    func stationBoard(at station: StationID, asOf now: Date) -> [StationDeparture] {
+        boardPlanner.stationBoard(at: station, after: now)
+    }
+
+    /// Where a station board should open: the station the rider is standing in, else
+    /// the nearest one to them, else the one their trip boards at.
+    var suggestedBoardStation: StationID? {
+        if let currentStation { return currentStation.id }
+        if let coordinate = locationService.coordinate,
+           let nearest = network.nearestStation(to: coordinate) {
+            return nearest.station.id
+        }
+        return plan?.best?.boardStation
     }
 
     // MARK: - Endpoints

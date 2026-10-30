@@ -17,7 +17,7 @@ struct PlanView: View {
     /// then the presentation machinery dismissed the parent instead. One modifier
     /// driven by an enum is the shape that has always been supported.
     private enum ActiveSheet: String, Identifiable {
-        case settings, notes, destination, origin
+        case settings, notes, destination, origin, board
         var id: String { rawValue }
     }
 
@@ -38,6 +38,7 @@ struct PlanView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         tripRow
                         answerSection
+                        if let station = model.currentStation { boardLink(for: station) }
                         statusRow
                     }
                     // Tighter than the usual inset: the answer card is the screen, and
@@ -54,6 +55,13 @@ struct PlanView: View {
                     // An inline title bar is 44pt tall, so this is about as large as
                     // the mark can be drawn without the stops clipping.
                     Wordmark(height: 30)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { activeSheet = .board } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                    .accessibilityLabel("Station board")
+                    .accessibilityHint("Shows every train leaving a station")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -79,6 +87,8 @@ struct PlanView: View {
                             set: { model.chooseTarget($0) }
                         )
                     )
+                case .board:
+                    StationBoardView(initial: model.suggestedBoardStation)
                 case .origin:
                     OriginPickerView(
                         selection: Binding(
@@ -331,6 +341,31 @@ struct PlanView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 30)
         }
+    }
+
+    /// Standing in a station is exactly when a platform sign would help, and most of
+    /// these stations have none.
+    private func boardLink(for station: Station) -> some View {
+        Button { activeSheet = .board } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 18)
+                Text("Everything leaving \(station.name)")
+                    .font(.footnote.weight(.medium))
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private static func openSystemSettings() {

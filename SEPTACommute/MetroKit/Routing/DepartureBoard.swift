@@ -181,3 +181,105 @@ public extension JourneyPlanner {
         return Array(board.prefix(limit))
     }
 }
+
+// MARK: - The whole station
+
+/// One train leaving a station, whatever it is for.
+///
+/// `BoardDeparture` answers "which of these gets me there"; this answers the question
+/// a platform sign exists for, which is simply "what is leaving". Most of the Metro's
+/// stations have no sign at all, so for them this is the sign.
+public struct StationDeparture: Sendable, Hashable, Identifiable {
+    public var trip: Trip
+    public var lineID: LineID
+    public var routeID: RouteID
+    public var kind: PatternKind
+    public var compass: CompassDirection?
+    public var direction: Direction
+    public var headsign: String
+    public var departure: Date
+
+    public var id: String { trip.id }
+
+    /// "B2", or "OWL" for the night bus, matching the badge on a journey.
+    public var routeBadge: String {
+        kind == .nightBus ? "OWL" : routeID.rawValue
+    }
+
+    /// Which platform: "Southbound", or the terminus where the feed gives no compass
+    /// direction.
+    public var platformTitle: String {
+        compass?.label ?? "toward \(headsign)"
+    }
+
+    /// What differs between trains on one platform: where it is going, or that it is
+    /// an express.
+    public var serviceHeadline: String {
+        kind == .local ? "toward \(headsign)" : "\(kind.label) · \(headsign)"
+    }
+
+    public init(
+        trip: Trip,
+        lineID: LineID,
+        routeID: RouteID,
+        kind: PatternKind,
+        compass: CompassDirection?,
+        direction: Direction,
+        headsign: String,
+        departure: Date
+    ) {
+        self.trip = trip
+        self.lineID = lineID
+        self.routeID = routeID
+        self.kind = kind
+        self.compass = compass
+        self.direction = direction
+        self.headsign = headsign
+        self.departure = departure
+    }
+}
+
+public extension JourneyPlanner {
+
+    /// Every train that will let a rider on at `station` in the next while, in
+    /// departure order, regardless of where it is going.
+    ///
+    /// A train that ends here, or whose doors don't open for boarding at this stop, is
+    /// not a departure and is left out — the same rule the planner and the trip board
+    /// apply.
+    func stationBoard(
+        at station: StationID,
+        after time: Date,
+        horizon: TimeInterval = 90 * 60,
+        limit: Int = 60
+    ) -> [StationDeparture] {
+        let window = DateInterval(start: time, end: time.addingTimeInterval(horizon))
+        var rows: [StationDeparture] = []
+
+        for pattern in network.patterns(serving: station) {
+            guard let index = pattern.stopIndex(of: station),
+                  index + 1 < pattern.stops.count,
+                  pattern.stops[index].allowsBoarding else { continue }
+
+            for trip in timetable.trips(of: pattern, departingFrom: station, in: window) {
+                guard let departure = timetable.departure(of: trip, at: station) else { continue }
+                rows.append(StationDeparture(
+                    trip: trip,
+                    lineID: pattern.lineID,
+                    routeID: pattern.routeID,
+                    kind: pattern.kind,
+                    compass: pattern.compass,
+                    direction: pattern.direction,
+                    headsign: pattern.headsign,
+                    departure: departure
+                ))
+            }
+        }
+
+        rows.sort { lhs, rhs in
+            if lhs.departure != rhs.departure { return lhs.departure < rhs.departure }
+            return lhs.id < rhs.id
+        }
+        return Array(rows.prefix(limit))
+    }
+}
