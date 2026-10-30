@@ -597,11 +597,23 @@ public struct JourneyPlanner: Sendable {
 
         var priced: [MissedTrainCost] = []
 
-        if let fallback = alternatives.min(by: { $0.arrivalTime < $1.arrivalTime }) {
-            let penalty = fallback.arrivalTime.timeIntervalSince(journey.arrivalTime)
+        // When each alternative actually gets a rider there who has just missed this
+        // train. A train alternative already has a fixed departure, but the walk is
+        // timed from the moment of planning — and nobody who missed the train set off
+        // then. They set off at its leave-by at the earliest, so the walk starts there;
+        // timing it from "now" understated the cost by however much slack was left.
+        func arrivalAfterMissing(_ other: Journey) -> Date {
+            guard other.isWalkOnly else { return other.arrivalTime }
+            let lateStart = journey.urgency.leaveBy.timeIntervalSince(other.departureTime)
+            return other.arrivalTime.addingTimeInterval(max(0, lateStart))
+        }
+
+        if let fallback = alternatives.min(by: { arrivalAfterMissing($0) < arrivalAfterMissing($1) }) {
+            let fallbackArrival = arrivalAfterMissing(fallback)
+            let penalty = fallbackArrival.timeIntervalSince(journey.arrivalTime)
             if penalty > 0 {
                 priced.append(MissedTrainCost(
-                    fallbackArrival: fallback.arrivalTime,
+                    fallbackArrival: fallbackArrival,
                     fallbackBoarding: fallback.rides.first?.departure,
                     penalty: penalty
                 ))
