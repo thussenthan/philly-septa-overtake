@@ -302,13 +302,77 @@ public struct RiderTuning: Codable, Hashable, Sendable {
 /// widget with nothing to show.
 ///
 /// The identifier tracks the bundle identifier by convention, so renaming the app
-/// means renaming this, both entitlements files, and nothing else.
+/// means renaming `baseAppGroupID`, both entitlements files, and nothing else.
 ///
-/// `UserDefaults(suiteName:)` returns nil if the entitlement is missing or the group
-/// isn't provisioned, so the fallback to `.standard` keeps the *app* working; only
-/// the widget goes quiet.
+/// **Sideloading renames the group.** SideStore and AltStore re-sign the app with the
+/// rider's own free team, and to keep identifiers unique per team they append the
+/// team ID: `group.com.thussenthan.Overtake` becomes
+/// `group.com.thussenthan.Overtake.<TEAMID>`. A hardcoded constant then points the
+/// app and the widget at a group that was never provisioned, each silently falls back
+/// to its own private defaults, and the widget shows its empty state forever. So the
+/// group is looked up at runtime from what this binary was actually signed with.
+///
+/// `UserDefaults(suiteName:)` is not a reliable probe — it hands back a usable object
+/// even for a group the process isn't entitled to — so availability is judged by
+/// whether the system will give this process the group's *container directory*. The
+/// fallback to `.standard` keeps the *app* working either way; only the widget goes
+/// quiet.
 public enum SharedStore {
-    public static let appGroupID = "group.com.thussenthan.Overtake"
+    /// The group the project's entitlements declare, before any re-signer touches it.
+    public static let baseAppGroupID = "group.com.thussenthan.Overtake"
+
+    /// The group this process can actually open: the one it was signed with, which on
+    /// a sideloaded build carries a team-ID suffix. Resolved once, because the app
+    /// and its widget each resolve it independently and have to land on the same one.
+    public static let appGroupID: String = resolveAppGroupID()
+
+    /// Chooses among the groups a bundle says it was signed with.
+    ///
+    /// Candidates come from, in order: the `ALTAppGroups` key AltStore-family
+    /// re-signers write into Info.plist; the entitlements in the embedded
+    /// provisioning profile, which a sideloaded build always carries; then the
+    /// declared constant. Only groups that are the declared one or an extension of it
+    /// are considered, and only one the system will open is returned.
+    static func resolveAppGroupID(
+        bundle: Bundle = .main,
+        canOpen: (String) -> Bool = SharedStore.containerExists
+    ) -> String {
+        let candidates = declaredGroups(in: bundle) + provisionedGroups(in: bundle)
+        for group in candidates where group.hasPrefix(baseAppGroupID) && canOpen(group) {
+            return group
+        }
+        return baseAppGroupID
+    }
+
+    static func containerExists(_ group: String) -> Bool {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
+    }
+
+    /// The groups AltStore and SideStore record in Info.plist when they re-sign.
+    static func declaredGroups(in bundle: Bundle) -> [String] {
+        bundle.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+    }
+
+    /// The groups in the embedded provisioning profile's entitlements.
+    ///
+    /// The profile is a signed blob with a plain-text property list inside it, so the
+    /// list is cut out by its XML markers rather than by unpacking the signature.
+    /// Absent on a simulator or App Store build, which is fine: those are not renamed.
+    static func provisionedGroups(in bundle: Bundle) -> [String] {
+        guard let url = bundle.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url),
+              let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), options: .backwards),
+              start.lowerBound < end.upperBound,
+              let profile = try? PropertyListSerialization.propertyList(
+                  from: data.subdata(in: start.lowerBound..<end.upperBound),
+                  options: [],
+                  format: nil
+              ) as? [String: Any],
+              let entitlements = profile["Entitlements"] as? [String: Any]
+        else { return [] }
+        return entitlements["com.apple.security.application-groups"] as? [String] ?? []
+    }
 
     private static let snapshotKey = "commuteSnapshot.v1"
     private static let appearanceKey = "appearance.v1"
@@ -326,7 +390,7 @@ public enum SharedStore {
     /// empty store, and the only symptom is a widget that says the addresses aren't
     /// set when they plainly are.
     public static var isSharedContainerAvailable: Bool {
-        UserDefaults(suiteName: appGroupID) != nil
+        containerExists(appGroupID)
     }
 
     public static func snapshot(from defaults: UserDefaults = SharedStore.defaults) -> CommuteSnapshot? {

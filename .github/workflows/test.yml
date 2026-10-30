@@ -1,0 +1,28 @@
+# Runs the engine's tests and builds the app, on a macOS runner, so a change can be
+# checked without a Mac. Run it from the Actions tab.
+name: Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/adoring-johnson-olhica]
+    paths: ['**.swift', '.github/workflows/test.yml']
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Engine tests
+        run: swift test 2>&1 | tail -40
+
+      - name: Build app and widget
+        run: |
+          xcodebuild \
+            -project SEPTACommute.xcodeproj \
+            -scheme SEPTACommute \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tail -30

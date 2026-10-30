@@ -167,15 +167,28 @@ the app stops working and has to be reinstalled, weekly, forever. Nothing is bro
 when that happens. Membership of the Apple Developer Program raises it to a year and
 makes the script unnecessary.
 
-### Without a Mac: SideStore / AltStore
+### Without Xcode: SideStore / AltStore
+
+If you'd rather not rebuild every week, you can install Overtake with
+[SideStore](https://sidestore.io) or [AltStore](https://altstore.io). They re-sign the
+app with your free Apple ID and keep refreshing it in the background, so the seven days
+stop mattering.
 
 The **Build IPA** workflow (Actions tab → Run workflow) builds an unsigned
-`Overtake.ipa` on GitHub's macOS runners. Download the artifact on the phone and
-open it in [SideStore](https://sidestore.io) or [AltStore](https://altstore.io),
-which re-sign it with your free Apple ID and keep refreshing it in the background,
-so the seven days stop mattering. The widget survives; the free-account limits
-(three sideloaded apps, ten App IDs a week) still apply, and the app and widget
-count as two App IDs.
+`Overtake.ipa` on GitHub's macOS runners; download the artifact on the phone and open
+it in SideStore or AltStore with **+**.
+
+Worth knowing:
+
+- SideStore needs a computer **once**, to create its pairing file (use
+  [idevice_pair](https://github.com/jkcoxson/idevice_pair/releases) with *Remote
+  Pairing*), and **LocalDevVPN** connected whenever it refreshes. After that it works
+  without one.
+- Re-signing appends your team ID to the app-group identifier. The app and widget look
+  the group up at runtime (`SharedStore.appGroupID`), so the widget keeps working.
+- Free accounts allow three sideloaded apps and ten App IDs a week; the app and its
+  widget count as two. Sign-in with SideStore can fail with `-80045` or `-80046` when
+  Apple changes what it accepts — see the SideStore issue tracker for current workarounds.
 
 To run the engine's tests without a simulator:
 

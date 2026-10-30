@@ -6,9 +6,6 @@ name: Build IPA
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/adoring-johnson-olhica]
-    paths: ['.github/workflows/build-ipa.yml']
 
 jobs:
   build:
