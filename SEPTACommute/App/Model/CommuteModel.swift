@@ -146,6 +146,7 @@ final class CommuteModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
     private var planTask: Task<Void, Never>?
+    private var sectionsCache: (places: [SavedPlace], sections: [(line: Line, stations: [Station])])?
     private lazy var boardPlanner = JourneyPlanner(network: network)
     private var preferencesTask: Task<Void, Never>?
     private var replanScheduled = false
@@ -672,6 +673,16 @@ final class CommuteModel: ObservableObject {
     /// Norristown, then the trackless trolleys. Sorting by badge put route 59 at the
     /// top of the Philadelphia rapid-transit network.
     var stationSections: [(line: Line, stations: [Station])] {
+        // Ordering 587 stations by line and distance is the slow part of opening a
+        // picker, and the answer only changes when the rider's places do — but it was
+        // redone on every keystroke of the search and every thirty-second replan.
+        if let cached = sectionsCache, cached.places == places.places { return cached.sections }
+        let built = buildStationSections()
+        sectionsCache = (places.places, built)
+        return built
+    }
+
+    private func buildStationSections() -> [(line: Line, stations: [Station])] {
         let homeLines = Set((places.places.compactMap { place -> Station? in
             network.nearestStation(to: place.coordinate)?.station
         }).flatMap(\.lines))
@@ -831,6 +842,12 @@ final class CommuteModel: ObservableObject {
 
     /// Shown under the alerts when the fetch failed and there is nothing cached, so
     /// an empty list isn't mistaken for good news.
+    /// False until a fetch (or the cache) has produced something, so an empty list
+    /// can't be mistaken for "SEPTA isn't reporting anything".
+    var alertsHaveLoaded: Bool {
+        alertService.digest.fetchedAt > .distantPast
+    }
+
     var alertFetchProblem: String? {
         guard alertService.digest.alerts.isEmpty else { return nil }
         return alertService.lastError
