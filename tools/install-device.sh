@@ -9,6 +9,7 @@
 #
 #   tools/install-device.sh              # find the device, build, install, launch
 #   DEVICE=<uuid> tools/install-device.sh
+#   TEAM=<team id> tools/install-device.sh   # if Xcode says the project needs a team
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -71,12 +72,24 @@ echo "Device: $DEVICE"
 # 'generic/platform=iOS' rather than the device id: it builds the same product and
 # does not fail when the phone drops off the USB bus mid-build.
 echo "Building…"
-xcodebuild \
+BUILD_LOG=$(mktemp)
+if ! xcodebuild \
     -project SEPTACommute.xcodeproj \
     -scheme SEPTACommute \
     -destination 'generic/platform=iOS' \
     -derivedDataPath "$DERIVED" \
-    build | tail -3
+    -allowProvisioningUpdates \
+    ${TEAM:+DEVELOPMENT_TEAM="$TEAM"} \
+    build >"$BUILD_LOG" 2>&1; then
+    # The last few lines hide the reason: signing failures are reported near the top.
+    grep -E "error:|requires a development team|No profiles" "$BUILD_LOG" | head -10 || true
+    echo
+    echo "Build failed. If it is about a development team, name yours:"
+    echo "    TEAM=<your 10-character team id> $0"
+    echo "Full log: $BUILD_LOG"
+    exit 1
+fi
+tail -3 "$BUILD_LOG"
 
 [[ -d "$APP" ]] || { echo "No app at $APP — the build did not produce one."; exit 1; }
 
@@ -85,7 +98,7 @@ echo "Installing…"
 xcrun devicectl device install app --device "$DEVICE" "$APP"
 
 echo "Launching…"
-xcrun devicectl device process launch --device "$DEVICE" "$BUNDLE_ID"
+xcrun devicectl device process launch --terminate-existing --device "$DEVICE" "$BUNDLE_ID"
 
 echo
 echo "Done. Signed for development, so expect about seven days before it needs this again."

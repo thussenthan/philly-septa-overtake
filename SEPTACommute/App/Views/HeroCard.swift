@@ -389,6 +389,7 @@ struct HeroCard: View {
 struct LeaveCountdown: View {
     var urgency: Urgency
     @EnvironmentObject private var model: CommuteModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Scales with Dynamic Type; a fixed 32 pt number stayed small beside everything
     /// else at the larger accessibility sizes.
     @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 32
@@ -424,7 +425,7 @@ struct LeaveCountdown: View {
                         .font(.system(size: numberSize, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(tint)
-                        .contentTransition(.numericText(countsDown: true))
+                        .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
                 }
             }
             .onChange(of: remaining < -2) { _, missed in

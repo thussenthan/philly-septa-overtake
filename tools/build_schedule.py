@@ -139,10 +139,22 @@ def resolve_routes(feed: "Feed", scope: str) -> list[str]:
 
 
 def download_feed(destination: Path) -> Path:
+    """Fetch the feed to a temporary file and rename it into place only when whole.
+
+    Writing straight to the cache path meant an interrupted download left a truncated
+    zip there, which every later run then reused as "cached".
+    """
     destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_suffix(destination.suffix + ".part")
     print(f"downloading {GTFS_URL}", file=sys.stderr)
-    with urllib.request.urlopen(GTFS_URL) as response, open(destination, "wb") as handle:
-        handle.write(response.read())
+    with urllib.request.urlopen(GTFS_URL, timeout=120) as response:
+        if response.status != 200:
+            raise SystemExit(f"download failed: HTTP {response.status}")
+        partial.write_bytes(response.read())
+    if not zipfile.is_zipfile(partial):
+        partial.unlink(missing_ok=True)
+        raise SystemExit("download failed: the response was not a zip file")
+    partial.replace(destination)
     print(f"  wrote {destination} ({destination.stat().st_size:,} bytes)", file=sys.stderr)
     return destination
 
@@ -1185,6 +1197,8 @@ def report(data: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feed", type=Path, help="local gtfs_public.zip instead of downloading")
+    parser.add_argument("--refresh", action="store_true",
+                        help="download the feed again even if a cached copy exists")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--report", action="store_true", help="print a summary and do not write Swift")
     parser.add_argument("--json", type=Path, help="also dump the extracted data as JSON")
@@ -1195,7 +1209,9 @@ def main() -> int:
     feed_path = args.feed
     if feed_path is None:
         feed_path = CACHE_DIR / "gtfs_public.zip"
-        if not feed_path.exists():
+        # A cached copy is reused forever otherwise, which is exactly how a stale
+        # timetable gets regenerated without anyone noticing it is stale.
+        if args.refresh or not feed_path.exists() or not zipfile.is_zipfile(feed_path):
             download_feed(feed_path)
         else:
             print(f"using cached {feed_path}", file=sys.stderr)

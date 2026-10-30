@@ -132,6 +132,16 @@ kept; one going the other way is a different station, not a worse option.
 It's also the honest way to use a screen with room to spare, which stretching the
 recommendation into a taller box was not.
 
+### The station board
+
+Most Metro stations have no departure sign, so the app can be one. When you're standing
+in a station the home screen offers **Everything leaving Erie**, and the list icon in the
+top corner opens the same board for any station. It shows every train that will let a
+rider on — each direction on its own card, whatever its destination — with a live
+countdown and the clock time. A train that terminates at the station, or whose doors
+don't open there, isn't a departure and isn't listed. Times are the published schedule,
+not live positions, and the board says so.
+
 Everything else is a tap: the two ends open their pickers, the card and the rows
 open the full itinerary with clock times and skipped stations, and the bottom row
 opens SEPTA's alert text, the planner's caveats and where the timetable came from.

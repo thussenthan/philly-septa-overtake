@@ -125,8 +125,11 @@ struct PlanView: View {
         HStack(spacing: 10) {
             Button { activeSheet = .origin } label: {
                 endpoint(symbol: originSymbol, text: originDescription, detail: nil, alignment: .leading)
+                    .frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Starting from \(originDescription)")
+            .accessibilityHint("Double tap to change where you start")
 
             Image(systemName: "arrow.right")
                 .font(.caption.weight(.bold))
@@ -141,8 +144,11 @@ struct PlanView: View {
                     detail: model.targetReason ?? (model.target == nil ? "Tap to choose" : nil),
                     alignment: .trailing
                 )
+                .frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(model.target == nil ? "Choose where you are going" : "Going to \(model.targetName)")
+            .accessibilityHint(model.targetReason ?? "Double tap to change your destination")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
