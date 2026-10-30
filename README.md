@@ -22,7 +22,7 @@ screen. You can override it whenever you like.
 Coverage is the whole SEPTA Metro rail map: the **B** Broad Street Line, **L**
 Market-Frankford, **M** Norristown High Speed, **T1–T5** subway-surface trolleys,
 **G** Girard, **D** Media-Sharon Hill, the trackless trolleys, and the B1 Owl
-night bus — 586 stations, 321 stopping patterns.
+night bus — 587 stations, 326 stopping patterns.
 
 So the app works it out door-to-door, and shows you the tradeoff instead of just a
 single answer:
@@ -204,10 +204,10 @@ departure times are the real published ones rather than estimates:
 | | |
 |---|---|
 | Source | `github.com/septadev/GTFS` → `gtfs_public.zip` → `google_bus.zip` |
-| Feed version | `v202607261` (valid 2026-07-26 → 2026-08-08) |
+| Feed version | `v202611010` (valid 2026-11-01 → 2027-02-20) |
 | Coverage | 16 rail routes across 9 Metro lines, plus the B1 Owl night bus |
-| Stations | 585 |
-| Stopping patterns | 321 |
+| Stations | 587 |
+| Stopping patterns | 326 |
 
 **These are scheduled times, not live train positions** — a limitation of this app,
 not of SEPTA's data. Live positions for the whole Metro map do exist, including the
@@ -279,17 +279,18 @@ screen. Single-ride trips don't mention money at all.
 nearly every date, so two Wednesdays can run different service IDs, and the generator
 samples one date per weekday. That's an assumption worth checking rather than
 believing, so `--report` now compares the emitted timetable against **every date in
-the feed window**, per pattern. On the current feed it holds exactly:
+the feed window**, per pattern. On the current feed it holds everywhere except the
+seven holiday dates (Christmas, New Year's and the like):
 
 ```
-calendar: the day-type timetable holds on every date in the feed window
+calendar: 577 pattern-days across 7 dates do not match their day type
 ```
 
-The two revisions this feed carries differ only in service IDs, apart from three
-Sunday B2 trips that the special-event filter already removes. A holiday, or a
-timetable change mid-window, would not hold — and the check says so instead of
-silently averaging one away. (The app's holiday fallback to a Sunday schedule stays,
-because a two-week window contains no holiday to learn from.)
+A feed this long (sixteen weeks) carries more than one timetable revision, so the
+generator takes, for each weekday, the revision that covers the most dates rather than
+the one in the final week — the latter would be right for a fortnight and wrong for
+the rest. The app's holiday fallback to a Sunday schedule stays; the report is what
+shows which holidays a feed actually differs on.
 
 Deliberately unused, with the reason:
 
@@ -640,7 +641,7 @@ the planner. Two routes in, with different costs:
   used for. It is also protobuf, in a project with no dependencies by design.
 
 The join has a prerequisite either way: **the bundled data discards `trip_id`.** The
-generator collapses trips into 321 patterns and compresses departures into frequency
+generator collapses trips into 326 patterns and compresses departures into frequency
 bands, so there is nothing for a live `trip` to attach to. Emitting ids per departure
 breaks that compression and adds roughly 130 KB — affordable, but a change to the data
 format rather than a bolt-on.

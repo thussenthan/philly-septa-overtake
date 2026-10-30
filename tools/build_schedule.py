@@ -15,8 +15,8 @@ Usage
     python3 tools/build_schedule.py --report         # print a human summary only
     python3 tools/build_schedule.py --scope metro    # the whole Metro rail map
 
-The feed only declares two weeks of validity, so this is re-run whenever the
-timetable changes. ``SEPTAData.feedEndDate`` lets the app warn a rider when the
+The feed declares a limited validity window (two weeks to four months), so this is
+re-run whenever the timetable changes. ``SEPTAData.feedEndDate`` lets the app warn a rider when the
 bundled schedule has aged out.
 """
 
@@ -308,6 +308,17 @@ def recurring_services(feed: Feed) -> tuple[dict[str, set[dt.date]], set[str]]:
     return dates, rare
 
 
+# SEPTA's own ordering of the lines, for feeds that don't publish route_sort_order:
+# the subway and trolleys, then the buses, then the Owl.
+# Larger than any value a feed publishes: the sort key is a minimum, and this was
+# 9999 until SEPTA started numbering its routes 10011, 10021, … and every line
+# clamped to the same value.
+SORT_UNKNOWN = 10**9
+SORT_FALLBACK = {
+    "L": 1001, "B": 1011, "T": 1021, "G": 1031, "D": 1041, "M": 1051,
+    "59": 2054, "66": 2061, "75": 2067, "B-OWL": 3002,
+}
+
 # Matches MetroKit's DayType cases.
 DAY_TYPES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -323,19 +334,38 @@ def representative_dates(feed: Feed, dates: dict[str, set[dt.date]]) -> dict[str
 
     Sampling real dates (rather than unioning service IDs) still avoids stitching
     together timetable revisions never in effect on the same day.
+
+    Which revision, though, matters once a feed spans months. SEPTA ships more than
+    one timetable revision inside a single feed, and the first version of this took
+    the *latest* occurrence of each weekday so as not to bake in one already
+    superseded. On a two-week feed that is right. On a sixteen-week one it hands the
+    app the revision that starts in the final fortnight and is wrong for the other
+    fourteen weeks — which is when the app is actually used. So each weekday takes
+    the revision, meaning the exact set of recurring services running that day, that
+    covers the most dates, and the latest date within it. A revision that spans only
+    part of the window loses to the one that spans most of it, holidays (each its own
+    unique set) never win, and a feed with revisions of equal length still falls
+    back to the latest, as before.
     """
     info = feed.table("feed_info.txt")[0]
     start, end = parse_date(info["feed_start_date"]), parse_date(info["feed_end_date"])
 
-    # The *latest* occurrence of each weekday, not the earliest. SEPTA ships more
-    # than one timetable revision inside a single feed — this one carries services
-    # that only begin part-way through its validity window — so sampling the first
-    # week can generate a timetable that is already superseded.
+    active: dict[dt.date, set[str]] = defaultdict(set)
+    for service_id, days in dates.items():
+        if len(days) < RECURRING_DATE_THRESHOLD:
+            continue
+        for day in days:
+            if start <= day <= end:
+                active[day].add(service_id)
+
+    revisions: dict[str, dict[frozenset, list[dt.date]]] = defaultdict(lambda: defaultdict(list))
+    for day, service_ids in active.items():
+        revisions[DAY_TYPES[day.weekday()]][frozenset(service_ids)].append(day)
+
     chosen: dict[str, dt.date] = {}
-    day = start
-    while day <= end:
-        chosen[DAY_TYPES[day.weekday()]] = day
-        day += dt.timedelta(days=1)
+    for label, groups in revisions.items():
+        widest = max(groups.values(), key=lambda days: (len(days), max(days)))
+        chosen[label] = max(widest)
 
     missing = [d for d in DAY_TYPES if d not in chosen]
     if missing:
@@ -944,12 +974,12 @@ def emit_swift(data: dict) -> str:
                 # SEPTA's own ordering: L1 first, then B, T, G, D, M, then buses.
                 # Alphabetical by badge put the trackless trolleys ahead of the
                 # subway, which is nobody's mental model of this network.
-                "sort": 9999,
+                "sort": SORT_UNKNOWN,
             }
-            line_rows[line_id]["sort"] = min(
-                line_rows[line_id]["sort"],
-                int(route.get("route_sort_order") or 9999),
-            )
+            # Newer feeds leave route_sort_order empty, which would sort every line
+            # 9999 and scramble the pickers, so fall back to SEPTA's own order.
+            order = int(route.get("route_sort_order") or 0) or SORT_FALLBACK.get(line_id, SORT_UNKNOWN)
+            line_rows[line_id]["sort"] = min(line_rows[line_id]["sort"], order)
 
     station_lines: dict[str, set[str]] = defaultdict(set)
     for pattern in patterns:
