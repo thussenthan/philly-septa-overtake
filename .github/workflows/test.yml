@@ -4,9 +4,6 @@ name: Test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/adoring-johnson-olhica]
-    paths: ['**.swift', '.github/workflows/test.yml']
 
 jobs:
   test:
