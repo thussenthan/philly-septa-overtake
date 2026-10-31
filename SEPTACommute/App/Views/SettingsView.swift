@@ -151,6 +151,11 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section {
+            NavigationLink {
+                ServiceNotesView()
+            } label: {
+                Label(model.serviceStatusSummary, systemImage: model.serviceStatusSymbol)
+            }
             LabeledContent("Source", value: model.network.provenance.source)
             LabeledContent("Generated", value: model.network.provenance.generated)
             if let until = model.network.provenance.validUntil {
@@ -163,6 +168,8 @@ struct SettingsView: View {
             }
         } header: {
             Text("Timetable")
+        } footer: {
+            Text("Times are scheduled, not live. Trains can run early or late.")
         }
     }
 

@@ -526,7 +526,7 @@ final class CommuteModel: ObservableObject {
 
         let now = Date()
         var options = preferences.plannerOptions()
-        options.maxResults = 6
+        options.maxResults = 8
 
         let accessCandidates = candidateStations(near: origin.coordinate, limit: options.maxAccessStations)
         let egressCandidates = candidateStations(near: destination.coordinate, limit: options.maxEgressStations)

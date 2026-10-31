@@ -4,128 +4,120 @@ import SwiftUI
 ///
 /// SEPTA's alert text, the planner's caveats, and where the timetable came from.
 /// All of it matters some of the time and none of it changes which train to catch,
-/// so it lives one tap away rather than above the answer.
+/// so it lives in Settings rather than on the answer.
 struct ServiceNotesView: View {
     @EnvironmentObject private var model: CommuteModel
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !model.serviceAlerts.isEmpty {
-                    Section("From SEPTA") {
-                        ForEach(model.serviceAlerts) { alert in
-                            alertRow(alert)
-                        }
-                    }
-                }
-
-                if let problem = model.alertFetchProblem {
-                    Section {
-                        Label(problem, systemImage: "wifi.exclamationmark")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if !model.noteMessages.isEmpty {
-                    Section("About these options") {
-                        ForEach(model.noteMessages, id: \.self) { note in
-                            Text(note)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if !model.fareNotes.isEmpty {
-                    Section("Fares") {
-                        ForEach(model.fareNotes, id: \.self) { note in
-                            Text(note)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if !model.estimatedTimeNotes.isEmpty {
-                    Section("How exact these times are") {
-                        ForEach(model.estimatedTimeNotes, id: \.self) { note in
-                            Text(note)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if let problem = model.sharedContainerProblem {
-                    Section {
-                        Label(problem, systemImage: "square.stack.3d.up.slash")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let update = model.newerScheduleNote {
-                    Section {
-                        Label(update, systemImage: "arrow.down.circle")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Timetable") {
-                    Text(model.scheduleFootnote)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let window = model.scheduleWindowNote {
-                        Text(window)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Scheduled times, not live train positions.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let live = model.liveDataNote {
-                        Text(live)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let plannedAt = model.lastPlannedAt {
-                        Text("Options worked out at \(Format.clock(plannedAt)).")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if model.serviceAlerts.isEmpty, model.alertFetchProblem == nil {
-                    Section {
-                        if model.alertsHaveLoaded {
-                            Label("SEPTA isn't reporting anything on your lines.", systemImage: "checkmark.circle")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            // Not "all clear": nothing has been asked yet, or the answer
-                            // hasn't arrived, and saying otherwise is the one thing an
-                            // alerts screen mustn't do.
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Checking SEPTA's alerts…")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+        List {
+            if !model.serviceAlerts.isEmpty {
+                Section("From SEPTA") {
+                    ForEach(model.serviceAlerts) { alert in
+                        alertRow(alert)
                     }
                 }
             }
-            .navigationTitle("Service & data")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+
+            if let problem = model.alertFetchProblem {
+                Section {
+                    Label(problem, systemImage: "wifi.exclamationmark")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if !model.noteMessages.isEmpty {
+                Section("About these options") {
+                    ForEach(model.noteMessages, id: \.self) { note in
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if !model.fareNotes.isEmpty {
+                Section("Fares") {
+                    ForEach(model.fareNotes, id: \.self) { note in
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if !model.estimatedTimeNotes.isEmpty {
+                Section("How exact these times are") {
+                    ForEach(model.estimatedTimeNotes, id: \.self) { note in
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let problem = model.sharedContainerProblem {
+                Section {
+                    Label(problem, systemImage: "square.stack.3d.up.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let update = model.newerScheduleNote {
+                Section {
+                    Label(update, systemImage: "arrow.down.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Timetable") {
+                Text(model.scheduleFootnote)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let window = model.scheduleWindowNote {
+                    Text(window)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Scheduled times, not live train positions.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let live = model.liveDataNote {
+                    Text(live)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if let plannedAt = model.lastPlannedAt {
+                    Text("Options worked out at \(Format.clock(plannedAt)).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if model.serviceAlerts.isEmpty, model.alertFetchProblem == nil {
+                Section {
+                    if model.alertsHaveLoaded {
+                        Label("SEPTA isn't reporting anything on your lines.", systemImage: "checkmark.circle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        // Not "all clear": nothing has been asked yet, or the answer
+                        // hasn't arrived, and saying otherwise is the one thing an
+                        // alerts screen mustn't do.
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking SEPTA's alerts…")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
+        .navigationTitle("Service & data")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func alertRow(_ alert: ServiceAlert) -> some View {

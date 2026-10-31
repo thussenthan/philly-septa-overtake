@@ -66,8 +66,8 @@ struct StationBoardView: View {
     // MARK: - The board
 
     private func board(for station: Station) -> some View {
-        // Redrawn every fifteen seconds: the countdowns are minutes, and a board that
-        // is a minute stale shows a train that has gone.
+        // Redrawn every fifteen seconds: the list is recomputed on this beat, so a train
+        // that has gone drops off; the countdowns tick on their own.
         TimelineView(.periodic(from: .now, by: 15)) { context in
             let rows = model.stationBoard(at: station.id, asOf: context.date)
             ScrollView {
@@ -140,9 +140,14 @@ struct StationBoardView: View {
                 .lineLimit(2)
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(remaining <= 0 ? "now" : Format.countdown(remaining))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+                // Its own one-second timeline: the rows above are recomputed every
+                // fifteen seconds, which is plenty for the list but not for digits.
+                TimelineView(.periodic(from: .now, by: 1)) { tick in
+                    Text(Format.liveCountdown(row.departure.timeIntervalSince(tick.date)))
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                        .contentTransition(.numericText(countsDown: true))
+                }
                 Text(Format.clock(row.departure))
                     .font(.caption2)
                     .monospacedDigit()

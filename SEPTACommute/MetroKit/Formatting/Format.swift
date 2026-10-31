@@ -58,6 +58,21 @@ public enum Format {
         return "\(whole / 60):\(pad(whole % 60))"
     }
 
+    /// The departure board's countdown: always with seconds, "7:42" or "1:07:42".
+    ///
+    /// The board redraws every second, and unlike the headline countdown it is a
+    /// reference, not a prompt, so more precision costs nothing. Floored, for the same
+    /// reason as `countdown`.
+    public static func liveCountdown(_ seconds: TimeInterval) -> String {
+        if seconds <= 0 { return "now" }
+        let whole = Int(seconds.rounded(.down))
+        let hours = whole / 3600
+        let minutes = (whole % 3600) / 60
+        let secs = whole % 60
+        if hours > 0 { return "\(hours):\(pad(minutes)):\(pad(secs))" }
+        return "\(minutes):\(pad(secs))"
+    }
+
     /// "+3 min" / "−2 min" / "same time", for comparing options.
     public static func signedMinutes(_ seconds: TimeInterval) -> String {
         let total = Int((seconds / 60).rounded())

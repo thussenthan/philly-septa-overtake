@@ -190,6 +190,11 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.countdown(-5), "now")
         XCTAssertEqual(Format.countdown(0.4), "now", "not \"0:00\"")
         XCTAssertEqual(Format.countdown(12), "0:12")
+        XCTAssertEqual(Format.liveCountdown(-5), "now")
+        XCTAssertEqual(Format.liveCountdown(12), "0:12")
+        XCTAssertEqual(Format.liveCountdown(7 * 60 + 42.9), "7:42")
+        XCTAssertEqual(Format.liveCountdown(11 * 60 + 5), "11:05")
+        XCTAssertEqual(Format.liveCountdown(3600 + 7 * 60 + 42), "1:07:42")
         XCTAssertEqual(Format.countdown(247), "4 min")
         XCTAssertEqual(Format.countdown(3725), "1 hr 2 min")
     }

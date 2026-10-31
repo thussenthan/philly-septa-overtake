@@ -17,14 +17,24 @@ struct PlanView: View {
     /// then the presentation machinery dismissed the parent instead. One modifier
     /// driven by an enum is the shape that has always been supported.
     private enum ActiveSheet: String, Identifiable {
-        case settings, notes, destination, origin, board
+        case settings, destination, origin, board
         var id: String { rawValue }
     }
 
     @State private var activeSheet: ActiveSheet?
 
-    /// Alternatives shown inline before the rest move behind "all options".
-    private let inlineAlternatives = 2
+    /// Routes shown inline, hero included, before the rest move behind "all options":
+    /// everything that leaves within this window, but never fewer than the minimum.
+    private let inlineWindow: TimeInterval = 10 * 60
+    private let inlineMinimum = 3
+
+    private func inlineAlternativeCount(in plan: Plan) -> Int {
+        let now = Date()
+        let soon = plan.journeys.prefix { journey in
+            journey.isWalkOnly || journey.urgency.boardingDeparture.timeIntervalSince(now) <= inlineWindow
+        }.count
+        return max(soon, inlineMinimum) - 1
+    }
 
     var body: some View {
         NavigationStack {
@@ -39,7 +49,6 @@ struct PlanView: View {
                         tripRow
                         answerSection
                         if let station = model.currentStation { boardLink(for: station) }
-                        statusRow
                     }
                     // Tighter than the usual inset: the answer card is the screen, and
                     // every point of margin is a point it isn't using.
@@ -68,6 +77,16 @@ struct PlanView: View {
                         activeSheet = .settings
                     } label: {
                         Image(systemName: "gearshape")
+                            // Alerts and caveats live in Settings now, so a dot on
+                            // the gear is what says there is something to read.
+                            .overlay(alignment: .topTrailing) {
+                                if !model.serviceAlerts.isEmpty {
+                                    Circle()
+                                        .fill(Theme.color(for: Urgency.Level.leaveSoon))
+                                        .frame(width: 8, height: 8)
+                                        .offset(x: 3, y: -3)
+                                }
+                            }
                     }
                     .accessibilityLabel("Settings")
                 }
@@ -77,8 +96,6 @@ struct PlanView: View {
                 switch sheet {
                 case .settings:
                     SettingsView()
-                case .notes:
-                    ServiceNotesView()
                 case .destination:
                     DestinationPickerView(
                         title: "Going to",
@@ -291,6 +308,7 @@ struct PlanView: View {
     @ViewBuilder
     private func alternatives(in plan: Plan, best: Journey) -> some View {
         let rest = Array(plan.journeys.dropFirst())
+        let inlineAlternatives = inlineAlternativeCount(in: plan)
         if !rest.isEmpty {
             VStack(spacing: 0) {
                 ForEach(Array(rest.prefix(inlineAlternatives).enumerated()), id: \.element.id) { index, journey in
@@ -418,64 +436,30 @@ struct PlanView: View {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
     }
-
-    // MARK: - Status
-
-    /// One row for everything that isn't the answer: SEPTA's alerts, the planner's
-    /// caveats, where the timetable came from. Counted rather than quoted, so the
-    /// screen stays the same height whether there are none or nine.
-    private var statusRow: some View {
-        Button { activeSheet = .notes } label: {
-            HStack(spacing: 10) {
-                Image(systemName: statusSymbol)
-                    .font(.footnote)
-                    .foregroundStyle(statusTint)
-                    .frame(width: 18)
-                Text(statusSummary)
-                    .font(.footnote)
-                    .foregroundStyle(statusTint)
-                    .lineLimit(2)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private var statusSymbol: String {
-        if let worst = model.serviceAlerts.first {
-            return worst.severity >= .delay ? "exclamationmark.triangle.fill" : "megaphone.fill"
-        }
-        return model.noteMessages.isEmpty ? "info.circle" : "info.circle.fill"
-    }
-
-    private var statusTint: Color {
-        guard let worst = model.serviceAlerts.first else { return .secondary }
-        return Theme.color(for: worst.severity)
-    }
-
-    /// "Delays on the B · 1 note", or just where the times came from.
-    private var statusSummary: String {
-        var parts: [String] = []
-        if let worst = model.serviceAlerts.first {
-            parts.append(model.alertChipText(worst))
-            let others = model.serviceAlerts.count - 1
-            if others > 0 { parts.append("\(others) more alert\(others == 1 ? "" : "s")") }
-        }
-        let notes = model.noteMessages.count
-        if notes > 0 { parts.append("\(notes) note\(notes == 1 ? "" : "s")") }
-        guard parts.isEmpty else { return parts.joined(separator: " · ") }
-        return "Scheduled times, not live · service & data"
-    }
 }
 
 extension CommuteModel {
+    var serviceStatusSymbol: String {
+        if let worst = serviceAlerts.first {
+            return worst.severity >= .delay ? "exclamationmark.triangle.fill" : "megaphone.fill"
+        }
+        return noteMessages.isEmpty ? "info.circle" : "info.circle.fill"
+    }
+
+    /// "Delays on the B · 1 note", or just a label for the screen.
+    var serviceStatusSummary: String {
+        var parts: [String] = []
+        if let worst = serviceAlerts.first {
+            parts.append(alertChipText(worst))
+            let others = serviceAlerts.count - 1
+            if others > 0 { parts.append("\(others) more alert\(others == 1 ? "" : "s")") }
+        }
+        let notes = noteMessages.count
+        if notes > 0 { parts.append("\(notes) note\(notes == 1 ? "" : "s")") }
+        guard parts.isEmpty else { return parts.joined(separator: " · ") }
+        return "Service & data"
+    }
+
     /// A short phrase for the "From" row while location is still settling.
     var locationStatusSummary: String? {
         switch locationService.status {
