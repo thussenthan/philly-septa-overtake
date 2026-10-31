@@ -230,7 +230,8 @@ struct WidgetPalette {
         primary: .white,
         secondary: Color(white: 0.72),
         tertiary: Color(white: 0.48),
-        warning: Color(red: 1.0, green: 0.60, blue: 0.25)
+        // The app's accent orange as Theme draws it in dark mode (F28135).
+        warning: Color(red: 0.949, green: 0.505, blue: 0.209)
     )
 
     static let light = WidgetPalette(
@@ -239,7 +240,8 @@ struct WidgetPalette {
         primary: .black,
         secondary: Color(white: 0.32),
         tertiary: Color(white: 0.52),
-        warning: Color(red: 0.78, green: 0.35, blue: 0.02)
+        // ...and in light mode (DB5800).
+        warning: Color(red: 0.86, green: 0.345, blue: 0.0)
     )
 }
 

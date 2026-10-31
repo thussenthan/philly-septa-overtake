@@ -66,6 +66,10 @@ enum Theme {
     }
 
     /// SEPTA's published Broad Street Line orange, used as the app accent.
+    ///
+    /// Drawn as DB5800 in light mode and F28135 in dark, after the contrast
+    /// adjustment. The AccentColor assets in both targets carry those two values,
+    /// so system controls drawn from the asset match.
     static let accent = adaptive("F26100")
 
     /// A line's own published colour. Every line in the bundled data carries one,
@@ -98,7 +102,9 @@ enum Theme {
         switch level {
         case .missed: return .secondary
         case .leaveNow: return adaptive("C92A2A")
-        case .leaveSoon: return adaptive("E8590C")
+        // The accent itself: a second, slightly redder orange beside it read as a
+        // mismatch rather than a signal. Red and green carry the other two levels.
+        case .leaveSoon: return accent
         case .relaxed: return adaptive("2B8A3E")
         }
     }
