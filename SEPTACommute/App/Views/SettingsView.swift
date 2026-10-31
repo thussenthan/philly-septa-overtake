@@ -480,14 +480,14 @@ enum BugReport {
         Timetable \(network.provenance.source)
         """
 
-        var components = URLComponents(string: "https://github.com/thussenthan/philly-septa/issues/new")!
+        var components = URLComponents(string: "https://github.com/thussenthan/philly-septa-overtake/issues/new")!
         components.queryItems = [
             URLQueryItem(name: "title", value: ""),
             URLQueryItem(name: "body", value: body),
         ]
         // Falls back to the plain issues page: a button that opens the wrong thing is
         // still better than one that does nothing.
-        return components.url ?? URL(string: "https://github.com/thussenthan/philly-septa/issues")!
+        return components.url ?? URL(string: "https://github.com/thussenthan/philly-septa-overtake/issues")!
     }
 
     /// The hardware identifier — "iPhone15,3" — which is what actually distinguishes
