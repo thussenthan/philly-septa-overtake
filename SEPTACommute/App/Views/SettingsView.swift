@@ -151,11 +151,6 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section {
-            NavigationLink {
-                ServiceNotesView()
-            } label: {
-                Label(model.serviceStatusSummary, systemImage: model.serviceStatusSymbol)
-            }
             LabeledContent("Source", value: model.network.provenance.source)
             LabeledContent("Generated", value: model.network.provenance.generated)
             if let until = model.network.provenance.validUntil {
@@ -166,10 +161,32 @@ struct SettingsView: View {
             Link(destination: URL(string: "https://www.septa.org/alerts/")!) {
                 Label("SEPTA service alerts", systemImage: "exclamationmark.bubble")
             }
+            notesLink
         } header: {
             Text("Timetable")
         } footer: {
             Text("Times are scheduled, not live. Trains can run early or late.")
+        }
+    }
+
+    /// The planner's caveats are background reading, so they sit last and quiet,
+    /// in the footer's grey. A live SEPTA alert is not, and keeps its full weight.
+    @ViewBuilder
+    private var notesLink: some View {
+        NavigationLink {
+            ServiceNotesView()
+        } label: {
+            if model.serviceAlerts.isEmpty {
+                Label {
+                    Text(model.noteMessages.count > 1 ? "Notes" : "Note")
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                Label(model.serviceStatusSummary, systemImage: model.serviceStatusSymbol)
+            }
         }
     }
 
@@ -189,15 +206,15 @@ struct SettingsView: View {
     /// Back to the first-launch screen, for a phone changing hands or a move.
     private var resetSection: some View {
         Section {
-            Button("Forget my places and start over", role: .destructive) {
+            Button("Reset saved places", role: .destructive) {
                 confirmingReset = true
             }
             .confirmationDialog(
-                "Forget every saved place?",
+                "Remove all saved places?",
                 isPresented: $confirmingReset,
                 titleVisibility: .visible
             ) {
-                Button("Forget and start over", role: .destructive) {
+                Button("Remove places", role: .destructive) {
                     // Closed first: wiping the store swaps the screen underneath this
                     // sheet for onboarding.
                     dismiss()
@@ -208,7 +225,7 @@ struct SettingsView: View {
                     }
                 }
             } message: {
-                Text("Home, \(places.school?.name ?? "work") and any other places are removed from this phone. Your settings are kept.")
+                Text("Home, \(places.school?.name ?? "work") and any other places are removed from this phone. Your settings are kept, and the app will walk you through setting places up again.")
             }
         }
     }

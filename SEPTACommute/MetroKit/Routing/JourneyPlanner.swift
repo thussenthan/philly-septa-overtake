@@ -190,6 +190,40 @@ public struct JourneyPlanner: Sendable {
         return Plan(request: request, journeys: ranked, notes: notes, generatedAt: request.departAt)
     }
 
+    /// `plan`, topped up with later departures until there are at least `minimum`
+    /// options.
+    ///
+    /// The search takes only the next trip of each pattern and drops anything well
+    /// behind the best arrival, which is right for choosing a train and leaves the
+    /// home screen with a single card off-peak. A rider glancing at it wants to know
+    /// what comes after that one too, so this plans again as if they had just missed
+    /// the latest train found, and keeps the new trains. Slack is re-measured from
+    /// the original moment, since that is when the rider is reading it.
+    public func plan(_ request: PlanRequest, atLeast minimum: Int) -> Plan {
+        var result = plan(request)
+        guard !result.journeys.isEmpty else { return result }
+
+        var seen = Set(result.journeys.map(\.id))
+        // A handful of rounds is plenty: each one finds at least the next train.
+        for _ in 0..<4 where result.journeys.count < minimum {
+            guard let latest = result.journeys.filter({ !$0.isWalkOnly }).map(\.urgency.leaveBy).max() else { break }
+            var later = request
+            later.departAt = latest.addingTimeInterval(1)
+
+            let added = plan(later).journeys
+                .filter { !$0.isWalkOnly && !seen.contains($0.id) }
+                .map { journey -> Journey in
+                    var rebased = journey
+                    rebased.urgency.slack = journey.urgency.leaveBy.timeIntervalSince(request.departAt)
+                    return rebased
+                }
+            guard !added.isEmpty else { break }
+            seen.formUnion(added.map(\.id))
+            result.journeys += added.prefix(minimum - result.journeys.count)
+        }
+        return result
+    }
+
     // MARK: - Terminal (walking) legs
 
     private enum Role {

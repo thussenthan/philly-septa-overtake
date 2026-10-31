@@ -516,6 +516,26 @@ final class JourneyPlannerTests: XCTestCase {
         XCTAssertEqual(plan.journeys, plan.journeys.sorted { $0.arrivalTime < $1.arrivalTime })
     }
 
+    /// The home screen asks for at least three options; a tight tolerance that leaves
+    /// one gets topped up with the trains after it, timed from the original moment.
+    func testPlanIsToppedUpWithLaterDepartures() {
+        let request = PlanRequest(
+            origin: .station("a"),
+            destination: .station("f"),
+            departAt: Fixture.date(7, 58)
+        )
+        let planner = Fixture.planner { $0.arrivalTolerance = 60 }
+        let plain = planner.plan(request)
+        let topped = planner.plan(request, atLeast: 3)
+
+        XCTAssertGreaterThanOrEqual(topped.journeys.count, 3)
+        XCTAssertEqual(topped.journeys.first?.id, plain.journeys.first?.id)
+        XCTAssertEqual(Set(topped.journeys.map(\.id)).count, topped.journeys.count)
+        for journey in topped.journeys where !journey.isWalkOnly {
+            XCTAssertEqual(journey.urgency.slack, journey.urgency.leaveBy.timeIntervalSince(request.departAt), accuracy: 0.5)
+        }
+    }
+
     // MARK: - Service availability
 
     /// On a Saturday the fixture's express does not run, and the rider should be

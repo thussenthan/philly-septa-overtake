@@ -3,7 +3,7 @@ import SwiftUI
 /// The home screen: which train, and how long have I got.
 ///
 /// Deliberately the smallest thing that answers that. One card for the
-/// recommendation, at most two alternatives on one line each, and a single row for
+/// recommendation, a few alternatives on one line each, and a single row for
 /// anything else worth knowing. Stops, transfers, skipped stations, SEPTA's alert
 /// text and the provenance of the timetable are all real information — they are
 /// also all reasons to read instead of deciding, so each of them is a tap away.
@@ -24,14 +24,16 @@ struct PlanView: View {
     @State private var activeSheet: ActiveSheet?
 
     /// Routes shown inline, hero included, before the rest move behind "all options":
-    /// everything that leaves within this window, but never fewer than the minimum.
+    /// everything you have to set off for within this window, but never fewer than the
+    /// minimum. Measured to the leave-by rather than the train, because a train ten
+    /// minutes out from a station nine minutes' walk away is a "leave now".
     private let inlineWindow: TimeInterval = 10 * 60
     private let inlineMinimum = 3
 
     private func inlineAlternativeCount(in plan: Plan) -> Int {
         let now = Date()
         let soon = plan.journeys.prefix { journey in
-            journey.isWalkOnly || journey.urgency.boardingDeparture.timeIntervalSince(now) <= inlineWindow
+            journey.isWalkOnly || journey.urgency.secondsUntilLeaveBy(asOf: now) <= inlineWindow
         }.count
         return max(soon, inlineMinimum) - 1
     }
@@ -214,10 +216,14 @@ struct PlanView: View {
                     .truncationMode(.tail)
             }
             if let detail {
+                // Two lines rather than one: on a phone this sits in half the width,
+                // and the reason for a guessed destination was always cut off.
                 Text(detail)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                    .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))

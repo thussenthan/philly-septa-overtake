@@ -389,7 +389,7 @@ final class CommuteModel: ObservableObject {
         guard !hasManualTarget, let home = places.home, places.school != nil else { return nil }
         guard let location = locationService.coordinate, let school = places.school else { return nil }
         return SavedCommute.isHeadingOut(from: location, home: home.coordinate, away: school.coordinate)
-            ? "You're near home — heading out"
+            ? "Near home, heading out"
             : "Heading home"
     }
 
@@ -580,7 +580,8 @@ final class CommuteModel: ObservableObject {
             // here with the plan instead of on the main actor afterwards.
             let (result, departures) = await Task.detached(priority: .userInitiated) {
                 let planner = JourneyPlanner(network: network, options: options)
-                let result = planner.plan(request)
+                // Three, because the home screen shows at least three options.
+                let result = planner.plan(request, atLeast: 3)
                 return (result, Self.board(for: result, asOf: request.departAt, planner: planner))
             }.value
 
@@ -606,15 +607,23 @@ final class CommuteModel: ObservableObject {
         // the station it arrives at, so there is nothing to misread.
         let destinations = Set(plan.journeys.compactMap { $0.rides.first?.alightStation })
         guard !destinations.isEmpty else { return [] }
-        return planner
-            .departureBoard(
-                from: origin,
-                to: destinations,
-                after: now,
-                aimingAt: plan.best?.rides.first?.alightStation,
-                limit: 8
-            )
+        let board = planner.departureBoard(
+            from: origin,
+            to: destinations,
+            after: now,
+            aimingAt: plan.best?.rides.first?.alightStation,
+            limit: boardMaximum
+        )
+        // A window rather than a count: six rows is twenty-five minutes at the peak
+        // and an hour on a Sunday. The minimum keeps a sparse evening from showing a
+        // single row; the full board is a tap away for anything further out.
+        let soon = board.prefix { $0.departure.timeIntervalSince(now) <= boardWindow }.count
+        return Array(board.prefix(max(soon, boardMinimum)))
     }
+
+    private nonisolated static let boardWindow: TimeInterval = 30 * 60
+    private nonisolated static let boardMinimum = 4
+    private nonisolated static let boardMaximum = 8
 
     /// Hand the widget the trip, not the answer.
     ///

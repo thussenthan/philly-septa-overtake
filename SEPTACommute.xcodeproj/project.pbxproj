@@ -255,7 +255,7 @@
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SEPTACommuteWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SEPTACommuteWidget;
+				INFOPLIST_KEY_CFBundleDisplayName = Overtake;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -292,7 +292,7 @@
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SEPTACommuteWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SEPTACommuteWidget;
+				INFOPLIST_KEY_CFBundleDisplayName = Overtake;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

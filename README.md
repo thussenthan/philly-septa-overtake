@@ -87,7 +87,6 @@ The home screen is deliberately the smallest thing that answers the question:
       Walnut-Locust         8:09
  (B3) Southbound · Spur    14:40  8:52
       8th-Market            8:14
- Delays on the B · 1 note               ›
 ```
 
 The recommendation gets the full width, and it carries the things you then have to
@@ -151,9 +150,16 @@ countdown and the clock time. A train that terminates at the station, or whose d
 don't open there, isn't a departure and isn't listed. Times are the published schedule,
 not live positions, and the board says so.
 
-Everything else is a tap: the two ends open their pickers, the card and the rows
-open the full itinerary with clock times and skipped stations, and the bottom row
-opens SEPTA's alert text, the planner's caveats and where the timetable came from.
+How much is listed follows the clock rather than a fixed count. Every option you have
+to set off for in the next ten minutes is shown, and never fewer than three; when the
+search finds fewer than three, it plans again as if you had just missed the last train
+and adds what comes next. The platform sign underneath covers the next thirty minutes,
+at least four trains and at most eight.
+
+Everything else is a tap: the two ends open their pickers, and the card and the rows
+open the full itinerary with clock times and skipped stations. SEPTA's alert text, the
+planner's caveats and where the timetable came from live in Settings, and a dot on the
+gear says when SEPTA is reporting something on your lines.
 The arrow between the two ends turns the trip round when both are somewhere a trip
 can start; every station picker opens on the stations **nearby**; and the itinerary
 can be shared as plain text — leave by, which trains, arrive — for whoever is
@@ -232,10 +238,10 @@ departure times are the real published ones rather than estimates:
 | Stations | 587 |
 | Stopping patterns | 326 |
 
-**These are scheduled times, not live train positions** — a limitation of this app,
-not of SEPTA's data. Live positions for the whole Metro map do exist, including the
-subways; see [Wiring up real-time](#wiring-up-real-time) below for what was measured
-and what it would take.
+**These are scheduled times, not live train positions.** On the B and the L that is
+as good as anyone can do: SEPTA publishes nothing live for them. On the trolleys,
+Girard, Media-Sharon Hill and Norristown it does, and the app doesn't use it yet; see
+[Wiring up real-time](#wiring-up-real-time) below for what was measured.
 
 What the app *does* read is SEPTA's [service alerts
 API](https://www3.septa.org/api/Alerts/index.php) — plain JSON, no key, no
@@ -246,8 +252,8 @@ shown, never interpreted: alert text is prose, and a planner that acted on
 cached for a day, so opening the app underground still shows this morning's
 notices.
 
-SEPTA's feed only declares about two weeks of validity, so the bundled data ages
-out. `DataProvenance.validUntil` carries the expiry date and the app tells you when
+SEPTA's feed declares a validity window (the current one is sixteen weeks), and
+SEPTA revises the timetable several times a year, so the bundled data ages out. `DataProvenance.validUntil` carries the expiry date and the app tells you when
 it has passed. To refresh:
 
 ```sh
@@ -382,8 +388,9 @@ imports need adding.
 The search is exhaustive rather than heuristic. A door-to-door plan across the whole
 Metro map measures at about 31 ms on an Apple silicon Mac
 (`testPlanningIsFastEnoughToRunOnEveryLocationUpdate`), and in exchange the
-interesting strategies fall out on their own instead of being special-cased. Nothing tells the planner to look for an overtake — it enumerates walk → ride → (change → ride)* →
-walk and scores each by when the rider reaches the door.
+interesting strategies fall out on their own instead of being special-cased. Nothing
+tells the planner to look for an overtake — it enumerates walk → ride → (change →
+ride)* → walk and scores each by when the rider reaches the door.
 
 *Describing* those routes is a different job, and it does need an explicit check.
 An itinerary is only called an overtake when the timetable says one happened: the
@@ -615,81 +622,65 @@ build may fail to sign. The Simulator doesn't validate entitlements against a pr
 and works regardless. Backing it out is deleting the two `CODE_SIGN_ENTITLEMENTS`
 lines.
 
-The template files Xcode generates for a Live Activity, a Control widget and a
-configuration intent aren't used — delete `SEPTACommuteWidgetLiveActivity.swift`,
-`SEPTACommuteWidgetControl.swift` and `AppIntent.swift` if your template created
-them.
-
 ## Wiring up real-time
 
-This section used to say there was no confirmed real-time feed for the subway, on the
-strength of SEPTA's published resource names mentioning only bus and Regional Rail.
-That was wrong, and one request settled it. `TransitViewAll` returns live vehicles for
-**every Metro line**, subways included:
+Checked against SEPTA's live feeds on Saturday 31 October 2026, 9:23–9:27 AM, with B1
+and L1 in service. An earlier version of this section said `TransitViewAll` listed B
+and L trains with positions; it didn't then, and asking for them by route returns
+an empty list.
 
-```
-B1 11   B2 2   B3 2   L1 14   M1 4   T1 10   T2 8   T3 16   T4 9   T5 24
-G1 21   D1 5   D2 4   59 4   66 9   75 2      (vehicles in motion, one sample)
-```
+| | `TransitViewAll` (JSON) | GTFS-RT positions | GTFS-RT trip updates |
+|---|---|---|---|
+| T trolleys, G, D, M | yes, `late` populated | yes, with route and trip | yes |
+| **B Broad St** | **absent** | yard GPS only, no route or trip | **none** |
+| **L Market-Frankford** | **absent** | yard GPS, and an occasional car on the El, no route or trip | two trips, zero delay at every stop |
 
-Both GTFS-Realtime feeds respond too — `Trip/rtTripUpdates.pb` (540 KB) and
-`Vehicle/rtVehiclePosition.pb` (48 KB).
+The GTFS-Realtime feeds are `www3.septa.org/gtfsrt/septa-pa-us/Vehicle/rtVehiclePosition.pb`
+and `.../Trip/rtTripUpdates.pb`. The B cars that do report (600-series) are parked
+at Fern Rock; the L cars (1000–1200 series) sit at 69th St and Bridge-Pratt. GPS
+doesn't work in a tunnel, and the B is almost all tunnel.
 
-But positions are not predictions, and the two are split by mode:
+So for the B and the L there is nothing live to use. A schedule is the best any app
+can do on those two lines, until SEPTA publishes more. Where this app does fall short
+is the trolleys, Girard, Media-Sharon Hill and Norristown, where `late` is real and
+the app ignores it.
 
-| | live position | delay / prediction |
-|---|---|---|
-| G Girard, T trolleys, D, M Norristown | yes | **yes** — `late` populated, −6 to +6 min |
-| **B Broad St, L Market-Frankford** | yes | **no** — `late` is 998 on every vehicle, and `TripUpdates` omits them |
+`Timetable` is the only thing that turns patterns into concrete departures, so a
+real-time source can slot in behind it without touching the planner:
 
-That second row was measured twice, with a control. Of 32 subway trips running live,
-**0** appear in `TripUpdates`; of 819 bus and trolley trips running at the same moment,
-**770** do. A 94% hit rate against 0% is not a sampling artifact.
+- **`TransitViewAll`** is plain JSON, no key, no dependency, the same shape as the
+  alerts feed this app already reads, and its `trip` id joins to a scheduled trip.
+  For the T, G, D and M that is the whole feature.
+- **`TripUpdates`** has predicted times per stop, but it is protobuf, in a project
+  with no dependencies by design, and adds nothing on the B or L.
 
-So for the two subway lines SEPTA publishes where the trains are and nothing about
-whether they are late — which means no app has live predictions for the B or the L,
-and the schedule is the state of the art rather than a compromise. Where this app
-genuinely loses is the trolleys, Girard and Norristown, where `late` is populated and
-it ignores it.
-
-The pieces are in place to close it. `Timetable` is the only thing that turns patterns
-into concrete departures, so a real-time source slots in behind it without touching
-the planner. Two routes in, with different costs:
-
-- **`TransitViewAll`** is plain JSON, no key, no dependency — the same shape as the
-  alerts feed this app already reads, and it carries a `trip` id that joins to a
-  scheduled trip. For the T, G, D and M its `late` field is real, so this is the whole
-  feature for those four lines. For the B and L it offers position only.
-- **`TripUpdates`** carries predicted times per stop and would be the better source —
-  except it excludes the subways, so it buys nothing on the lines this app is mostly
-  used for. It is also protobuf, in a project with no dependencies by design.
-
-The join has a prerequisite either way: **the bundled data discards `trip_id`.** The
+Either way there is a prerequisite: **the bundled data discards `trip_id`.** The
 generator collapses trips into 326 patterns and compresses departures into frequency
 bands, so there is nothing for a live `trip` to attach to. Emitting ids per departure
-breaks that compression and adds roughly 130 KB — affordable, but a change to the data
-format rather than a bolt-on.
+adds roughly 130 KB and changes the data format.
 
 **Whatever is added, the schedule stays the base.** There is no signal on a Broad
 Street platform, so live data has to be a correction applied to an answer that already
 works offline, never a dependency the answer waits on.
 
-A live map is now possible too — `VehiclePositions` for the trains and the
-`shapes.txt` this generator skips for the lines. Worth being clear that it is the
+A live map is possible for the surface lines: `VehiclePositions` for the vehicles and
+the `shapes.txt` this generator skips for the lines. Worth being clear that it is the
 lower-value half: a map is what the general-purpose apps already do well, whereas
 "leave in 4:31" being a lie when the train is six minutes down is the thing that makes
 this app wrong.
 
 The documented `www3.septa.org/api/` endpoints `TrainView`, `Arrivals`,
 `NextToArrive` and `RRSchedules` are Regional Rail only and will not help here —
-`TransitViewAll` is the one that covers Metro.
+`TransitViewAll` is the one that covers the Metro surface lines.
 
 ## Privacy
 
 There is no account, no analytics, and no server. Addresses and preferences live in
-`UserDefaults` on the device. The only network calls the app makes are Apple's own
-address search and walking directions, and only when you're typing an address or
-have measured walk times switched on.
+`UserDefaults` on the device. The app makes three kinds of network call: SEPTA's
+public alerts feed, which sends nothing about you; Apple's address search, only while
+you're typing an address; and Apple's walking directions, only with measured walk
+times switched on, which sends Apple the start and end of each walk it measures.
+Otherwise your location stays on the device.
 
 ## Data licence
 
