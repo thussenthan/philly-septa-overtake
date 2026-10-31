@@ -158,10 +158,11 @@ struct SettingsView: View {
             }
             LabeledContent("Stations", value: "\(model.network.stations.count)")
             LabeledContent("Stopping patterns", value: "\(model.network.patterns.count)")
+            notesLink
+            // Last, because it is the one row drawn in the accent: it leaves the app.
             Link(destination: URL(string: "https://www.septa.org/alerts/")!) {
                 Label("SEPTA service alerts", systemImage: "exclamationmark.bubble")
             }
-            notesLink
         } header: {
             Text("Timetable")
         } footer: {
