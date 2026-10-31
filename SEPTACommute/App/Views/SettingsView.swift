@@ -169,21 +169,15 @@ struct SettingsView: View {
         }
     }
 
-    /// The planner's caveats are background reading, so they sit last and quiet,
-    /// in the footer's grey. A live SEPTA alert is not, and keeps its full weight.
+    /// The planner's caveats are background reading, so they sit last and look like
+    /// every other row. A live SEPTA alert is not, and says what it is.
     @ViewBuilder
     private var notesLink: some View {
         NavigationLink {
             ServiceNotesView()
         } label: {
             if model.serviceAlerts.isEmpty {
-                Label {
-                    Text(model.noteMessages.count > 1 ? "Notes" : "Note")
-                        .foregroundStyle(.secondary)
-                } icon: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.orange)
-                }
+                Label(model.noteMessages.count > 1 ? "Notes" : "Note", systemImage: "info.circle")
             } else {
                 Label(model.serviceStatusSummary, systemImage: model.serviceStatusSymbol)
             }
