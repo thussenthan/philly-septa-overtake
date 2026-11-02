@@ -141,9 +141,10 @@ struct StationBoardView: View {
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
                 // Its own one-second timeline: the rows above are recomputed every
-                // fifteen seconds, which is plenty for the list but not for digits.
+                // fifteen seconds, which is plenty for the list but not for the
+                // seconds that appear inside the last two minutes.
                 TimelineView(.periodic(from: .now, by: 1)) { tick in
-                    Text(Format.liveCountdown(row.departure.timeIntervalSince(tick.date)))
+                    Text(Format.countdown(row.departure.timeIntervalSince(tick.date)))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                         .contentTransition(.numericText(countsDown: true))
