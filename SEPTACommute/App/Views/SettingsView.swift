@@ -16,6 +16,8 @@ struct SettingsView: View {
                 walkingSection
                 routingSection
                 appearanceSection
+                valueSection
+                moreWaysSection
                 dataSection
                 aboutSection
                 resetSection
@@ -87,6 +89,72 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+        }
+    }
+
+    // MARK: - Value of time
+
+    /// The rider's time, priced. Blank turns value ranking off.
+    private var valueBinding: Binding<Double?> {
+        Binding(
+            get: { model.preferences.valueOfTimePerHour },
+            set: { model.preferences.valueOfTimePerHour = ($0 ?? 0) > 0 ? $0 : nil }
+        )
+    }
+
+    private var valueSection: some View {
+        Section {
+            HStack {
+                Text("My time is worth")
+                Spacer()
+                TextField(
+                    "",
+                    value: valueBinding,
+                    format: .currency(code: "USD").precision(.fractionLength(0...2)),
+                    prompt: Text("$\(Int(Self.suggestedHourlyValue)) e.g.")
+                )
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 110)
+                Text("/ hour").foregroundStyle(.secondary)
+            }
+            if model.preferences.valueOfTimePerHour == nil {
+                Button("Use $\(Int(Self.suggestedHourlyValue))/hour") {
+                    model.preferences.valueOfTimePerHour = Self.suggestedHourlyValue
+                }
+            } else {
+                Button("Turn off value ranking", role: .destructive) {
+                    model.preferences.valueOfTimePerHour = nil
+                }
+            }
+        } header: {
+            Text("Value of your time")
+        } footer: {
+            Text("A good number is your hourly wage. Every option — train, bus, Regional Rail, Indego — is then scored as fare + door-to-door time × this rate, and the cheapest overall is ranked first in a Best value list at the bottom of the home screen. The main recommendation is unchanged. Leave blank to turn off.")
+        }
+    }
+
+    /// Roughly Philadelphia's median hourly wage (BLS, 2025), shown as a starting
+    /// point rather than filled in, because the right number is the rider's own.
+    static let suggestedHourlyValue: Double = 30
+
+    // MARK: - More ways to go
+
+    private var moreWaysSection: some View {
+        Section {
+            Toggle("Show buses & Regional Rail", isOn: $model.preferences.showAllSEPTA)
+            Toggle("Show Indego bike share", isOn: $model.preferences.showIndego)
+            if model.preferences.showIndego {
+                Picker("Indego pass", selection: $model.preferences.indegoPass) {
+                    ForEach(IndegoPass.allCases) { pass in
+                        Text(pass.label).tag(pass)
+                    }
+                }
+            }
+        } header: {
+            Text("More ways to go")
+        } footer: {
+            Text("Listed under the Metro answer, never instead of it. Bikes come from Indego's live dock feed; prices are estimates (\(model.preferences.indegoPass.passPriceNote)) — check rideindego.com. Bus and Regional Rail times are SEPTA's published schedule.")
         }
     }
 

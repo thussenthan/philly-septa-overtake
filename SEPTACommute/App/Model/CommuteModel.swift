@@ -42,6 +42,18 @@ struct RiderPreferences: Codable, Equatable {
     /// Route only via stations with elevator access.
     var stepFreeOnly: Bool = false
 
+    // Supplemental options, listed under the Metro answer and never replacing it.
+
+    /// What the rider's time is worth, in dollars per hour. `nil` leaves value
+    /// ranking off. Usually their hourly wage.
+    var valueOfTimePerHour: Double?
+    /// Show Indego bike share as an option.
+    var showIndego: Bool = true
+    /// How the rider pays for Indego.
+    var indegoPass: IndegoPass = .payAsYouGo
+    /// Show options using buses and Regional Rail.
+    var showAllSEPTA: Bool = true
+
     /// Stored as an optional so preferences saved before this setting existed still
     /// decode — otherwise adding a key would silently reset every other setting.
     private var appearanceRaw: String?
@@ -86,6 +98,10 @@ extension RiderPreferences {
         allowTransfers = try container.decodeIfPresent(Bool.self, forKey: .allowTransfers) ?? defaults.allowTransfers
         stepFreeOnly = try container.decodeIfPresent(Bool.self, forKey: .stepFreeOnly) ?? defaults.stepFreeOnly
         appearanceRaw = try container.decodeIfPresent(String.self, forKey: .appearanceRaw)
+        valueOfTimePerHour = try container.decodeIfPresent(Double.self, forKey: .valueOfTimePerHour)
+        showIndego = try container.decodeIfPresent(Bool.self, forKey: .showIndego) ?? defaults.showIndego
+        indegoPass = (try? container.decodeIfPresent(IndegoPass.self, forKey: .indegoPass)) ?? defaults.indegoPass
+        showAllSEPTA = try container.decodeIfPresent(Bool.self, forKey: .showAllSEPTA) ?? defaults.showAllSEPTA
     }
 }
 
@@ -134,6 +150,10 @@ final class CommuteModel: ObservableObject {
     @Published private(set) var currentStation: Station?
     @Published private(set) var lastPlannedAt: Date?
     @Published private(set) var isRefreshing = false
+    /// Indego bike-share options for the current trip, cheapest bike first.
+    @Published var indegoOptions: [IndegoOption] = []
+    /// Bus and Regional Rail options for the current trip (supplemental).
+    @Published var extendedItineraries: [ExtendedItinerary] = []
 
     let network: Network
     let narrator: JourneyNarrator
@@ -142,6 +162,8 @@ final class CommuteModel: ObservableObject {
     let alertService: AlertService
     let scheduleFreshness: ScheduleFreshnessService
     let places: PlaceStore
+    let indego = IndegoService()
+    var extendedTask: Task<Void, Never>?
 
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
@@ -229,6 +251,12 @@ final class CommuteModel: ObservableObject {
 
         self.scheduleFreshness.$publishedVersion
             .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        // Live dock counts arrive after the plan; recompute the bike options then.
+        indego.$stations
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateIndegoOptions() }
             .store(in: &cancellables)
     }
 
@@ -521,8 +549,11 @@ final class CommuteModel: ObservableObject {
             plan = nil
             departures = []
             advice = nil
+            indegoOptions = []
+            extendedItineraries = []
             return
         }
+        planSupplemental()
 
         let now = Date()
         var options = preferences.plannerOptions()
