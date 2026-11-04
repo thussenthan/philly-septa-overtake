@@ -24,8 +24,11 @@ struct Wordmark: View {
     /// Cap height. Everything else scales from this.
     var height: CGFloat = 28
 
-    /// SEPTA's own line colours, cycled across the letters.
-    private static let palette = ["F26100", "0097D6", "5A960A", "5F249F", "DC2E6B", "FFD700"]
+    /// The icon's two lines: the first half of the name in the local's blue, the
+    /// second in the express's orange — the express finishing ahead, as in the icon.
+    /// Any length of name splits at its middle.
+    private static let local = "0097D6"
+    private static let express = "F26100"
 
     private var letters: [TransitLetter] {
         text.uppercased().compactMap(TransitLetter.init(character:))
@@ -50,7 +53,7 @@ struct Wordmark: View {
     private var inset: CGFloat { height * 0.14 }
 
     private func draw(_ letter: TransitLetter, at origin: CGPoint, index: Int, in context: inout GraphicsContext) {
-        let hex = Self.palette[index % Self.palette.count]
+        let hex = index < (letters.count + 1) / 2 ? Self.local : Self.express
         let color = Theme.adaptive(hex)
         let lineWidth = height * 0.17
 

@@ -18,6 +18,7 @@ struct ValueCandidate: Identifiable {
         case metro(Journey)
         case extended(ExtendedItinerary)
         case indego(IndegoOption)
+        case driving(DrivingEstimate)
     }
 
     var id: String
@@ -64,6 +65,7 @@ extension CommuteModel {
     /// Bike share and the all-SEPTA alternatives, alongside — never instead of —
     /// the Metro plan.
     func planSupplemental() {
+        updateDrivingEstimate()
         if preferences.showIndego {
             indego.refreshIfNeeded()
             updateIndegoOptions()
@@ -128,6 +130,25 @@ extension CommuteModel {
             }
             guard !Task.isCancelled, let self, let result else { return }
             self.extendedItineraries = result
+        }
+    }
+
+    /// The car, priced, when the rider has one and Best value is on — nothing
+    /// else uses it.
+    private func updateDrivingEstimate() {
+        guard preferences.hasCar,
+              preferences.valueOfTimePerHour != nil,
+              let origin = originCoordinate,
+              let destination = destinationCoordinate,
+              origin.distance(to: destination) > 400 else {
+            if !drivingEstimates.isEmpty { drivingEstimates = [] }
+            return
+        }
+        let car = preferences.car
+        Task { [weak self] in
+            let estimates = await DrivingService.shared.estimates(from: origin, to: destination, car: car, now: Date())
+            guard let self, self.originCoordinate == origin, self.destinationCoordinate == destination else { return }
+            if self.drivingEstimates != estimates { self.drivingEstimates = estimates }
         }
     }
 
@@ -310,6 +331,17 @@ extension CommuteModel {
                 arrival: option.arrival,
                 fare: option.price,
                 effortSeconds: option.bike == .classic ? option.climbSeconds : 0
+            ))
+        }
+        for drive in drivingEstimates {
+            let others = drivingEstimates.count > 1
+            candidates.append(ValueCandidate(
+                id: drive.id,
+                kind: .driving(drive),
+                title: drive.hasTolls ? "Drive, with tolls" : (others ? "Drive, no tolls" : "Drive"),
+                leaveBy: drive.departure,
+                arrival: drive.arrival,
+                fare: drive.cost
             ))
         }
         // Only what's on the price/arrival frontier: an option that costs more and

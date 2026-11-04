@@ -144,6 +144,7 @@ struct SettingsView: View {
 
     // MARK: - More ways to go
 
+    @ViewBuilder
     private var moreWaysSection: some View {
         Section {
             Toggle("Show alternative routes", isOn: $model.preferences.showAllSEPTA)
@@ -162,6 +163,16 @@ struct SettingsView: View {
             }
         } header: {
             Text("More ways to go")
+        }
+
+        Section {
+            CarFields(hasCar: $model.preferences.hasCar, car: $model.preferences.car)
+        } header: {
+            Text("Your car")
+        } footer: {
+            if model.preferences.hasCar && model.preferences.valueOfTimePerHour == nil {
+                Text("Set your time's value to compare driving.")
+            }
         }
     }
 
@@ -319,15 +330,15 @@ struct CreditsView: View {
     var body: some View {
         List {
             Section("SEPTA") {
-                Text("Timetables, fares, route shapes • service alerts")
+                Text("Timetables, fares, route shapes · service alerts")
                 Link("Developer licence", destination: URL(string: "https://www.septa.org/license-agreement/")!)
             }
             Section("Indego") {
-                Text("Live dock counts • published prices")
+                Text("Live dock counts · published prices")
                 Link("Indego pricing", destination: URL(string: "https://www.rideindego.com/pricing/")!)
             }
             Section("Maps") {
-                Text("Apple Maps • elevation from Open-Meteo")
+                Text("Apple Maps · elevation from Open-Meteo")
             }
             Section {
                 Text("Not affiliated with SEPTA, Indego, the City of Philadelphia, Bicycle Transit Systems or BCycle.")
@@ -359,10 +370,10 @@ struct RankingExplainerView: View {
             topic("Alternative routes", symbol: "arrow.triangle.branch", [
                 "Buses, trolleys, Metro and Regional Rail, searched on equal terms.",
                 "Shown only if nothing else is both cheaper and sooner.",
-                "SEPTA Key fares • published schedule, not live.",
+                "SEPTA Key fares · published schedule, not live.",
             ])
             topic("Indego", symbol: "bicycle", [
-                "Live dock counts • walk, ride and walk all counted.",
+                "Live dock counts · walk, ride and walk all counted.",
                 "Ride time includes the climb; uphill, the e-bike is suggested.",
                 "Price is what the ride adds to your pass.",
             ])
@@ -379,6 +390,8 @@ struct RankingExplainerView: View {
             topic("Best value", symbol: "dollarsign.circle", [
                 "Fare + door-to-door time at your hourly rate.",
                 "Climbing on a classic bike counts twice: time and effort.",
+                "Driving: Apple Maps time with traffic, plus 5 min to park.",
+                "Cost: gas from your mpg, 10¢/mi wear, your toll and parking.",
                 "Doesn't change the main answer.",
             ])
         }

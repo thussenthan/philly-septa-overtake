@@ -30,8 +30,10 @@ ICON_SIZE = 256
 # this is the only way to set the gap to the wordmark; it shows at half size.
 ICON_GAP = 24
 
-# Wordmark.palette.
-PALETTE = ["F26100", "0097D6", "5A960A", "5F249F", "DC2E6B", "FFD700"]
+# Wordmark.local and Wordmark.express: the first half of the name blue, the rest
+# orange, as in the icon.
+LOCAL = "0097D6"
+EXPRESS = "F26100"
 
 # TransitLetter.width and .gap, and the columns and rows the letters are built from.
 WIDTH, GAP = 0.62, 0.26
@@ -80,7 +82,7 @@ def wordmark(dark: bool, height: float = 100) -> str:
 
     parts = []
     for index, character in enumerate(NAME):
-        colour = adjusted(PALETTE[index % len(PALETTE)], dark)
+        colour = adjusted(LOCAL if index < (len(NAME) + 1) // 2 else EXPRESS, dark)
         ox, oy = index * advance + inset, inset
 
         def place(point: tuple[float, float]) -> str:

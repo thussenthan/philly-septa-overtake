@@ -17,6 +17,7 @@ struct OnboardingView: View {
             TabView(selection: $page) {
                 welcome.tag(0)
                 addresses.tag(1)
+                extras.tag(2)
             }
             // The system page dots float over the content, and with the keyboard
             // up they landed on the address suggestions. Drawn in the footer instead.
@@ -61,7 +62,7 @@ struct OnboardingView: View {
                            "Walking counts at both ends.")
                     bullet("bicycle",
                            "More ways",
-                           "Buses • Regional Rail • Indego bikes.")
+                           "Buses · Regional Rail · Indego bikes.")
                     bullet("wand.and.stars",
                            "Open it and go",
                            "Near home, it plans the trip out; anywhere else, home.")
@@ -143,7 +144,7 @@ struct OnboardingView: View {
     private var doneButtonTitle: String {
         if !places.isConfigured { return "Add an address to continue" }
         if places.home == nil || places.school == nil { return "Continue with one address" }
-        return "Done"
+        return "Next"
     }
 
     private func nearestStationBlurb(for place: SavedPlace) -> String {
@@ -156,7 +157,7 @@ struct OnboardingView: View {
             return "Nearest Metro station is \(nearest.station.name), \(Format.distance(meters: nearest.meters)) away"
         }
         let walk = WalkingModel().egressSeconds(straightLineMeters: nearest.meters)
-        return "\(nearest.station.name) • \(Format.minutes(walk)) walk"
+        return "\(nearest.station.name) · \(Format.minutes(walk)) walk"
     }
 
     private func bullet(_ symbol: String, _ title: String, _ body: String) -> some View {
@@ -180,39 +181,34 @@ struct OnboardingView: View {
     private var footer: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
-                ForEach(0..<2) { index in
+                ForEach(0..<Self.pageCount, id: \.self) { index in
                     Circle()
                         .fill(index == page ? Color.primary : Color.secondary.opacity(0.4))
                         .frame(width: 7, height: 7)
                 }
             }
             .accessibilityElement()
-            .accessibilityLabel("Page \(page + 1) of 2")
-            if page == 0 {
-                Button {
-                    withAnimation { page = 1 }
-                } label: {
-                    Text("Get started")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
-                .controlSize(.large)
-            } else {
-                Button {
+            .accessibilityLabel("Page \(page + 1) of \(Self.pageCount)")
+
+            Button {
+                switch page {
+                case 0, 1: withAnimation { page += 1 }
+                default:
                     model.locationService.requestPermissionIfNeeded()
                     places.finishSetup()
-                } label: {
-                    Text(doneButtonTitle)
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
-                .controlSize(.large)
-                .disabled(!places.isConfigured)
+            } label: {
+                Text(footerTitle)
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.accent)
+            .controlSize(.large)
+            // Swiping skips the button, so Done checks again: no address, no plan.
+            .disabled(page >= 1 && !places.isConfigured)
 
+            if page == 2 {
                 Text("Location finds your nearest stop. You can also pick one by hand.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -221,5 +217,96 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
+    }
+
+    private static let pageCount = 3
+
+    private var footerTitle: String {
+        switch page {
+        case 0: return "Get started"
+        case 1: return doneButtonTitle
+        default: return places.isConfigured ? "Done" : "Add an address first"
+        }
+    }
+
+    // MARK: - Extras
+
+    /// The supplemental features, each a choice rather than a default: bike share
+    /// is off until asked for, and the rest have sensible starting values.
+    private var extras: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("A few choices")
+                        .font(.title2.weight(.bold))
+                    Text("All of these live in Settings too.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Indego bike share")
+                    VStack(spacing: 0) {
+                        Toggle("Show bikes", isOn: $model.preferences.showIndego)
+                            .padding(12)
+                        if model.preferences.showIndego {
+                            Divider().padding(.leading, 12)
+                            HStack {
+                                Text("Pass")
+                                Spacer()
+                                Picker("Pass", selection: $model.preferences.indegoPass) {
+                                    ForEach(IndegoPass.allCases) { pass in Text(pass.label).tag(pass) }
+                                }
+                                .labelsHidden()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Directions open in")
+                    Picker("Directions open in", selection: $model.preferences.mapsApp) {
+                        ForEach(MapsApp.allCases) { app in Text(app.label).tag(app) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Driving")
+                    VStack(spacing: 10) {
+                        CarFields(hasCar: $model.preferences.hasCar, car: $model.preferences.car)
+                    }
+                    .padding(12)
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Your time is worth")
+                    HStack {
+                        TextField(
+                            "",
+                            value: Binding(
+                                get: { model.preferences.valueOfTimePerHour },
+                                set: { model.preferences.valueOfTimePerHour = ($0 ?? 0) > 0 ? $0 : nil }
+                            ),
+                            format: .currency(code: "USD").precision(.fractionLength(0...2)),
+                            prompt: Text("$\(Int(RiderPreferences.defaultHourlyValue))")
+                        )
+                        .keyboardType(.decimalPad)
+                        Text("per hour").foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                    Text("Ranks every way there by fare + time. Try your hourly wage.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
+        }
+        .scrollDismissesKeyboard(.interactively)
     }
 }

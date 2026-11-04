@@ -108,11 +108,11 @@ struct IndegoRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// "2 bikes • Municipal Services Building Plaza • ↗ 45 m"
+    /// "2 bikes · Municipal Services Building Plaza · ↗ 45 m"
     private var detailLine: String {
         var parts = ["\(option.bikesAvailable) \(option.bikesAvailable == 1 ? "bike" : "bikes")", option.pickup.name]
         if let climb = option.climbMeters, climb >= 5 { parts.insert("↗ \(Int(climb.rounded())) m", at: 1) }
-        return parts.joined(separator: " • ")
+        return parts.joined(separator: " · ")
     }
 
     /// The time chain is symbols and arrows on screen; read aloud it needs words.
@@ -158,7 +158,7 @@ struct IndegoDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Arrive \(Format.clock(option.arrival))")
                             .font(.title2.weight(.bold))
-                        Text("\(Format.minutes(option.totalDuration)) • leave now")
+                        Text("\(Format.minutes(option.totalDuration)) · leave now")
                             .foregroundStyle(.secondary)
                         if let comparison = comparisonText(option.arrival, against: reference, noun: referenceNoun) {
                             Text(comparison.text)
@@ -175,9 +175,9 @@ struct IndegoDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    leg(0, symbol: "figure.walk", tint: Theme.accent,
+                    leg(0, symbol: "figure.walk", tint: option.bike.color,
                         title: "Walk \(Format.minutes(option.walkToPickup)) to \(option.pickup.name)",
-                        detail: "\(option.pickup.classicBikes) classic • \(option.pickup.electricBikes) e-bikes") {
+                        detail: "\(option.pickup.classicBikes) classic · \(option.pickup.electricBikes) e-bikes") {
                         MapsHandoff.open(
                             app: model.preferences.mapsApp,
                             from: originIsCurrentLocation ? nil : origin, fromName: "Start",
@@ -197,7 +197,7 @@ struct IndegoDetailView: View {
                         )
                     }
                     Divider().padding(.leading, 36)
-                    leg(2, symbol: "figure.walk", tint: Theme.accent,
+                    leg(2, symbol: "figure.walk", tint: option.bike.color,
                         title: "Dock, walk \(Format.minutes(option.walkFromDropoff)) to \(destinationName)",
                         detail: "\(option.dropoff.openDocks) open docks") {
                         guard let destination else { return }
@@ -217,7 +217,7 @@ struct IndegoDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
 
-                Text("Live dock counts • estimated price")
+                Text("Tap a step to see it on the map. Go opens \(model.preferences.mapsApp.label).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -231,7 +231,7 @@ struct IndegoDetailView: View {
         var parts = [String(format: "%.1f mi", option.rideMeters / Coordinate.metersPerMile)]
         if let climb = option.climbMeters, climb >= 5 { parts.append("↗ \(Int(climb.rounded())) m climb") }
         parts.append(option.bike.label)
-        return parts.joined(separator: " • ")
+        return parts.joined(separator: " · ")
     }
 
     /// One leg: tap the row to see it on the map (again to see the whole trip);
@@ -261,11 +261,17 @@ struct IndegoDetailView: View {
             .buttonStyle(.plain)
             .accessibilityHint(isFocused ? "Shows the whole trip on the map" : "Shows this part on the map")
 
+            // Labelled, not a bare glyph: a new rider didn't read the arrow as
+            // "turn-by-turn directions". "Go" is what the maps apps themselves say.
             Button(action: directions) {
-                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                    .font(.title3)
-                    .foregroundStyle(tint)
-                    .frame(width: 44, height: 44)
+                Label("Go", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .foregroundStyle(option.bike.foreground)
+                    .background(tint, in: Capsule())
+                    .frame(minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

@@ -156,7 +156,7 @@ struct MoreWaysSection: View {
                                 .lineLimit(1)
                             // The concrete things first; the blended score last and
                             // quietest, since it's the one a rider can't check.
-                            Text("\(fare) • \(Format.minutes(candidate.travelTime)) • \(total) value")
+                            Text("\(fare) · \(Format.minutes(candidate.travelTime)) · \(total) value")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -412,7 +412,7 @@ struct ExtendedDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
 
-                Text("Scheduled times • SEPTA Key fare")
+                Text("Scheduled times · SEPTA Key fare")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -90,14 +90,14 @@ public enum IndegoPass: String, Codable, Sendable, Hashable, CaseIterable, Ident
     /// What the pass costs and what it covers, for the Settings footnote.
     public var passPriceNote: String {
         switch self {
-        case .payAsYouGo: return "$4.50 / 30 min • e-bike +30¢/min"
-        case .dayPass: return "$15 / day • e-bike +20¢/min"
-        case .indego30: return "$20 / month • e-bike +20¢/min"
-        case .indego365: return "$156 / year • e-bike +20¢/min"
-        case .indego365Plus: return "$230 / year • 2 e-bike rides a day • then +20¢/min"
-        case .access: return "$5 / month • e-bike +7¢/min"
-        case .access365: return "$48 / year • e-bike +7¢/min"
-        case .access365Plus: return "$100 / year • 2 e-bike rides a day • then +7¢/min"
+        case .payAsYouGo: return "$4.50 / 30 min · e-bike +30¢/min"
+        case .dayPass: return "$15 / day · e-bike +20¢/min"
+        case .indego30: return "$20 / month · e-bike +20¢/min"
+        case .indego365: return "$156 / year · e-bike +20¢/min"
+        case .indego365Plus: return "$230 / year · 2 e-bike rides a day · then +20¢/min"
+        case .access: return "$5 / month · e-bike +7¢/min"
+        case .access365: return "$48 / year · e-bike +7¢/min"
+        case .access365Plus: return "$100 / year · 2 e-bike rides a day · then +7¢/min"
         }
     }
 

@@ -57,14 +57,17 @@ struct RiderPreferences: Codable, Equatable {
         get { hourlyValue > 0 ? hourlyValue : nil }
         set { hourlyValue = max(0, newValue ?? 0) }
     }
-    /// Show Indego bike share as an option.
-    var showIndego: Bool = true
+    /// Show Indego bike share as an option. Off until the rider asks for it.
+    var showIndego: Bool = false
     /// How the rider pays for Indego.
     var indegoPass: IndegoPass = .payAsYouGo
     /// Show options using buses and Regional Rail.
     var showAllSEPTA: Bool = true
     /// Where turn-by-turn directions open.
     var mapsApp: MapsApp = .apple
+    /// Whether to price a drive in Best value, and the car to price it with.
+    var hasCar: Bool = false
+    var car = CarProfile()
 
     /// Stored as an optional so preferences saved before this setting existed still
     /// decode — otherwise adding a key would silently reset every other setting.
@@ -124,6 +127,8 @@ extension RiderPreferences {
         indegoPass = (try? container.decodeIfPresent(IndegoPass.self, forKey: .indegoPass)) ?? defaults.indegoPass
         showAllSEPTA = try container.decodeIfPresent(Bool.self, forKey: .showAllSEPTA) ?? defaults.showAllSEPTA
         mapsApp = (try? container.decodeIfPresent(MapsApp.self, forKey: .mapsApp)) ?? defaults.mapsApp
+        hasCar = try container.decodeIfPresent(Bool.self, forKey: .hasCar) ?? defaults.hasCar
+        car = (try? container.decodeIfPresent(CarProfile.self, forKey: .car)) ?? defaults.car
     }
 }
 
@@ -192,6 +197,8 @@ final class CommuteModel: ObservableObject {
     var extendedEndpoints: String?
     /// Measured dock-to-dock bike rides (length and climb), for the Indego planner.
     var bikeRoutes: [String: IndegoRouteInfo] = [:]
+    /// The same trip by car (fastest, and toll-free when that differs), for Best value only.
+    @Published var drivingEstimates: [DrivingEstimate] = []
 
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?

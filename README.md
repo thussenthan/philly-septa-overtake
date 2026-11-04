@@ -56,11 +56,13 @@ Underneath the answer, and never instead of it, there are a few more ways to go:
   Regional Rail are searched on equal terms by a second planner, and an alternative
   is shown only if nothing else on the screen is both at least as cheap and at least
   as quick.
-- **Indego bike share.** Live classic and e-bike counts at the nearest docks, the
+- **Indego bike share** (off until you turn it on). Live classic and e-bike counts at the nearest docks, the
   whole trip timed (walk, ride, walk), and a price for the pass you hold. Each step
   opens Apple Maps for spoken turn-by-turn directions.
 - **Best value.** Put a price on your time (it defaults to $25 an hour) and every
-  option is ranked by fare plus door-to-door time at that rate.
+  option is ranked by fare plus door-to-door time at that rate. Tell it you have a
+  car and driving joins in, priced from your mpg, the gas price, wear, tolls and
+  parking, with Apple Maps' live drive time.
 - **A map of every trip.** Rides follow SEPTA's published route shapes, and walks
   and bike rides follow the streets.
 
