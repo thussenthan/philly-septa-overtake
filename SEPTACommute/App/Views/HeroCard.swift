@@ -95,16 +95,7 @@ struct HeroCard: View {
             if let exit = journey.finalWalk, exit.duration >= 60 {
                 walkRow("Walk \(Format.minutes(exit.duration)) to \(exit.toName)", symbol: "figure.walk")
             }
-            fareRow
         }
-    }
-
-    /// Fares assume contactless (or SEPTA Key), where a change of train within two
-    /// hours is free, so a trip with a change costs what one without does and
-    /// there is nothing to say on the card. How it works states the assumption.
-    @ViewBuilder
-    private var fareRow: some View {
-        EmptyView()
     }
 
     /// Everything needed to get on the right train and off at the right stop, and

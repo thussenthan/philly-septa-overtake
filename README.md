@@ -322,11 +322,10 @@ Three columns are load-bearing and easy to miss:
 hardcodes: $2.90 adult full fare, and `fare_transfer_rules` rows carrying *no*
 `fare_product_id` — which under transfer type 0 means the transfer adds nothing.
 Free, within two hours, up to two of them, on SEPTA Key and contactless. Cash and
-Quick Trip have no such rule, so with those every boarding is a new fare. That's the
-one fare fact on this network that can change which option a rider picks, so it
-appears on the card *only* on itineraries with a change — "$2.90 — the change is free
-with SEPTA Key, $5.80 paying twice" — and the full rules are on the Service & data
-screen. Single-ride trips don't mention money at all.
+Quick Trip have no such rule, so with those every boarding is a new fare. The app
+assumes contactless or SEPTA Key throughout, so a change of train costs nothing extra
+and the card doesn't mention money; How it works states the assumption, and the full
+rules are on the Service & data screen.
 
 **Is the seven-day-type timetable exact?** SEPTA hangs a `calendar_dates` row on
 nearly every date, so two Wednesdays can run different service IDs, and the generator
