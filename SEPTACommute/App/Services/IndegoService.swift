@@ -18,8 +18,14 @@ final class IndegoService: ObservableObject {
     private let statusMaxAge: TimeInterval = 60
     private let informationMaxAge: TimeInterval = 3600
 
+    /// After a failure, wait this long before trying again rather than firing a
+    /// request (with its ten-second timeout) on every replan.
+    private let retryAfterFailure: TimeInterval = 60
+    private var lastFailure: Date?
+
     func refreshIfNeeded() {
         if let lastUpdated, Date().timeIntervalSince(lastUpdated) < statusMaxAge { return }
+        if let lastFailure, Date().timeIntervalSince(lastFailure) < retryAfterFailure { return }
         guard inFlight == nil else { return }
         inFlight = Task { [weak self] in
             await self?.refresh()
@@ -31,16 +37,24 @@ final class IndegoService: ObservableObject {
         do {
             if informationData == nil
                 || informationFetchedAt.map({ Date().timeIntervalSince($0) > informationMaxAge }) ?? true {
-                informationData = try await fetch("station_information.json")
-                informationFetchedAt = Date()
+                // Dock locations barely change: a failed refresh keeps the old ones
+                // rather than costing the live counts too.
+                if let fresh = try? await fetch("station_information.json") {
+                    informationData = fresh
+                    informationFetchedAt = Date()
+                } else if informationData == nil {
+                    throw URLError(.cannotLoadFromNetwork)
+                }
             }
             let status = try await fetch("station_status.json")
             guard let informationData else { return }
             stations = try IndegoFeed.decode(information: informationData, status: status)
             lastUpdated = Date()
             lastError = nil
+            lastFailure = nil
         } catch {
             lastError = error.localizedDescription
+            lastFailure = Date()
         }
     }
 

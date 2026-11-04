@@ -44,9 +44,19 @@ struct RiderPreferences: Codable, Equatable {
 
     // Supplemental options, listed under the Metro answer and never replacing it.
 
-    /// What the rider's time is worth, in dollars per hour. `nil` leaves value
-    /// ranking off. Usually their hourly wage.
-    var valueOfTimePerHour: Double?
+    /// What the rider's time is worth, in dollars per hour; 0 turns value ranking
+    /// off. Stored non-optional so "off" survives a save — an optional would be
+    /// left out of the JSON and come back as the default.
+    var hourlyValue: Double = RiderPreferences.defaultHourlyValue
+
+    /// $25/hour: a typical Philadelphia wage, as a starting point the rider edits.
+    static let defaultHourlyValue: Double = 25
+
+    /// The rate value ranking uses, or `nil` when it's off.
+    var valueOfTimePerHour: Double? {
+        get { hourlyValue > 0 ? hourlyValue : nil }
+        set { hourlyValue = max(0, newValue ?? 0) }
+    }
     /// Show Indego bike share as an option.
     var showIndego: Bool = true
     /// How the rider pays for Indego.
@@ -85,6 +95,10 @@ struct RiderPreferences: Codable, Equatable {
 }
 
 extension RiderPreferences {
+    private enum LegacyKeys: String, CodingKey {
+        case valueOfTimePerHour
+    }
+
     /// Every key optional, so a setting added in a later version doesn't make the
     /// whole stored blob undecodable — which would silently reset every other setting.
     init(from decoder: Decoder) throws {
@@ -98,7 +112,12 @@ extension RiderPreferences {
         allowTransfers = try container.decodeIfPresent(Bool.self, forKey: .allowTransfers) ?? defaults.allowTransfers
         stepFreeOnly = try container.decodeIfPresent(Bool.self, forKey: .stepFreeOnly) ?? defaults.stepFreeOnly
         appearanceRaw = try container.decodeIfPresent(String.self, forKey: .appearanceRaw)
-        valueOfTimePerHour = try container.decodeIfPresent(Double.self, forKey: .valueOfTimePerHour)
+        // The first release of value ranking stored an optional `valueOfTimePerHour`.
+        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+            .decodeIfPresent(Double.self, forKey: .valueOfTimePerHour)
+        hourlyValue = try container.decodeIfPresent(Double.self, forKey: .hourlyValue)
+            ?? legacy.flatMap { $0 }
+            ?? defaults.hourlyValue
         showIndego = try container.decodeIfPresent(Bool.self, forKey: .showIndego) ?? defaults.showIndego
         indegoPass = (try? container.decodeIfPresent(IndegoPass.self, forKey: .indegoPass)) ?? defaults.indegoPass
         showAllSEPTA = try container.decodeIfPresent(Bool.self, forKey: .showAllSEPTA) ?? defaults.showAllSEPTA
@@ -164,6 +183,10 @@ final class CommuteModel: ObservableObject {
     let places: PlaceStore
     let indego = IndegoService()
     var extendedTask: Task<Void, Never>?
+    /// What the last all-SEPTA search was for, so an unchanged replan skips it.
+    var extendedSearchKey: String?
+    /// The two ends the current alternatives belong to.
+    var extendedEndpoints: String?
 
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?
@@ -550,6 +573,7 @@ final class CommuteModel: ObservableObject {
             departures = []
             advice = nil
             indegoOptions = []
+            cancelAlternativesSearch()
             extendedItineraries = []
             return
         }

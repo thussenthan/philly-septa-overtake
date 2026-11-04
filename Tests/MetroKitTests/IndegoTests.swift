@@ -10,12 +10,19 @@ final class IndegoTests: XCTestCase {
     }
 
     func testPricesFollowThePass() {
-        XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 20, bike: .classic), 3.0, accuracy: 0.001)
-        XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 20, bike: .electric), 9.0, accuracy: 0.001)
+        // Single Ride: $4.50 covers 30 classic minutes; e-bikes and overtime 30¢/min.
+        XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 20, bike: .classic), 4.50, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 40, bike: .classic), 7.50, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 30, bike: .electric), 13.50, accuracy: 0.001)
+        // Passes: 60 classic minutes included, 20¢/min after and for e-bikes.
         XCTAssertEqual(IndegoPass.indego30.price(minutes: 20, bike: .classic), 0, accuracy: 0.001)
-        XCTAssertEqual(IndegoPass.indego30.price(minutes: 70, bike: .classic), 1.5, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.indego30.price(minutes: 70, bike: .classic), 2.0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.dayPass.price(minutes: 20, bike: .electric), 4.0, accuracy: 0.001)
+        // Access: 7¢/min.
         XCTAssertEqual(IndegoPass.access.price(minutes: 20, bike: .electric), 1.4, accuracy: 0.001)
+        // Plus: a 30-minute e-bike ride is included.
         XCTAssertEqual(IndegoPass.indego365Plus.price(minutes: 20, bike: .electric), 0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.access365Plus.price(minutes: 40, bike: .electric), 0.7, accuracy: 0.001)
     }
 
     func testClassicIsListedFirstWhenAvailableAndElectricIsFaster() {
@@ -38,6 +45,18 @@ final class IndegoTests: XCTestCase {
         let options = IndegoPlanner().options(from: cityHall, to: temple, stations: stations, departAt: Date())
         XCTAssertEqual(options.map(\.bike), [.electric])
         XCTAssertGreaterThan(options[0].price, 0)
+    }
+
+    /// Twelve empty docks right by the origin must not hide a farther one with a bike.
+    func testFartherDockWithABikeIsConsideredPastNearerEmptyOnes() {
+        var stations: [IndegoStation] = (0..<14).map { i in
+            dock("empty\(i)", Coordinate(latitude: 39.9525 + Double(i) * 0.00005, longitude: -75.1636), classic: 0, electric: 0)
+        }
+        stations.append(dock("far", Coordinate(latitude: 39.9560, longitude: -75.1636), classic: 1, electric: 0))
+        stations.append(dock("b", Coordinate(latitude: 39.9805, longitude: -75.1555), classic: 0, electric: 0))
+        let options = IndegoPlanner().options(from: cityHall, to: temple, stations: stations, departAt: Date())
+        XCTAssertEqual(options.map(\.bike), [.classic])
+        XCTAssertEqual(options.first?.pickup.id, "far")
     }
 
     func testNoOptionWithoutAFreeDockNearTheDestination() {

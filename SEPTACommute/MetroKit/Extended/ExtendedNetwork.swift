@@ -47,6 +47,25 @@ public final class ExtendedNetwork: Sendable {
     /// First and last dates (yyyyMMdd) for which *both* feeds are authoritative.
     public let validFrom: String
     public let validUntil: String
+    /// Last date (yyyyMMdd) the bus feed (bus, trolley, Metro) is authoritative for.
+    /// Falls back to ``validUntil`` for an older resource without it.
+    public let busValidUntil: String
+    /// Last date (yyyyMMdd) the Regional Rail feed is authoritative for.
+    public let railValidUntil: String
+
+    /// The modes whose feed no longer covers `yyyyMMdd` (a service date): rail
+    /// from the rail feed, bus/trolley/Metro from the bus feed.
+    public func expiredModes(onServiceDate yyyyMMdd: String) -> Set<ExtendedMode> {
+        var out: Set<ExtendedMode> = []
+        if !railValidUntil.isEmpty, yyyyMMdd > railValidUntil { out.insert(.rail) }
+        if !busValidUntil.isEmpty, yyyyMMdd > busValidUntil { out.formUnion([.bus, .trolley, .metro]) }
+        return out
+    }
+
+    /// Stops must lie in this box (SEPTA's five counties with a wide margin); a
+    /// stray "0, 0" would otherwise stretch the spatial grid across an ocean.
+    static let latitudeRange: ClosedRange<Double> = 38.5...41.0
+    static let longitudeRange: ClosedRange<Double> = -76.5...(-74.0)
 
     // MARK: Fares
 
@@ -77,11 +96,28 @@ public final class ExtendedNetwork: Sendable {
     let patternStart: [Int32]          // count + 1
     let patternStops: [Int32]
     let patternOffsets: [Int32]        // cumulative seconds from trip start
+    /// Parallel to `patternOffsets`: the time to *board* at each stop — the
+    /// fastest trip of the pattern, so a rider is there before any trip leaves.
+    /// Never later than `patternOffsets`.
+    let patternBoardOffsets: [Int32]
     let patternFlags: [UInt8]          // bit 1 no pickup, bit 2 no drop-off
     // Trip starts: for pattern p and day type d (0 = Monday), starts[lo..<hi] with
     // lo = tripRanges[(p * 7 + d) * 2], hi = tripRanges[(p * 7 + d) * 2 + 1].
     let tripRanges: [Int32]
     let tripStarts: [Int32]
+
+    // Route geometry: shape i is shapePoints[shapeStart[i]..<shapeStart[i + 1]].
+    let shapeStart: [Int32]            // count + 1
+    let shapePoints: [Coordinate]
+    /// Per pattern, the shape it runs along, or -1.
+    let patternShape: [Int32]
+    /// Parallel to `patternStops`: the shape segment each stop lies on (segment i
+    /// runs from point i to point i + 1). Never decreasing along a pattern; 0 when
+    /// the pattern has no shape.
+    let patternSegments: [Int32]
+    /// Normalized route short name → the distinct shapes its patterns use, most
+    /// stops first.
+    let routeShapes: [String: [Int32]]
 
     // Which (pattern, position) pairs serve each stop.
     let stopPatternStart: [Int32]
@@ -109,6 +145,8 @@ public final class ExtendedNetwork: Sendable {
     public var stopCount: Int { stopNames.count }
     public var patternCount: Int { patternRoute.count }
     public var footpathCount: Int { footStop.count }
+    /// Distinct route shapes (simplified GTFS `shapes.txt` geometry).
+    public var shapeCount: Int { shapeStart.count - 1 }
     /// Scheduled departures summed over the seven day types.
     public var weeklyTripCount: Int {
         var total = 0
@@ -214,7 +252,7 @@ public final class ExtendedNetwork: Sendable {
     }
 
     struct Parts {
-        var busVersion = "", railVersion = "", validFrom = "", validUntil = ""
+        var busVersion = "", railVersion = "", validFrom = "", validUntil = "", busUntil = "", railUntil = ""
         var busFare = 2.9, window = 7200, free = 2
         var routes: [ExtendedRoute] = []
         var names: [String] = []
@@ -230,9 +268,14 @@ public final class ExtendedNetwork: Sendable {
         var patternStart: [Int32] = [0]
         var stops: [Int32] = []
         var offsets: [Int32] = []
+        var boardOffsets: [Int32] = []
         var flags: [UInt8] = []
         var tripRanges: [Int32] = []
         var tripStarts: [Int32] = []
+        var shapeStart: [Int32] = [0]
+        var shapePoints: [Coordinate] = []
+        var patternShape: [Int32] = []
+        var segments: [Int32] = []
     }
 
     private init(_ p: Parts) {
@@ -240,6 +283,8 @@ public final class ExtendedNetwork: Sendable {
         railFeedVersion = p.railVersion
         validFrom = p.validFrom
         validUntil = p.validUntil
+        busValidUntil = p.busUntil.isEmpty ? p.validUntil : p.busUntil
+        railValidUntil = p.railUntil.isEmpty ? p.validUntil : p.railUntil
         busFare = p.busFare
         transferWindowSeconds = p.window
         freeTransfers = p.free
@@ -269,9 +314,21 @@ public final class ExtendedNetwork: Sendable {
         patternStart = p.patternStart
         patternStops = p.stops
         patternOffsets = p.offsets
+        patternBoardOffsets = p.boardOffsets
         patternFlags = p.flags
         tripRanges = p.tripRanges
         tripStarts = p.tripStarts
+        shapeStart = p.shapeStart
+        shapePoints = p.shapePoints
+        patternShape = p.patternShape
+        patternSegments = p.segments
+        var byRoute: [String: [Int32]] = [:]
+        for pi in 0..<p.patternRoute.count where p.patternShape[pi] >= 0 {
+            let key = Self.normalizedRouteName(p.routes[Int(p.patternRoute[pi])].shortName)
+            let shape = p.patternShape[pi]
+            if byRoute[key]?.contains(shape) != true { byRoute[key, default: []].append(shape) }
+        }
+        routeShapes = byRoute
 
         // Stop → (pattern, position), and which stops see anything but buses.
         let patternTotal = p.patternRoute.count
@@ -364,6 +421,144 @@ public final class ExtendedNetwork: Sendable {
     }
 }
 
+// MARK: - Route geometry
+
+extension ExtendedNetwork {
+    /// The road or track a ride follows from `boardPos` to `alightPos` of a pattern:
+    /// the boarding stop, the shape's points in between, then the alighting stop.
+    /// Falls back to the stops ridden through when the pattern has no shape.
+    func ridePath(pattern: Int, boardPos: Int, alightPos: Int) -> [Coordinate] {
+        let base = Int(patternStart[pattern])
+        let board = stopCoordinates[Int(patternStops[base + boardPos])]
+        let alight = stopCoordinates[Int(patternStops[base + alightPos])]
+        let shape = Int(patternShape[pattern])
+        guard shape >= 0 else {
+            return (boardPos...alightPos).map { stopCoordinates[Int(patternStops[base + $0])] }
+        }
+        let first = Int(shapeStart[shape])
+        let lo = first + Int(patternSegments[base + boardPos]) + 1
+        let hi = first + Int(patternSegments[base + alightPos])
+        var path: [Coordinate] = [board]
+        if lo <= hi {
+            path.reserveCapacity(hi - lo + 3)
+            path.append(contentsOf: shapePoints[lo...hi])
+        }
+        path.append(alight)
+        return path
+    }
+
+    /// SEPTA tags split-platform stops with the service ("15th St/City Hall - B1",
+    /// "Olney Transit Center - B2 & B3"). A rider looks for the station, and the
+    /// route badge beside it already says which service.
+    static func riderFacingName(_ name: String) -> String {
+        for suffix in [" - B2 & B3", " - B1", " - B2", " - B3", " - BSL", " - MFL"] where name.hasSuffix(suffix) {
+            return String(name.dropLast(suffix.count))
+        }
+        return name
+    }
+
+    /// Route names as the lookup compares them: upper case, `_` and `-` as spaces.
+    static func normalizedRouteName(_ name: String) -> String {
+        name.uppercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ").joined(separator: " ")
+    }
+
+    /// Short names to try for a badge, best first. The Metro planner calls the
+    /// Broad Street night bus "OWL" (feed id `B1_OWL`, alerts `B-OWL`); SEPTA's bus
+    /// feed calls it "B1 OWL". The B2 express runs on the local's tracks, so the
+    /// local's geometry stands in when the express has none.
+    static func shapeLookupNames(_ badge: String) -> [String] {
+        let name = normalizedRouteName(badge)
+        switch name {
+        case "OWL", "B OWL", "B1 OWL", "BSL OWL": return ["B1 OWL"]
+        case "L OWL", "L1 OWL", "MFL OWL": return ["L1 OWL"]
+        case "B2": return ["B2", "B1"]
+        case "B3": return ["B3", "B1"]
+        default: return [name]
+        }
+    }
+
+    /// Geometry for a ride the extended planner did not plan — the Metro planner's,
+    /// which knows only the route badge and the stations it passes.
+    ///
+    /// Looks through the shapes of the route whose short name matches
+    /// `routeShortName` ("B1", "L1", "T3", "59", "OWL" …) for one that passes within
+    /// `tolerance` metres of the first stop and then, further along, of the last
+    /// stop, with every stop in between near the part between them. Returns the
+    /// first stop, the shape's points between, and the last stop; nil when no
+    /// shape fits (unknown route, wrong direction, stops off the route).
+    public func shapePath(routeShortName: String, through stops: [Coordinate], tolerance: Double = 150) -> [Coordinate]? {
+        guard stops.count >= 2, let first = stops.first, let last = stops.last else { return nil }
+        for name in Self.shapeLookupNames(routeShortName) {
+            guard let shapes = routeShapes[name] else { continue }
+            // Owl buses stop at the kerb above the stations they stand in for.
+            let reach = name.hasSuffix("OWL") ? max(tolerance, 400) : tolerance
+            var best: (score: Double, lo: Int, hi: Int)?
+            for shape in shapes {
+                guard let fit = fitShape(Int(shape), first: first, last: last, middle: stops.dropFirst().dropLast(),
+                                         reach: reach) else { continue }
+                if best == nil || fit.score < best!.score { best = fit }
+            }
+            if let best {
+                var path: [Coordinate] = [first]
+                if best.lo <= best.hi { path.append(contentsOf: shapePoints[best.lo...best.hi]) }
+                path.append(last)
+                return path
+            }
+        }
+        return nil
+    }
+
+    /// Best placement of a ride on one shape: absolute point indices `lo...hi` to
+    /// draw between the end stops, and a score (lower is better).
+    private func fitShape(_ shape: Int, first: Coordinate, last: Coordinate, middle: ArraySlice<Coordinate>,
+                          reach: Double) -> (score: Double, lo: Int, hi: Int)? {
+        let a = Int(shapeStart[shape]), b = Int(shapeStart[shape + 1])
+        let count = b - a
+        guard count >= 2 else { return nil }
+        var xs = [Double](repeating: 0, count: count), ys = [Double](repeating: 0, count: count)
+        var along = [Double](repeating: 0, count: count)
+        for i in 0..<count {
+            (xs[i], ys[i]) = Self.project(shapePoints[a + i])
+            if i > 0 { along[i] = along[i - 1] + ((xs[i] - xs[i - 1]) * (xs[i] - xs[i - 1]) + (ys[i] - ys[i - 1]) * (ys[i] - ys[i - 1])).squareRoot() }
+        }
+        /// Segments within `reach` of a point: (segment, distance, position along the shape).
+        func near(_ c: Coordinate, within limit: Double, segments: Range<Int>) -> [(seg: Int, d: Double, pos: Double)] {
+            let (px, py) = Self.project(c)
+            var out: [(seg: Int, d: Double, pos: Double)] = []
+            for i in segments {
+                let ax = xs[i], ay = ys[i], dx = xs[i + 1] - ax, dy = ys[i + 1] - ay
+                let len2 = dx * dx + dy * dy
+                var t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0
+                t = min(1, max(0, t))
+                let ex = ax + t * dx - px, ey = ay + t * dy - py
+                let d = (ex * ex + ey * ey).squareRoot()
+                if d <= limit { out.append((i, d, along[i] + t * (along[i + 1] - along[i]))) }
+            }
+            return out
+        }
+        let starts = near(first, within: reach, segments: 0..<(count - 1))
+        guard !starts.isEmpty else { return nil }
+        let ends = near(last, within: reach, segments: 0..<(count - 1))
+        var best: (score: Double, s: Int, e: Int)?
+        for s in starts {
+            for e in ends where e.pos > s.pos {
+                // Closeness first; among passes of a looping shape, the shorter ride.
+                let score = s.d + e.d + 0.05 * (e.pos - s.pos)
+                if best == nil || score < best!.score { best = (score, s.seg, e.seg) }
+            }
+        }
+        guard let best else { return nil }
+        // Every stop in between must be near the stretch between the ends.
+        for c in middle where near(c, within: reach * 2, segments: best.s..<(best.e + 1)).isEmpty {
+            return nil
+        }
+        return (best.score, a + best.s + 1, a + best.e)
+    }
+}
+
 // MARK: - ExtendedTextParser
 
 private struct ExtendedTextParser {
@@ -383,6 +578,9 @@ private struct ExtendedTextParser {
         String(decoding: UnsafeBufferPointer(rebasing: b[f.0..<f.1]), as: UTF8.self)
     }
 
+    /// Largest magnitude any integer field may have; every consumer stores Int32 or less.
+    static let numberLimit = Int(Int32.max)
+
     func int(_ f: (Int, Int)) throws -> Int {
         var i = f.0, sign = 1, value = 0
         if i < f.1, b[i] == Self.minus { sign = -1; i += 1 }
@@ -391,9 +589,16 @@ private struct ExtendedTextParser {
             let d = Int(b[i]) - 48
             guard d >= 0, d <= 9 else { throw fail("expected a number") }
             value = value * 10 + d
+            guard value <= Self.numberLimit else { throw fail("number out of range") }
             i += 1
         }
         return sign * value
+    }
+
+    /// `v` as an Int32, or a malformed-line error.
+    func int32(_ v: Int) throws -> Int32 {
+        guard let x = Int32(exactly: v) else { throw fail("number out of range") }
+        return x
     }
 
     func double(_ f: (Int, Int)) throws -> Double {
@@ -413,7 +618,7 @@ private struct ExtendedTextParser {
     }
 
     /// Comma-separated integers; with `delta`, each after the first adds to the previous.
-    func list(_ f: (Int, Int), delta: Bool, _ body: (Int) -> Void) throws {
+    func list(_ f: (Int, Int), delta: Bool, _ body: (Int) throws -> Void) throws {
         var i = f.0
         guard i < f.1 else { return }
         var previous = 0, first = true
@@ -424,13 +629,17 @@ private struct ExtendedTextParser {
                 let d = Int(b[i]) - 48
                 guard d >= 0, d <= 9 else { throw fail("expected a list of numbers") }
                 value = value * 10 + d
+                guard value <= Self.numberLimit else { throw fail("number out of range") }
                 digits += 1
                 i += 1
             }
             guard digits > 0 else { throw fail("empty list element") }
             var v = sign * value
-            if delta, !first { v += previous }
-            body(v)
+            if delta, !first {
+                v += previous
+                guard abs(v) <= Self.numberLimit else { throw fail("number out of range") }
+            }
+            try body(v)
             previous = v
             first = false
             i += 1
@@ -476,14 +685,42 @@ private struct ExtendedTextParser {
             switch tag {
             case UInt8(ascii: "S"):
                 guard fields.count >= 4 else { throw fail("stop needs 4 fields") }
-                parts.names.append(string(fields[1]))
-                parts.lats.append(try double(fields[2]))
-                parts.lons.append(try double(fields[3]))
-                parts.fareClass.append(fields.count >= 5 ? Int16(try int(fields[4])) : -1)
+                let lat = try double(fields[2]), lon = try double(fields[3])
+                guard ExtendedNetwork.latitudeRange.contains(lat), ExtendedNetwork.longitudeRange.contains(lon) else {
+                    throw fail("stop outside the SEPTA region")
+                }
+                var fareClass: Int16 = -1
+                if fields.count >= 5 {
+                    guard let c = Int16(exactly: try int(fields[4])), c >= -1 else { throw fail("fare class out of range") }
+                    fareClass = c
+                }
+                parts.names.append(ExtendedNetwork.riderFacingName(string(fields[1])))
+                parts.lats.append(lat)
+                parts.lons.append(lon)
+                parts.fareClass.append(fareClass)
+            case UInt8(ascii: "H"):
+                guard fields.count >= 2 else { throw fail("shape needs points") }
+                var lat = 0, lon = 0, n = 0
+                try list(fields[1], delta: false) { v in
+                    if n & 1 == 0 { lat += v } else {
+                        lon += v
+                        // ±90°/±180° in 1e-5 degrees; also keeps the sums from overflowing.
+                        guard abs(lat) <= 9_000_000, abs(lon) <= 18_000_000 else { throw fail("shape point out of range") }
+                        parts.shapePoints.append(Coordinate(latitude: Double(lat) * 1e-5, longitude: Double(lon) * 1e-5))
+                    }
+                    n += 1
+                }
+                guard n & 1 == 0, n >= 4 else { throw fail("shape needs whole lat,lon pairs") }
+                parts.shapeStart.append(Int32(parts.shapePoints.count))
             case UInt8(ascii: "T"):
                 guard currentPattern >= 0, fields.count >= 3 else { throw fail("trips without a pattern") }
                 let lo = Int32(parts.tripStarts.count)
-                try list(fields[2], delta: true) { parts.tripStarts.append(Int32($0)) }
+                var lastStart = Int.min
+                try list(fields[2], delta: true) {
+                    guard $0 >= lastStart else { throw fail("trip starts out of order") }
+                    lastStart = $0
+                    parts.tripStarts.append(try int32($0))
+                }
                 let hi = Int32(parts.tripStarts.count)
                 for d in fields[1].0..<fields[1].1 {
                     let day = Int(b[d]) - 49
@@ -507,9 +744,11 @@ private struct ExtendedTextParser {
                     parts.stops.append(Int32(v))
                 }
                 if badStop { throw fail("stop index out of range") }
-                try list(fields[5], delta: true) { parts.offsets.append(Int32($0)) }
+                try list(fields[5], delta: true) { parts.offsets.append(try int32($0)) }
                 let count = parts.stops.count - first
                 guard parts.offsets.count == parts.stops.count, count >= 2 else { throw fail("stops and offsets differ") }
+                // The planner keeps stop positions as Int16.
+                guard count <= Int(Int16.max) else { throw fail("pattern too long") }
                 parts.flags.append(contentsOf: repeatElement(0, count: count))
                 if fields.count >= 7, fields[6].1 > fields[6].0 {
                     // "pos:bits,pos:bits"
@@ -523,7 +762,42 @@ private struct ExtendedTextParser {
                         while e < z, b[e] != Self.comma { e += 1 }
                         let bits = try int((c + 1, e))
                         guard pos >= 0, pos < count else { throw fail("flag position out of range") }
-                        parts.flags[first + pos] = UInt8(bits)
+                        guard let flag = UInt8(exactly: bits) else { throw fail("flag bits out of range") }
+                        parts.flags[first + pos] = flag
+                        a = e + 1
+                    }
+                }
+                if fields.count >= 9, fields[7].1 > fields[7].0 {  // (shape, segments) may be empty
+                    let shape = try int(fields[7])
+                    guard shape >= 0, shape + 1 < parts.shapeStart.count else { throw fail("unknown shape") }
+                    let segmentLimit = Int(parts.shapeStart[shape + 1] - parts.shapeStart[shape]) - 1
+                    var previous = 0, bad = false
+                    try list(fields[8], delta: true) { v in
+                        if v < previous || v >= segmentLimit { bad = true }
+                        previous = v
+                        parts.segments.append(Int32(v))
+                    }
+                    guard !bad, parts.segments.count == parts.stops.count else { throw fail("bad shape segments") }
+                    parts.patternShape.append(Int32(shape))
+                } else {
+                    parts.segments.append(contentsOf: repeatElement(0, count: count))
+                    parts.patternShape.append(-1)
+                }
+                parts.boardOffsets.append(contentsOf: parts.offsets[first...])
+                if fields.count >= 10, fields[9].1 > fields[9].0 {
+                    // "pos:seconds,…": board this much before the offset.
+                    var a = fields[9].0
+                    let z = fields[9].1
+                    while a < z {
+                        var c = a
+                        while c < z, b[c] != Self.colon { c += 1 }
+                        let pos = try int((a, c))
+                        var e = c + 1
+                        while e < z, b[e] != Self.comma { e += 1 }
+                        let early = try int((c + 1, e))
+                        guard pos >= 0, pos < count, early >= 0 else { throw fail("early boarding out of range") }
+                        let k = first + pos
+                        parts.boardOffsets[k] = parts.offsets[k] - Int32(min(early, Int(parts.offsets[k] - parts.offsets[first])))
                         a = e + 1
                     }
                 }
@@ -541,14 +815,18 @@ private struct ExtendedTextParser {
                 parts.classCC.append(try int(fields[2]) == 1)
             case UInt8(ascii: "X"):
                 guard fields.count >= 3 else { throw fail("fare row needs 3 fields") }
-                try list(fields[1], delta: false) { parts.weekday.append(Int32($0)) }
-                try list(fields[2], delta: false) { parts.weekend.append(Int32($0)) }
+                try list(fields[1], delta: false) { parts.weekday.append(try int32($0)) }
+                try list(fields[2], delta: false) { parts.weekend.append(try int32($0)) }
             case UInt8(ascii: "M"):
                 guard fields.count >= 5 else { throw fail("metadata needs 5 fields") }
                 parts.busVersion = string(fields[1])
                 parts.railVersion = string(fields[2])
                 parts.validFrom = string(fields[3])
                 parts.validUntil = string(fields[4])
+                if fields.count >= 7 {
+                    parts.busUntil = string(fields[5])
+                    parts.railUntil = string(fields[6])
+                }
             case UInt8(ascii: "B"):
                 guard fields.count >= 4 else { throw fail("bus fare needs 4 fields") }
                 parts.busFare = try double(fields[1])

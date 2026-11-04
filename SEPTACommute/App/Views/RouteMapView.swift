@@ -5,23 +5,38 @@ import SwiftUI
 /// (or bike ride) as a dotted line.
 struct MapSegment: Identifiable {
     enum Style { case ride, walk, bike }
-    let id = UUID()
     var coordinates: [CLLocationCoordinate2D]
     var color: Color
     var style: Style
+    /// For a Metro ride drawn station to station: the route, so the map can
+    /// swap in SEPTA's real track geometry once the shapes are loaded.
+    var routeShortName: String? = nil
 
     /// Readable on both the light and the dark map.
     static let walkColor = Color(uiColor: .label).opacity(0.8)
+
+    /// Stable across redraws — the views rebuild their segments on every render,
+    /// and routed street geometry is looked up by this.
+    var id: String {
+        let a = coordinates.first, b = coordinates.last
+        return String(format: "%@ %.5f %.5f %.5f %.5f %d", "\(style)",
+                      a?.latitude ?? 0, a?.longitude ?? 0, b?.latitude ?? 0, b?.longitude ?? 0, coordinates.count)
+    }
 }
 
 /// A labelled point: the two ends, and every place the rider changes vehicle.
 struct MapStop: Identifiable {
     enum Role { case origin, destination, change, stop }
-    let id = UUID()
     var coordinate: CLLocationCoordinate2D
     var name: String
     var color: Color
     var role: Role
+
+    /// Stable across redraws, so annotations aren't torn down and rebuilt every
+    /// time the screen re-renders.
+    var id: String {
+        String(format: "%@ %.6f %.6f %@", "\(role)", coordinate.latitude, coordinate.longitude, name)
+    }
 }
 
 extension Coordinate {
@@ -38,6 +53,8 @@ struct RouteMapView: View {
     var height: CGFloat = 220
 
     @State private var isExpanded = false
+    /// Street-following geometry for walk and bike legs, once MapKit answers.
+    @State private var routed: [String: [CLLocationCoordinate2D]] = [:]
 
     var body: some View {
         map(interactive: false)
@@ -56,6 +73,9 @@ struct RouteMapView: View {
             .accessibilityLabel("Map of this trip")
             .accessibilityHint("Double tap to open the map full screen")
             .accessibilityAddTraits(.isButton)
+            .task(id: segments.map(\.id).joined(separator: "|")) {
+                await routeStreetLegs()
+            }
             .fullScreenCover(isPresented: $isExpanded) {
                 NavigationStack {
                     map(interactive: true)
@@ -73,7 +93,8 @@ struct RouteMapView: View {
 
     private func map(interactive: Bool) -> some View {
         Map(initialPosition: initialPosition, interactionModes: interactive ? .all : []) {
-            ForEach(segments) { segment in
+            ForEach(segments) { original in
+                let segment = resolved(original)
                 switch segment.style {
                 case .ride:
                     // A white casing under the line, like a printed transit map.
@@ -122,6 +143,43 @@ struct RouteMapView: View {
                 MapCompass()
                 MapScaleView()
                 MapUserLocationButton()
+            }
+        }
+    }
+
+    private func resolved(_ segment: MapSegment) -> MapSegment {
+        guard let path = routed[segment.id] else { return segment }
+        var copy = segment
+        copy.coordinates = path
+        return copy
+    }
+
+    /// Replace each straight walk or bike line with MapKit's route along streets.
+    /// The straight line stays if there's no connection — it's still the right
+    /// two ends.
+    private func routeStreetLegs() async {
+        // Rides from the Metro planner know only their stations; SEPTA's published
+        // route shape is the line the train actually follows.
+        let rides = segments.filter { $0.style == .ride && $0.routeShortName != nil }
+        if !rides.isEmpty {
+            let shaped = await Task.detached(priority: .userInitiated) { () -> [(String, [CLLocationCoordinate2D])] in
+                guard let network = ExtendedData.network else { return [] }
+                return rides.compactMap { segment in
+                    let stops = segment.coordinates.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
+                    guard let path = network.shapePath(routeShortName: segment.routeShortName!, through: stops) else { return nil }
+                    return (segment.id, path.map(\.clCoordinate))
+                }
+            }.value
+            for (id, path) in shaped { routed[id] = path }
+        }
+
+        for segment in segments where segment.style != .ride && segment.coordinates.count == 2 {
+            if Task.isCancelled { return }
+            guard let from = segment.coordinates.first, let to = segment.coordinates.last,
+                  from.distance(to: to) > 40 else { continue }
+            let type: MKDirectionsTransportType = segment.style == .bike ? .cycling : .walking
+            if let path = await StreetRoutes.shared.path(from: from, to: to, type: type) {
+                routed[segment.id] = path
             }
         }
     }
@@ -176,7 +234,7 @@ extension RouteMapView {
                 if let start = path.first, let cursor, cursor.distance(to: start) > 15 {
                     segments.append(MapSegment(coordinates: [cursor, start], color: walkColor, style: .walk))
                 }
-                segments.append(MapSegment(coordinates: path, color: color, style: .ride))
+                segments.append(MapSegment(coordinates: path, color: color, style: .ride, routeShortName: ride.routeBadge))
                 for id in ride.stationsServed.dropFirst().dropLast() {
                     if let c = coordinate(id) { stops.append(MapStop(coordinate: c, name: "", color: color, role: .stop)) }
                 }
@@ -210,5 +268,65 @@ extension CLLocationCoordinate2D {
     func distance(to other: CLLocationCoordinate2D) -> Double {
         Coordinate(latitude: latitude, longitude: longitude)
             .distance(to: Coordinate(latitude: other.latitude, longitude: other.longitude))
+    }
+}
+
+/// MapKit walking and cycling routes, cached for the session so revisiting a trip
+/// or redrawing a map doesn't ask Apple again.
+actor StreetRoutes {
+    static let shared = StreetRoutes()
+    private var cache: [String: [CLLocationCoordinate2D]] = [:]
+    /// Requests that failed (offline, or MapKit throttling), and when — retried
+    /// only after a pause rather than on every redraw.
+    private var failures: [String: Date] = [:]
+
+    func path(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, type: MKDirectionsTransportType) async -> [CLLocationCoordinate2D]? {
+        let key = String(format: "%.5f,%.5f>%.5f,%.5f#%lu", from.latitude, from.longitude, to.latitude, to.longitude, type.rawValue)
+        if let hit = cache[key] { return hit }
+        if let failed = failures[key], Date().timeIntervalSince(failed) < 120 { return nil }
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
+        request.transportType = type
+        guard let route = try? await MKDirections(request: request).calculate().routes.first else {
+            failures[key] = Date()
+            return nil
+        }
+        let polyline = route.polyline
+        var points = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: polyline.pointCount)
+        polyline.getCoordinates(&points, range: NSRange(location: 0, length: polyline.pointCount))
+        cache[key] = points
+        return points
+    }
+}
+
+/// Hands a leg off to Apple Maps for turn-by-turn — spoken directions included,
+/// which is what a rider with AirPods in actually wants.
+enum AppleMapsHandoff {
+    enum Mode {
+        case walking, cycling, transit
+
+        var launchValue: String {
+            switch self {
+            case .walking: return MKLaunchOptionsDirectionsModeWalking
+            case .cycling: return MKLaunchOptionsDirectionsModeCycling
+            case .transit: return MKLaunchOptionsDirectionsModeTransit
+            }
+        }
+    }
+
+    /// `from: nil` starts from wherever the phone is.
+    @MainActor
+    static func open(from: Coordinate?, fromName: String? = nil, to: Coordinate, toName: String, mode: Mode) {
+        let source: MKMapItem
+        if let from {
+            source = MKMapItem(placemark: MKPlacemark(coordinate: from.clCoordinate))
+            source.name = fromName
+        } else {
+            source = MKMapItem.forCurrentLocation()
+        }
+        let destination = MKMapItem(placemark: MKPlacemark(coordinate: to.clCoordinate))
+        destination.name = toName
+        MKMapItem.openMaps(with: [source, destination], launchOptions: [MKLaunchOptionsDirectionsModeKey: mode.launchValue])
     }
 }

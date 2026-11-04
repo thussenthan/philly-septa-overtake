@@ -45,77 +45,84 @@ public enum IndegoBike: String, Sendable, Hashable, CaseIterable {
 
 /// How the rider pays for Indego. Set in Settings.
 ///
-/// Prices are Indego's published rates as of November 2026 (rideindego.com,
-/// the GBFS `system_pricing_plans` feed, and press coverage of the 2026 e-bike
-/// pricing). They are estimates for comparing options — the app says so — and
-/// live in one table so they are easy to update.
+/// Indego's published rates (rideindego.com/pricing, November 2026). The pass fee
+/// itself is sunk once bought, so a ride's price is only what that ride adds:
+///
+/// | Pass | Classic | E-bike | Overtime |
+/// |---|---|---|---|
+/// | Single Ride | $4.50 for 30 min | +30¢/min | +30¢/min after 30 min |
+/// | Guest Pass, Indego30, Indego365 | 60 min included | +20¢/min | +20¢/min after 60 min |
+/// | Indego365 Plus | 60 min included | two 30-min rides a day included, then +20¢/min | +20¢/min |
+/// | Access passes (ACCESS cardholders) | 60 min included | +7¢/min (Plus: two 30-min rides included) | +7¢/min |
 public enum IndegoPass: String, Codable, Sendable, Hashable, CaseIterable, Identifiable {
     case payAsYouGo
     case dayPass
     case indego30
     case indego365
     case indego365Plus
-    case access
+    case access            // Indego30 Access
+    case access365
+    case access365Plus
 
     public var id: String { rawValue }
 
     public var label: String {
         switch self {
-        case .payAsYouGo: return "No pass (pay per ride)"
-        case .dayPass: return "Guest / day pass"
-        case .indego30: return "Indego30 monthly"
-        case .indego365: return "Indego365 annual"
+        case .payAsYouGo: return "Single Ride (no pass)"
+        case .dayPass: return "Guest Pass (24 h)"
+        case .indego30: return "Indego30"
+        case .indego365: return "Indego365"
         case .indego365Plus: return "Indego365 Plus"
-        case .access: return "Access pass (reduced fare)"
+        case .access: return "Indego30 Access"
+        case .access365: return "Indego365 Access"
+        case .access365Plus: return "Indego365 Plus Access"
         }
     }
 
-    /// What the pass itself costs, for the Settings footnote.
+    /// What the pass costs and what it covers, for the Settings footnote.
     public var passPriceNote: String {
         switch self {
-        case .payAsYouGo: return "15¢/min classic, 45¢/min e-bike"
-        case .dayPass: return "$15 for 24 h · 60-min classic rides"
-        case .indego30: return "$20 / 30 days · 60-min classic rides"
-        case .indego365: return "$156 / year · 60-min classic rides"
-        case .indego365Plus: return "$230 / year · plus two 30-min e-bike rides a day"
-        case .access: return "$5 / month for ACCESS/SNAP cardholders · e-bike 7¢/min"
+        case .payAsYouGo: return "$4.50 per 30-min classic ride; e-bikes +30¢/min; over 30 min +30¢/min"
+        case .dayPass: return "$15 for 24 h; 60-min classic rides; e-bikes +20¢/min"
+        case .indego30: return "$20 / 30 days; 60-min classic rides; e-bikes +20¢/min"
+        case .indego365: return "$156 / year; 60-min classic rides; e-bikes +20¢/min"
+        case .indego365Plus: return "$230 / year; two 30-min e-bike rides a day included, then +20¢/min"
+        case .access: return "$5 / 30 days for ACCESS cardholders; e-bikes +7¢/min"
+        case .access365: return "$48 / year for ACCESS cardholders; e-bikes +7¢/min"
+        case .access365Plus: return "$100 / year for ACCESS cardholders; two 30-min e-bike rides a day, then +7¢/min"
         }
     }
 
-    /// Included free classic riding time, in minutes.
-    var includedClassicMinutes: Double {
-        self == .payAsYouGo ? 0 : 60
-    }
+    /// Flat charge per ride (only Single Ride has one).
+    var unlockFee: Double { self == .payAsYouGo ? 4.50 : 0 }
 
-    /// Included free e-bike minutes per ride.
-    var includedElectricMinutes: Double {
-        self == .indego365Plus ? 30 : 0
-    }
+    /// Riding time covered before overtime starts.
+    var includedMinutes: Double { self == .payAsYouGo ? 30 : 60 }
 
-    /// Per-minute rate beyond the included classic time.
-    var classicPerMinute: Double {
-        self == .access ? 0.07 : 0.15
-    }
-
-    /// Per-minute e-bike rate (on top of any included classic time — e-bike
-    /// minutes are charged from the first minute).
-    var electricPerMinute: Double {
+    /// Overtime and e-bike surcharge, per minute.
+    var perMinute: Double {
         switch self {
-        case .payAsYouGo: return 0.45
-        case .access: return 0.07
+        case .payAsYouGo: return 0.30
+        case .access, .access365, .access365Plus: return 0.07
         case .dayPass, .indego30, .indego365, .indego365Plus: return 0.20
         }
     }
 
+    /// E-bike minutes per ride covered by the pass (the Plus passes' daily rides).
+    var includedElectricMinutes: Double {
+        self == .indego365Plus || self == .access365Plus ? 30 : 0
+    }
+
     /// Estimated cost of one ride of `minutes` on `bike`.
+    ///
+    /// Assumes a Plus rider still has an included e-bike ride left today.
     public func price(minutes: Double, bike: IndegoBike) -> Double {
         let m = max(1, minutes.rounded(.up))
-        switch bike {
-        case .classic:
-            return max(0, m - includedClassicMinutes) * classicPerMinute
-        case .electric:
-            return max(0, m - includedElectricMinutes) * electricPerMinute
+        var total = unlockFee + max(0, m - includedMinutes) * perMinute
+        if bike == .electric {
+            total += max(0, m - includedElectricMinutes) * perMinute
         }
+        return (total * 100).rounded() / 100
     }
 }
 
@@ -172,24 +179,30 @@ public struct IndegoPlanner: Sendable {
             walking.walkSeconds(straightLineMeters: meters)
         }
 
-        let pickups = stations
+        let renting = stations
             .filter { $0.isRenting }
             .map { ($0, $0.coordinate.distance(to: origin)) }
             .filter { $0.1 <= maxWalkMeters }
             .sorted { $0.1 < $1.1 }
-            .prefix(12)
+        /// The nearest docks that have this kind of bike: a nearer dock with none
+        /// must not crowd out a farther one that has one.
+        func pickups(for bike: IndegoBike) -> ArraySlice<(IndegoStation, Double)> {
+            renting
+                .filter { (bike == .classic ? $0.0.classicBikes : $0.0.electricBikes) > 0 }
+                .prefix(12)
+        }
         let dropoffs = stations
             .filter { $0.isReturning && $0.openDocks > 0 }
             .map { ($0, $0.coordinate.distance(to: destination)) }
             .filter { $0.1 <= maxWalkMeters }
             .sorted { $0.1 < $1.1 }
             .prefix(8)
-        guard !pickups.isEmpty, !dropoffs.isEmpty else { return [] }
+        guard !renting.isEmpty, !dropoffs.isEmpty else { return [] }
 
         var result: [IndegoOption] = []
         for bike in IndegoBike.allCases {
             var best: IndegoOption?
-            for (pickup, accessMeters) in pickups {
+            for (pickup, accessMeters) in pickups(for: bike) {
                 let available = bike == .classic ? pickup.classicBikes : pickup.electricBikes
                 guard available > 0 else { continue }
                 for (dropoff, egressMeters) in dropoffs where dropoff.id != pickup.id {

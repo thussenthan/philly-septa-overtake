@@ -24,10 +24,21 @@ File format (UTF-8, one record per line, fields separated by TAB)
     S  name  lat  lon  [fare_class]                      index = order; fare_class on rail stops only
     C  label  is_center_city                             Regional Rail fare class (order = index)
     X  weekday_cents,...  weekend_cents,...              one row per *from* class, one value per *to* class
-    P  route  headsign  direction  stops  offsets  flags
-         stops:   stop indices, first absolute, then deltas from the previous one
-         offsets: arrival seconds from trip start, as deltas from the previous stop (first is 0)
-         flags:   "" or "pos:bits,..." with bit 1 = no pickup, bit 2 = no drop-off
+    H  points                                            route geometry (order = index)
+         points:  lat,lon pairs in 1e-5 degrees, the first pair absolute, then each
+                  pair as deltas from the previous one; simplified to ~8 m
+    P  route  headsign  direction  stops  offsets  flags  [shape  segments  [early]]
+         stops:    stop indices, first absolute, then deltas from the previous one
+         offsets:  arrival seconds from trip start, as deltas from the previous stop (first is 0)
+         flags:    "" or "pos:bits,..." with bit 1 = no pickup, bit 2 = no drop-off
+         shape:    index of the H record the pattern runs along; empty when none fits
+         segments: per stop, the shape segment it lies on (segment i runs from point i
+                   to point i + 1), first absolute, then deltas; never decreasing, so a
+                   ride from stop a to stop b is drawn through points seg[a]+1 ... seg[b]
+         early:    "" or "pos:seconds,..." — how much sooner than ``offsets`` the fastest
+                   trip of the pattern reaches that stop (only where >= EARLY_MIN_S);
+                   the planner boards at offset − early. Shape and segments are
+                   written empty when there is no shape but there is an early list.
     T  days  starts                                      belongs to the preceding P
          days:   digits 1..7 = Monday..Sunday that run exactly these trips
          starts: trip start times (seconds after service-day midnight, may exceed 86400),
@@ -43,8 +54,10 @@ import math
 import statistics
 import sys
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
+
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_schedule as bs  # noqa: E402  (shared calendar logic)
@@ -62,6 +75,17 @@ MODES = {"0": "trolley", "1": "metro", "2": "rail", "3": "bus", "11": "trolley"}
 # wrong by a quarter of an hour on a long route; exact keys, on the other hand,
 # multiply the patterns tenfold for jitter of a few seconds.
 RUNTIME_BIN = 1.06
+
+# Route geometry. Shapes are simplified with Douglas-Peucker to this tolerance:
+# invisible at street zoom and about a fifth of the points SEPTA publishes.
+SHAPE_TOLERANCE_M = 8.0
+# A shape is only used for a pattern when every stop lies this close to it (in
+# order). Regional Rail stations sit beside the tracks, bus stops at the kerb.
+SHAPE_MAX_STOP_M = 200.0
+# Local equirectangular projection for distances (metres), as ExtendedNetwork uses.
+REF_LAT, REF_LON = 39.5, -75.5
+M_PER_DEG_LAT = 110_574.0
+M_PER_DEG_LON = 111_320.0 * math.cos(math.radians(40.0))
 
 
 class InnerFeed:
@@ -167,17 +191,22 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
         runtime = max(offsets[-1], 1)
         bin_ = int(math.log(runtime) / math.log(RUNTIME_BIN))
         key = (t["route_id"], t.get("direction_id", ""), stops, tuple(flags), bin_)
-        groups[key].append((start, offsets, trip_days[tid], (t.get("trip_headsign") or "").strip()))
+        groups[key].append((start, offsets, trip_days[tid], (t.get("trip_headsign") or "").strip(),
+                            t.get("shape_id") or ""))
 
     patterns = []
     for (route_id, direction_id, stops, flags, _), members in groups.items():
-        columns = zip(*[m[1] for m in members])
+        columns = list(zip(*[m[1] for m in members]))
         offsets = [int(statistics.median(c)) for c in columns]
         # Medians of each column can break monotonicity by a second or two.
         for i in range(1, len(offsets)):
             offsets[i] = max(offsets[i], offsets[i - 1])
+        # How much earlier than the median the fastest trip of the group reaches each
+        # stop. Boarding uses median − early, so a rider is never told to turn up
+        # after a fast trip has already gone.
+        early = [max(0, offsets[i] - min(c)) for i, c in enumerate(columns)]
         starts = defaultdict(set)
-        for start, _, days, _ in members:
+        for start, _, days, _, _ in members:
             for d in days:
                 starts[d].add(start)
         headsigns = defaultdict(int)
@@ -190,8 +219,11 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
             "direction": direction_words.get((route_id, direction_id), ""),
             "stops": stops,
             "offsets": offsets,
+            "early": early,
             "flags": flags,
             "starts": {d: sorted(v) for d, v in starts.items()},
+            # Candidate shapes, most used first.
+            "shapes": [prefix + sid for sid, _ in Counter(m[4] for m in members if m[4]).most_common()],
         })
 
     stops = {}
@@ -202,7 +234,138 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
         "stops": stops,
         "patterns": patterns,
         "feed_info": feed.table("feed_info.txt")[0],
+        "shapes": read_shapes(feed, prefix, {sid for p in patterns for sid in p["shapes"]}),
     }
+
+
+# --------------------------------------------------------------------------
+# Shapes
+# --------------------------------------------------------------------------
+
+def read_shapes(feed: InnerFeed, prefix: str, wanted: set[str]) -> dict[str, list[tuple[int, int]]]:
+    """Wanted shapes as simplified point lists in integer 1e-5 degrees."""
+    if not feed.has("shapes.txt"):
+        return {}
+    rows = feed.raw_rows("shapes.txt")
+    col = next(rows)
+    i_id, i_lat, i_lon, i_seq = col["shape_id"], col["shape_pt_lat"], col["shape_pt_lon"], col["shape_pt_sequence"]
+    raw: dict[str, list] = defaultdict(list)
+    for r in rows:
+        sid = prefix + r[i_id]
+        if sid in wanted:
+            raw[sid].append((int(r[i_seq]), float(r[i_lat]), float(r[i_lon])))
+    shapes = {}
+    for sid, pts in raw.items():
+        pts.sort()
+        points: list[tuple[int, int]] = []
+        for _, lat, lon in pts:
+            q = (round(lat * 1e5), round(lon * 1e5))
+            if not points or points[-1] != q:
+                points.append(q)
+        if len(points) >= 2:
+            shapes[sid] = simplify(points, SHAPE_TOLERANCE_M)
+    return shapes
+
+
+def project(points) -> np.ndarray:
+    """(n, 2) metres on the local projection; points in 1e-5 degrees (lat, lon)."""
+    a = np.asarray(points, dtype=np.float64) * 1e-5
+    return np.column_stack(((a[:, 1] - REF_LON) * M_PER_DEG_LON, (a[:, 0] - REF_LAT) * M_PER_DEG_LAT))
+
+
+def simplify(points: list[tuple[int, int]], tolerance: float) -> list[tuple[int, int]]:
+    """Douglas-Peucker, iterative; keeps the first and last point."""
+    n = len(points)
+    if n <= 2:
+        return points
+    xy = project(points)
+    keep = np.zeros(n, dtype=bool)
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        a, b = stack.pop()
+        if b - a < 2:
+            continue
+        seg = xy[b] - xy[a]
+        rel = xy[a + 1:b] - xy[a]
+        length2 = float(seg @ seg)
+        if length2 == 0:
+            d = np.hypot(rel[:, 0], rel[:, 1])
+        else:
+            t = np.clip((rel @ seg) / length2, 0, 1)
+            d = np.hypot(rel[:, 0] - t * seg[0], rel[:, 1] - t * seg[1])
+        k = int(np.argmax(d))
+        if d[k] > tolerance:
+            m = a + 1 + k
+            keep[m] = True
+            stack.append((a, m))
+            stack.append((m, b))
+    return [p for p, k in zip(points, keep) if k]
+
+
+def stop_segments(shape_xy: np.ndarray, stop_xy: np.ndarray) -> tuple[list[int], float]:
+    """Monotone projection of stops onto a shape's segments.
+
+    Chooses for each stop a segment index, never decreasing along the pattern,
+    minimising the summed stop-to-segment distance (a small dynamic programme, so
+    a route that loops back past an earlier stop doesn't pull it out of order).
+    Returns the indices and the worst stop-to-segment distance in metres.
+    """
+    a = shape_xy[:-1]
+    seg = shape_xy[1:] - a
+    length2 = np.maximum((seg * seg).sum(axis=1), 1e-9)
+    # (stops, segments) distances.
+    rel = stop_xy[:, None, :] - a[None, :, :]
+    t = np.clip((rel * seg[None, :, :]).sum(axis=2) / length2[None, :], 0, 1)
+    dx = rel[:, :, 0] - t * seg[None, :, 0]
+    dy = rel[:, :, 1] - t * seg[None, :, 1]
+    dist = np.hypot(dx, dy)
+    s_count, m = dist.shape
+    positions = np.arange(m)
+    cost = dist[0].copy()
+    back = np.zeros((s_count, m), dtype=np.int64)
+    for k in range(1, s_count):
+        running = np.minimum.accumulate(cost)
+        # back[k, j] = argmin of cost[0..j]: the last prefix-minimum at or before j.
+        back[k] = np.maximum.accumulate(np.where(cost <= running, positions, 0))
+        cost = dist[k] + running
+    j = int(np.argmin(cost))
+    worst = 0.0
+    chosen = [0] * s_count
+    for k in range(s_count - 1, -1, -1):
+        chosen[k] = j
+        worst = max(worst, float(dist[k, j]))
+        if k:
+            j = int(back[k, j])
+    return chosen, worst
+
+
+def attach_shapes(patterns: list[dict], shapes: dict[str, list], stop_points: dict[str, tuple[float, float]],
+                  stats: dict) -> None:
+    """Sets each pattern's "shape" (shape id or None) and "segments"."""
+    projected = {sid: project(pts) for sid, pts in shapes.items()}
+    cache: dict[tuple, tuple] = {}
+    fitted = unfitted = 0
+    for p in patterns:
+        p["shape"], p["segments"] = None, None
+        stop_xy = project([stop_points[s] for s in p["stops"]])
+        best = None
+        for sid in p["shapes"][:3]:
+            if sid not in projected:
+                continue
+            key = (sid, p["stops"])
+            if key not in cache:
+                cache[key] = stop_segments(projected[sid], stop_xy)
+            segments, worst = cache[key]
+            if worst <= SHAPE_MAX_STOP_M and (best is None or worst < best[2]):
+                best = (sid, segments, worst)
+        if best:
+            p["shape"], p["segments"] = best[0], best[1]
+            fitted += 1
+        else:
+            unfitted += 1
+    stats["patterns_with_shape"] = fitted
+    stats["patterns_without_shape"] = unfitted
 
 
 # --------------------------------------------------------------------------
@@ -310,6 +473,16 @@ def deltas(values) -> str:
     return ",".join(out)
 
 
+# Stops must lie in this box (SEPTA's five counties with a wide margin). The app's
+# decoder rejects anything outside it, so the generator refuses to write it.
+LAT_RANGE = (38.5, 41.0)
+LON_RANGE = (-76.5, -74.0)
+
+# Early-boarding corrections under a minute are left out: the boarding margin and
+# transfer slack absorb most of that, and the file stays smaller (+0.45 MB in all).
+EARLY_MIN_S = 60
+
+
 def build(feed_path: Path) -> tuple[str, dict]:
     bus_feed, rail_feed = open_feeds(feed_path)
     stats: dict = {}
@@ -321,6 +494,11 @@ def build(feed_path: Path) -> tuple[str, dict]:
     routes = {**bus["routes"], **rail["routes"]}
     stops = {**bus["stops"], **rail["stops"]}
     patterns = bus["patterns"] + rail["patterns"]
+    stop_points = {
+        sid: (round(float(s["stop_lat"]) * 1e5), round(float(s["stop_lon"]) * 1e5))
+        for sid, s in stops.items() if s.get("stop_lat") and s.get("stop_lon")
+    }
+    attach_shapes(patterns, {**bus["shapes"], **rail["shapes"]}, stop_points, stats)
 
     def sort_key(rid):
         r = routes[rid]
@@ -355,14 +533,18 @@ def build(feed_path: Path) -> tuple[str, dict]:
             "R", clean(r["route_short_name"] or rid), clean(r["route_long_name"]),
             MODES.get(r["route_type"], "bus"), (r.get("route_color") or "").upper(),
         ]))
-    missing_stops = 0
+    missing = [sid for sid in stop_index if stops.get(sid) is None]
+    if missing:
+        raise SystemExit(f"{len(missing)} stops used by trips are missing from stops.txt: {missing[:10]}")
     for sid, _ in sorted(stop_index.items(), key=lambda kv: kv[1]):
-        s = stops.get(sid)
-        if s is None:
-            missing_stops += 1
-            lines.append("S\t?\t0\t0")
-            continue
-        fields = ["S", clean(s["stop_name"]), f"{float(s['stop_lat']):.5f}", f"{float(s['stop_lon']):.5f}"]
+        s = stops[sid]
+        try:
+            lat, lon = float(s["stop_lat"]), float(s["stop_lon"])
+        except (KeyError, TypeError, ValueError):
+            raise SystemExit(f"stop {sid} ({s.get('stop_name')!r}) has no usable coordinates")
+        if not (LAT_RANGE[0] <= lat <= LAT_RANGE[1] and LON_RANGE[0] <= lon <= LON_RANGE[1]):
+            raise SystemExit(f"stop {sid} ({s.get('stop_name')!r}) at {lat}, {lon} is outside the SEPTA region")
+        fields = ["S", clean(s["stop_name"]), f"{lat:.5f}", f"{lon:.5f}"]
         if sid in stop_class:
             fields.append(str(stop_class[sid]))
         lines.append("\t".join(fields))
@@ -371,14 +553,43 @@ def build(feed_path: Path) -> tuple[str, dict]:
     for c in fare_classes:
         lines.append("X\t" + ",".join(map(str, c["weekday"])) + "\t" + ",".join(map(str, c["weekend"])))
 
+    # Shapes, deduplicated by their simplified points, in first-use order.
+    all_shapes = {**bus["shapes"], **rail["shapes"]}
+    shape_index: dict[tuple, int] = {}
+    shape_of_id: dict[str, int] = {}
+    shape_points = 0
+    for p in patterns:
+        sid = p["shape"]
+        if sid is None or sid in shape_of_id:
+            continue
+        pts = tuple(all_shapes[sid])
+        if pts not in shape_index:
+            shape_index[pts] = len(shape_index)
+            flat = []
+            prev = (0, 0)
+            for q in pts:
+                flat.append(f"{q[0] - prev[0]},{q[1] - prev[1]}")
+                prev = q
+            lines.append("H\t" + ",".join(flat))
+            shape_points += len(pts)
+        shape_of_id[sid] = shape_index[pts]
+
     trip_count = 0
     for p in patterns:
         idx = [stop_index[s] for s in p["stops"]]
         flag_text = ",".join(f"{i}:{f}" for i, f in enumerate(p["flags"]) if f)
-        lines.append("\t".join([
+        fields = [
             "P", str(route_index[p["route"]]), clean(p["headsign"]), clean(p["direction"]),
             deltas(idx), deltas(p["offsets"]), flag_text,
-        ]))
+        ]
+        early_text = ",".join(f"{i}:{e}" for i, e in enumerate(p["early"]) if e >= EARLY_MIN_S)
+        if p["shape"] is not None:
+            fields += [str(shape_of_id[p["shape"]]), deltas(p["segments"])]
+        elif early_text:
+            fields += ["", ""]
+        if early_text:
+            fields.append(early_text)
+        lines.append("\t".join(fields))
         by_list: dict[tuple, list[int]] = defaultdict(list)
         for d, starts in p["starts"].items():
             by_list[tuple(starts)].append(d)
@@ -392,7 +603,9 @@ def build(feed_path: Path) -> tuple[str, dict]:
         "patterns": len(patterns),
         "trip_departures_per_week": trip_count,
         "fare_classes": len(fare_classes),
-        "missing_stops": missing_stops,
+        "early_boarding_corrections": sum(1 for p in patterns for e in p["early"] if e >= EARLY_MIN_S),
+        "shapes": len(shape_index),
+        "shape_points": shape_points,
     })
     return "\n".join(lines) + "\n", stats
 

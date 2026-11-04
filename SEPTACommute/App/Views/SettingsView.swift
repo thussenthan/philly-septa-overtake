@@ -8,6 +8,8 @@ struct SettingsView: View {
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingReset = false
+    /// The decimal pad has no return key; this is what the keyboard's Done clears.
+    @FocusState private var editingValue: Bool
 
     var body: some View {
         NavigationStack {
@@ -24,7 +26,12 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { editingValue = false }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -111,38 +118,35 @@ struct SettingsView: View {
                     "",
                     value: valueBinding,
                     format: .currency(code: "USD").precision(.fractionLength(0...2)),
-                    prompt: Text("$\(Int(Self.suggestedHourlyValue)) e.g.")
+                    prompt: Text("$\(Int(RiderPreferences.defaultHourlyValue))")
                 )
                 .keyboardType(.decimalPad)
+                .focused($editingValue)
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 110)
                 Text("/ hour").foregroundStyle(.secondary)
             }
             if model.preferences.valueOfTimePerHour == nil {
-                Button("Use $\(Int(Self.suggestedHourlyValue))/hour") {
-                    model.preferences.valueOfTimePerHour = Self.suggestedHourlyValue
-                }
-            } else {
-                Button("Turn off value ranking", role: .destructive) {
-                    model.preferences.valueOfTimePerHour = nil
+                Button("Use $\(Int(RiderPreferences.defaultHourlyValue))/hour") {
+                    model.preferences.valueOfTimePerHour = RiderPreferences.defaultHourlyValue
                 }
             }
         } header: {
             Text("Value of your time")
         } footer: {
-            Text("A good number is your hourly wage. Every option — train, bus, Regional Rail, Indego — is then scored as fare + door-to-door time × this rate, and the cheapest overall is ranked first in a Best value list at the bottom of the home screen. The main recommendation is unchanged. Leave blank to turn off.")
+            // Only a hint for an empty field. What the number does is explained
+            // under About → How it works, not on the front of Settings.
+            if model.preferences.valueOfTimePerHour == nil {
+                Text("Try your hourly wage.")
+            }
         }
     }
-
-    /// Roughly Philadelphia's median hourly wage (BLS, 2025), shown as a starting
-    /// point rather than filled in, because the right number is the rider's own.
-    static let suggestedHourlyValue: Double = 30
 
     // MARK: - More ways to go
 
     private var moreWaysSection: some View {
         Section {
-            Toggle("Show buses & Regional Rail", isOn: $model.preferences.showAllSEPTA)
+            Toggle("Show alternative routes", isOn: $model.preferences.showAllSEPTA)
             Toggle("Show Indego bike share", isOn: $model.preferences.showIndego)
             if model.preferences.showIndego {
                 Picker("Indego pass", selection: $model.preferences.indegoPass) {
@@ -153,8 +157,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("More ways to go")
-        } footer: {
-            Text("Listed under the Metro answer, never instead of it. Bikes come from Indego's live dock feed; prices are estimates (\(model.preferences.indegoPass.passPriceNote)) — check rideindego.com. Bus and Regional Rail times are SEPTA's published schedule.")
         }
     }
 
@@ -227,7 +229,7 @@ struct SettingsView: View {
             LabeledContent("Stations", value: "\(model.network.stations.count)")
             LabeledContent("Stopping patterns", value: "\(model.network.patterns.count)")
             notesLink
-            // Last, because it is the one row drawn in the accent: it leaves the app.
+            // Last, because it leaves the app.
             Link(destination: URL(string: "https://www.septa.org/alerts/")!) {
                 Label("SEPTA service alerts", systemImage: "exclamationmark.bubble")
             }
@@ -247,6 +249,7 @@ struct SettingsView: View {
         } label: {
             if model.serviceAlerts.isEmpty {
                 Label(model.noteMessages.count > 1 ? "Notes" : "Note", systemImage: "info.circle")
+                    .foregroundStyle(Theme.accent)
             } else {
                 Label(model.serviceStatusSummary, systemImage: model.serviceStatusSymbol)
             }
@@ -295,13 +298,39 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            NavigationLink("How the ranking works") { RankingExplainerView() }
+            NavigationLink("How it works") { RankingExplainerView() }
+            NavigationLink("Data & credits") { CreditsView() }
             Link(destination: BugReport.url(network: model.network)) {
                 Label("Report a bug", systemImage: "ladybug")
             }
         } header: {
             Text("About")
         }
+    }
+}
+
+/// Where the data comes from, and who this app is not.
+struct CreditsView: View {
+    var body: some View {
+        List {
+            Section("SEPTA") {
+                Text("Timetables, stops, fares and route shapes come from SEPTA's published GTFS feed, used under SEPTA's developer licence. Service alerts come from SEPTA's public alerts feed.")
+                Link("SEPTA developer licence", destination: URL(string: "https://www.septa.org/license-agreement/")!)
+            }
+            Section("Indego") {
+                Text("Live bike and dock counts come from Indego's public GBFS feed. Prices are Indego's published rates, used to estimate a ride.")
+                Link("Indego pricing", destination: URL(string: "https://www.rideindego.com/pricing/")!)
+            }
+            Section("Maps") {
+                Text("Maps, walking and cycling routes, and turn-by-turn directions are provided by Apple Maps.")
+            }
+            Section {
+                Text("Overtake is an independent app. It is not affiliated with, endorsed by, or supported by SEPTA, Indego, the City of Philadelphia, Bicycle Transit Systems or BCycle. Their names and colours are used only to describe their services.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Data & credits")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -322,11 +351,32 @@ struct RankingExplainerView: View {
                 paragraph("On the Broad Street Line, the express skips fourteen of the line's twenty-two stations and only runs weekday peaks between Fern Rock and Walnut-Locust. It never goes to South Philadelphia, so for anything south of Walnut-Locust the local is the only train.")
                 paragraph("The Broad-Ridge Spur also runs fast on Broad St and stops at Fairmount, which the express skips — so for some trips the Spur beats both.")
                 paragraph("Between about midnight and 5 AM the trains stop and SEPTA runs the B1 Owl bus along Broad St at street level. Those trips are shown too, boarding at the curb rather than in the station.")
+
+                heading("Alternative routes")
+                paragraph("Below the main answer, the app searches all of SEPTA — Metro, trolleys, buses and Regional Rail — on equal terms, several times over with each mode left out in turn, so a cheaper bus isn't hidden just because a faster train exists.")
+                paragraph("An alternative is shown only if nothing else on the screen is both at least as cheap and gets you there at least as soon. Fares are SEPTA Key prices; Regional Rail is priced by zone and day.")
+                paragraph("Bus and Regional Rail times are SEPTA's published schedule, not live positions.")
+
+                heading("Indego bike share")
+                paragraph("Dock counts are live from Indego. A trip is the walk to a dock with a bike, the ride, and the walk from a dock with space — all three count towards the time shown.")
+                paragraph("Prices are what the ride adds for the pass you pick in Settings; the pass fee itself isn't counted. \"Cheapest\" appears only when the bike is the cheapest of everything on the screen. Ride times assume about 9 mph on a classic bike and 12½ mph on an e-bike.")
+                ForEach(IndegoPass.allCases) { pass in
+                    paragraph("\(pass.label): \(pass.passPriceNote).")
+                }
+
+                heading("Value of your time")
+                paragraph("With an hourly rate set, every option is scored as its fare plus its door-to-door time at that rate, and the Best value list puts the lowest first. Your hourly wage is a good number to start from. The main recommendation is unchanged.")
             }
             .padding(20)
         }
-        .navigationTitle("Ranking")
+        .navigationTitle("How it works")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text)
+            .font(.headline)
+            .padding(.top, 8)
     }
 
     private func paragraph(_ text: String) -> some View {

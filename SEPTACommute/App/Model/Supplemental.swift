@@ -47,11 +47,18 @@ extension CommuteModel {
     }
 
     var originCoordinate: Coordinate? { coordinate(of: resolvedOrigin) }
+
+    /// True when the trip starts from wherever the phone is.
+    var isPlanningFromCurrentLocation: Bool {
+        if case .currentLocation = source { return true }
+        return false
+    }
     var destinationCoordinate: Coordinate? { coordinate(of: resolvedTarget) }
 
     // MARK: Planning the extras
 
-    /// Bike share and bus/rail, alongside — never instead of — the Metro plan.
+    /// Bike share and the all-SEPTA alternatives, alongside — never instead of —
+    /// the Metro plan.
     func planSupplemental() {
         if preferences.showIndego {
             indego.refreshIfNeeded()
@@ -60,10 +67,10 @@ extension CommuteModel {
             indegoOptions = []
         }
 
-        extendedTask?.cancel()
         guard preferences.showAllSEPTA,
               let origin = originCoordinate,
               let destination = destinationCoordinate else {
+            cancelAlternativesSearch()
             extendedItineraries = []
             return
         }
@@ -71,39 +78,145 @@ extension CommuteModel {
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
         let margin = preferences.boardingBufferSeconds
         let now = Date()
+
+        // Replans come every thirty seconds and on every location fix. The search
+        // is five full passes over all of SEPTA, so it runs only when something it
+        // depends on has changed: the two ends (to ~50 m), the minute, the settings.
+        func rounded(_ c: Coordinate) -> String { String(format: "%.4f,%.4f", c.latitude, c.longitude) }
+        let endpoints = rounded(origin) + ">" + rounded(destination)
+        let key = "\(endpoints)|\(Int(now.timeIntervalSince1970 / 60))|\(walking.metersPerSecond)|\(margin)"
+        guard key != extendedSearchKey else { return }
+        extendedSearchKey = key
+        // A different trip: the old trip's alternatives must not sit under the new
+        // answer, compared against it, while the search runs.
+        if endpoints != extendedEndpoints {
+            extendedItineraries = []
+            extendedEndpoints = endpoints
+        }
+
+        extendedTask?.cancel()
         extendedTask = Task { [weak self] in
-            let result = await Task.detached(priority: .utility) { () -> [ExtendedItinerary] in
+            let work = Task.detached(priority: .utility) { () -> [ExtendedItinerary]? in
                 guard let network = ExtendedData.network else { return [] }
                 var planner = ExtendedPlanner(network: network, walking: walking, boardingMarginSeconds: margin)
-                let mixed = planner.plan(from: origin, to: destination, departAt: now)
-                // The Metro wins most city trips outright, which would leave the bus
-                // invisible. Asking again without it shows what the bus would do.
-                planner.excludedModes = [.metro, .trolley]
-                let withoutMetro = planner.plan(from: origin, to: destination, departAt: now)
+                // One search returns the fastest option per number of rides, so on its
+                // own the fastest mode wins everything and a cheaper-but-slower one
+                // (a bus instead of Regional Rail) is never seen. Searching again with
+                // each mode left out puts every mode on equal footing; the price/time
+                // frontier below decides what is worth showing.
+                let exclusions: [Set<ExtendedMode>] = [[], [.rail], [.metro, .trolley], [.bus], [.rail, .metro, .trolley]]
                 var seen = Set<String>()
-                return (mixed + withoutMetro)
-                    .filter { seen.insert($0.rides.map { "\($0.routeShortName)@\($0.departure.timeIntervalSince1970)" }.joined(separator: ">")).inserted }
-                    .sorted { $0.arrival < $1.arrival }
-            }.value
-            guard !Task.isCancelled, let self else { return }
-            // The Metro planner already covers trips on the Metro alone; this list
-            // is for what only buses or Regional Rail make possible.
-            self.extendedItineraries = Array(result.filter(\.usesBusOrRail).prefix(3))
+                var found: [ExtendedItinerary] = []
+                for excluded in exclusions {
+                    if Task.isCancelled { return nil }
+                    planner.excludedModes = excluded
+                    for itinerary in planner.plan(from: origin, to: destination, departAt: now) where !itinerary.rides.isEmpty {
+                        let key = itinerary.rides.map { "\($0.routeShortName)@\(Int($0.departure.timeIntervalSince1970))" }.joined(separator: ">")
+                        if seen.insert(key).inserted { found.append(itinerary) }
+                    }
+                }
+                return found.sorted { $0.arrival < $1.arrival }
+            }
+            let result = await withTaskCancellationHandler {
+                await work.value
+            } onCancel: {
+                work.cancel()
+            }
+            guard !Task.isCancelled, let self, let result else { return }
+            self.extendedItineraries = result
         }
     }
+
+    func cancelAlternativesSearch() {
+        extendedTask?.cancel()
+        extendedTask = nil
+        extendedSearchKey = nil
+    }
+
+    /// Dock counts older than this are not "live" any more, and a bike that was
+    /// there ten minutes ago is a guess.
+    private static let indegoMaxAge: TimeInterval = 10 * 60
 
     func updateIndegoOptions() {
         guard preferences.showIndego,
               let origin = originCoordinate,
               let destination = destinationCoordinate,
+              let updated = indego.lastUpdated,
+              Date().timeIntervalSince(updated) < Self.indegoMaxAge,
               !indego.stations.isEmpty else {
-            if !preferences.showIndego { indegoOptions = [] }
+            indegoOptions = []
             return
         }
         var walking = preferences.plannerOptions().walking
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
         let planner = IndegoPlanner(walking: walking, pass: preferences.indegoPass)
         indegoOptions = planner.options(from: origin, to: destination, stations: indego.stations, departAt: Date())
+    }
+
+    // MARK: Alternative routes
+
+    /// Every transit option from the all-of-SEPTA search that is on the price/time
+    /// frontier — nothing else on the screen is both at least as cheap and gets
+    /// there at least as soon. The Metro planner's options take part as rivals, so
+    /// an alternative that merely repeats one of them (or loses to one) is hidden.
+    var alternativeRoutes: [ExtendedItinerary] {
+        let fareRules = network.fare
+        let now = Date()
+        // Minutes, because two arrivals a few seconds apart are the same to a rider.
+        func minute(_ date: Date) -> Int { Int(date.timeIntervalSince1970 / 60) }
+        func cents(_ amount: Double) -> Int { Int((amount * 100).rounded()) }
+
+        let rivals: [(cents: Int, minute: Int)] = (plan?.journeys ?? [])
+            .filter { !$0.isWalkOnly }
+            .map { (cents($0.fare(fareRules)?.withFreeTransfers ?? 0), minute($0.arrivalTime)) }
+
+        var kept: [ExtendedItinerary] = []
+        // An option whose leave-by has passed can't be caught; the list is only as
+        // fresh as the last search, so that is checked here, at display time.
+        let candidates = extendedItineraries
+            .filter { $0.leaveBy.timeIntervalSince(now) > -30 }
+            .sorted { (cents($0.fare), $0.arrival) < (cents($1.fare), $1.arrival) }
+        for candidate in candidates {
+            let m = minute(candidate.arrival)
+            // An unpriced fare can't claim to be cheap: it competes on time alone.
+            let c = candidate.fareIsKnown ? cents(candidate.fare) : Int.max
+            // Ties go to what is already shown: the Metro answer, then whatever
+            // was kept first (cheaper, then sooner). The Metro planner counts
+            // station entry and exit time that this search leaves out, so its
+            // arrivals run a couple of minutes long; an alternative has to beat it
+            // by more than that to be news.
+            if rivals.contains(where: { $0.cents <= c && $0.minute <= m + Self.rivalSlackMinutes }) { continue }
+            if kept.contains(where: { ($0.fareIsKnown ? cents($0.fare) : Int.max) <= c && minute($0.arrival) <= m }) { continue }
+            kept.append(candidate)
+        }
+        return Array(kept.sorted { $0.arrival < $1.arrival }.prefix(4))
+    }
+
+    private static let rivalSlackMinutes = 3
+
+    /// The lowest price of anything else on screen, for the Indego badge. Walking
+    /// counts, at nothing.
+    var cheapestNonBikeFare: Double? {
+        let fareRules = network.fare
+        let metro = (plan?.journeys ?? []).map { $0.isWalkOnly ? 0 : ($0.fare(fareRules)?.withFreeTransfers ?? 0) }
+        let alternatives = alternativeRoutes.filter(\.fareIsKnown).map(\.fare)
+        return (metro + alternatives).min()
+    }
+
+    /// True when this bike option is the cheapest way there of everything listed.
+    func isCheapestOverall(_ option: IndegoOption) -> Bool {
+        let bikes = indegoOptions.map(\.price).min() ?? .infinity
+        guard option.price <= bikes + 0.005 else { return false }
+        guard let other = cheapestNonBikeFare else { return true }
+        return option.price < other - 0.005
+    }
+
+    /// What the main answer is, for "sooner/later than …" — it isn't always a train.
+    var referenceNoun: String {
+        guard let best = plan?.best else { return "the train" }
+        if best.isWalkOnly { return "walking" }
+        if best.rides.allSatisfy({ $0.kind == .nightBus }) { return "the bus" }
+        return "the train"
     }
 
     // MARK: Value ranking
@@ -126,7 +239,7 @@ extension CommuteModel {
                 fare: fare
             ))
         }
-        for itinerary in extendedItineraries {
+        for itinerary in alternativeRoutes where itinerary.fareIsKnown {
             candidates.append(ValueCandidate(
                 id: "ext-" + itinerary.id,
                 kind: .extended(itinerary),

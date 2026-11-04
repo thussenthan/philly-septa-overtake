@@ -21,6 +21,10 @@ struct JourneyDetailView: View {
     var alert: ServiceAlert?
 
     @EnvironmentObject private var model: CommuteModel
+    /// The two ends as they were when the screen opened. The live location moves
+    /// every few metres, and a map redrawn (and its walking route re-requested)
+    /// on every fix is a map that flickers.
+    @State private var mapEnds: (origin: Coordinate?, destination: Coordinate?)?
 
     var body: some View {
         ScrollView {
@@ -28,9 +32,12 @@ struct JourneyDetailView: View {
                 RouteMapView(
                     journey: journey,
                     network: network,
-                    origin: model.originCoordinate,
-                    destination: model.destinationCoordinate
+                    origin: mapEnds?.origin ?? model.originCoordinate,
+                    destination: mapEnds?.destination ?? model.destinationCoordinate
                 )
+                .onAppear {
+                    if mapEnds == nil { mapEnds = (model.originCoordinate, model.destinationCoordinate) }
+                }
                 overview
                 if let alert { alertBox(alert) }
                 timeline

@@ -22,8 +22,9 @@ SOFTWARE.
 Third-party data
 ----------------
 
-The timetable, station and fare data in
-SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift is derived from the
+The timetable, station, fare and route-shape data in
+SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift and
+SEPTACommute/Resources/SEPTAExtended.txt is derived from the
 Southeastern Pennsylvania Transportation Authority's published GTFS feed:
 
     https://github.com/septadev/GTFS
@@ -36,3 +37,13 @@ extend to it. It is used under SEPTA's developer licence:
 SEPTA's name, the names of its lines and routes, and its line colours are used
 here to describe its services. This project is not affiliated with, endorsed by,
 or supported by SEPTA.
+
+Live bike-share availability comes from Indego's public GBFS feed
+(https://gbfs.bcycle.com/bcycle_indego/), and Indego's published prices are
+quoted to estimate ride costs. Indego is the City of Philadelphia's bike-share
+system, operated by Bicycle Transit Systems on the BCycle platform. That data
+is theirs, not the author's. This project is not affiliated with, endorsed by,
+or supported by Indego, the City of Philadelphia, Bicycle Transit Systems or
+BCycle.
+
+Maps and walking and cycling directions are provided by Apple Maps.

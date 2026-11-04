@@ -50,6 +50,20 @@ single answer:
 - **Both ends on foot.** Walking time is part of the trip, not an afterthought, so
   "faster train" never silently means "longer journey".
 
+Underneath the answer, and never instead of it, there are a few more ways to go:
+
+- **Alternative routes across all of SEPTA.** Buses, trolleys, the Metro and
+  Regional Rail are searched on equal terms by a second planner, and an alternative
+  is shown only if nothing else on the screen is both at least as cheap and at least
+  as quick.
+- **Indego bike share.** Live classic and e-bike counts at the nearest docks, the
+  whole trip timed (walk, ride, walk), and a price for the pass you hold. Each step
+  opens Apple Maps for spoken turn-by-turn directions.
+- **Best value.** Put a price on your time (it defaults to $25 an hour) and every
+  option is ranked by fare plus door-to-door time at that rate.
+- **A map of every trip.** Rides follow SEPTA's published route shapes, and walks
+  and bike rides follow the streets.
+
 <!-- Add a screenshot here once you've run it on a device. -->
 
 ## What's on screen
@@ -172,8 +186,9 @@ change to `AppIdentity.name`.
 
 ## Getting started
 
-Requires **Xcode 16 or newer** and **iOS 17+**. There are no third-party
-dependencies and nothing to install.
+Requires **Xcode 16 or newer** and **iOS 17+**. The app has no third-party
+dependencies and nothing to install. (Regenerating the bus and Regional Rail data
+needs Python with numpy; see below.)
 
 ```sh
 open SEPTACommute.xcodeproj
@@ -258,7 +273,14 @@ it has passed. To refresh:
 
 ```sh
 python3 tools/build_schedule.py     # downloads the current feed and regenerates
+pip install numpy                   # once, for the next one
+python3 tools/build_extended.py     # buses, Regional Rail and route shapes
 ```
+
+Run both together: they read the same release, and the second writes
+`SEPTACommute/Resources/SEPTAExtended.txt` with its own validity dates. The Regional
+Rail feed is published separately and usually covers a shorter window than the
+Metro one, so it tends to be the first to need refreshing.
 
 That rewrites `SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift`, a
 generated file of Swift literals — no bundle resources, no runtime parsing, and the
@@ -330,8 +352,8 @@ Deliberately unused, with the reason:
   name-and-proximity station merging described below.
 - **`stop_headsign`** is empty on every Metro stop time.
 - **`route_stops.txt`** disagrees with the trips (see below).
-- **`shapes.txt`** is 452,000 points of route geometry, for a map this app doesn't
-  draw yet.
+- **`shapes.txt`** is 452,000 points of route geometry. The Metro planner doesn't use
+  it; `build_extended.py` simplifies it to about 52,000 points for the trip maps.
 
 A few things the generator gets right that are easy to get wrong, and which the
 tests now lock in:
@@ -366,14 +388,19 @@ SEPTACommute/
 │   ├── Routing/       the planner, journeys, walking model, prose
 │   ├── Alerts/        SEPTA's alert feed: model and decoding, no networking
 │   ├── Widget/        the shared snapshot and the widget's timeline logic
+│   ├── Extended/      all-SEPTA network and its RAPTOR planner (buses, Regional Rail)
+│   ├── Indego/        bike-share options, pricing and GBFS decoding
 │   └── Data/          GeneratedSEPTAData.swift  ← regenerate, don't edit
 └── App/               SwiftUI, CoreLocation, MapKit
     ├── Model/         saved places, preferences, the view model
-    ├── Services/      location, walking directions, address search, alert fetching
-    └── Views/
+    ├── Model/Supplemental.swift   alternative routes, Indego, value ranking
+    ├── Services/      location, walking directions, address search, alerts, Indego
+    └── Views/         …including RouteMapView (MapKit, Apple Maps hand-off)
+SEPTACommute/Resources/SEPTAExtended.txt   ← regenerate, don't edit
 SEPTACommuteWidget/    WidgetKit extension — views only, no logic
 Tests/MetroKitTests/   run with `swift test`
 tools/build_schedule.py
+tools/build_extended.py
 ```
 
 `MetroKit` is deliberately free of Apple-framework dependencies so the planner can
@@ -486,6 +513,11 @@ stub — turn measured walks off in Settings and everything still works with no 
   the card's single alert is the worst one on the journey.
 - **Edge cases in time**: after-midnight trips belonging to the previous service
   day, and scheduled times holding steady across a daylight-saving transition.
+- **The all-SEPTA planner**: a bus-only trip, a Regional Rail trip with its zone
+  fare, the Owl bus after midnight, feasibility across 56 origin–destination pairs,
+  and route shapes that start and end at the stops.
+- **Indego**: prices for every pass, classic before e-bike, no option without a free
+  dock at the far end, and GBFS decoding.
 
 The planner fixtures use a synthetic six-station line with times chosen by hand, so
 those assertions don't move when SEPTA changes its timetable. The data assertions
@@ -555,8 +587,10 @@ What `--report` still shows as imperfect, at the current feed:
   for having no station within 350 m; all of them are `Broad St & Spring Garden St`,
   which has no rail station outside it.
 
-Buses (131 routes) and Regional Rail (a separate feed) are out of scope. Buses in
-particular would need a different search strategy, not just a faster one.
+Buses (131 routes) and Regional Rail (a separate feed) are not part of this planner.
+Buses in particular needed a different search strategy, not just a faster one, so
+they live in a second planner (`MetroKit/Extended`, round-based RAPTOR) that feeds
+the alternative routes under the main answer rather than the answer itself.
 
 ## The widget
 
@@ -663,9 +697,9 @@ adds roughly 130 KB and changes the data format.
 Street platform, so live data has to be a correction applied to an answer that already
 works offline, never a dependency the answer waits on.
 
-A live map is possible for the surface lines: `VehiclePositions` for the vehicles and
-the `shapes.txt` this generator skips for the lines. Worth being clear that it is the
-lower-value half: a map is what the general-purpose apps already do well, whereas
+Live vehicles on the trip map are possible for the surface lines: `VehiclePositions`
+for the vehicles, drawn over the route shapes the app already ships. Worth being clear
+that it is the lower-value half: a map is what the general-purpose apps already do well, whereas
 "leave in 4:31" being a lie when the train is six minutes down is the thing that makes
 this app wrong.
 
@@ -676,21 +710,31 @@ The documented `www3.septa.org/api/` endpoints `TrainView`, `Arrivals`,
 ## Privacy
 
 There is no account, no analytics, and no server. Addresses and preferences live in
-`UserDefaults` on the device. The app makes three kinds of network call: SEPTA's
-public alerts feed, which sends nothing about you; Apple's address search, only while
-you're typing an address; and Apple's walking directions, only with measured walk
-times switched on, which sends Apple the start and end of each walk it measures.
+`UserDefaults` on the device. The network calls the app makes:
+
+- **SEPTA's public alerts feed**, which sends nothing about you.
+- **GitHub's releases API**, to check whether SEPTA has published a newer timetable.
+- **Indego's public dock feed** (only with bike share shown), which sends nothing about you.
+- **Apple's address search**, only while you're typing an address.
+- **Apple Maps**: map tiles, walking and cycling routes for the trip maps, and
+  walking directions when measured walk times are on. These send Apple the start
+  and end of each route.
+- **Opening Apple Maps** for turn-by-turn directions, only when you tap a step.
+
 Otherwise your location stays on the device.
 
 ## Data licence
 
-Schedule data is SEPTA's, used under their
+Schedule, fare and route-shape data is SEPTA's, used under their
 [developer licence](https://www.septa.org/license-agreement/). Regenerating it is
-a download away; it isn't committed as a feed, only as derived Swift.
+a download away; it isn't committed as a feed, only as derived data
+(`GeneratedSEPTAData.swift` and `Resources/SEPTAExtended.txt`).
 
-SEPTA's name, its line and route names, and its line colours appear here to
-describe its services. **Overtake is not affiliated with, endorsed by, or
-supported by SEPTA.**
+Live bike availability is Indego's public GBFS feed, and the bike prices are
+Indego's published rates. SEPTA's and Indego's names, route names and colours
+appear here to describe their services. **Overtake is not affiliated with,
+endorsed by, or supported by SEPTA, Indego, the City of Philadelphia, Bicycle
+Transit Systems or BCycle.** Maps and directions are Apple Maps.
 
 The code itself is not open source — see [LICENSE](LICENSE). It is published to be
 read, not reused.

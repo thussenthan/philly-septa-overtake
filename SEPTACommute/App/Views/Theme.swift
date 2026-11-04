@@ -82,7 +82,13 @@ enum Theme {
     /// Text colour to sit on top of a line's badge.
     static func foreground(on line: Line?) -> Color {
         guard let line else { return .white }
-        let base = UIColor(hex: line.colorHex)
+        return foreground(onHex: line.colorHex)
+    }
+
+    /// Text colour to sit on top of any `adaptive(hex)` fill: black when the
+    /// contrast adjustment has made the fill light, white otherwise.
+    static func foreground(onHex hex: String) -> Color {
+        let base = UIColor(hex: hex)
         return Color(uiColor: UIColor { traits in
             let resolved = base.adjustedForContrast(darkMode: traits.userInterfaceStyle == .dark)
             return resolved.prefersDarkForeground ? .black : .white
