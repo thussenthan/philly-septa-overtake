@@ -167,14 +167,11 @@ extension CommuteModel {
         }
     }
 
-    /// How far, as the crow flies, the rider's longest walk reaches: the setting
-    /// in minutes at their pace, with the street grid's detour taken off. Used
-    /// only to choose which stops and docks to consider; the walks shown are
-    /// measured.
+    /// How far, as the crow flies, the rider's longest walk reaches: the walking
+    /// distance they set, with the street grid's detour taken off. Used only to
+    /// choose which stops and docks to consider; the walks shown are measured.
     var walkingRadiusMeters: Double {
-        let walking = preferences.plannerOptions().walking
-        let mps = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
-        return preferences.maxWalkMinutes * 60 * mps / walking.circuityFactor
+        preferences.maxWalkMeters / preferences.plannerOptions().walking.circuityFactor
     }
 
     /// Walking the whole way, timed along real streets by Apple Maps.

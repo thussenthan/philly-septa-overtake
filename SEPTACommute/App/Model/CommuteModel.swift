@@ -31,9 +31,16 @@ enum AppearanceChoice: String, Codable, CaseIterable, Identifiable {
 /// Rider-adjustable knobs, persisted.
 struct RiderPreferences: Codable, Equatable {
     var walkingMilesPerHour: Double = 3.0
-    /// Longest walk to a station, stop or bike dock the rider will entertain, in
-    /// minutes. Twenty is about a mile at an ordinary pace.
-    var maxWalkMinutes: Double = 20
+    /// Longest walk to a station, stop or bike dock the rider will entertain, as a
+    /// walking distance in metres. A mile by default.
+    var maxWalkMeters: Double = Coordinate.metersPerMile
+
+    /// The same limit in minutes at the rider's pace, which is how the planners
+    /// (and the widget, through `RiderTuning`) take it.
+    var maxWalkMinutes: Double {
+        let metersPerMinute = walkingMilesPerHour * Coordinate.metersPerMile / 60
+        return metersPerMinute > 0 ? maxWalkMeters / metersPerMinute : 20
+    }
     /// Extra seconds of safety margin before every boarding.
     var boardingBufferSeconds: Double = 30
     /// Whether to spend network calls on real walking directions.
@@ -103,6 +110,7 @@ struct RiderPreferences: Codable, Equatable {
 extension RiderPreferences {
     private enum LegacyKeys: String, CodingKey {
         case valueOfTimePerHour
+        case maxWalkMinutes
     }
 
     /// Every key optional, so a setting added in a later version doesn't make the
@@ -112,7 +120,12 @@ extension RiderPreferences {
         let defaults = RiderPreferences()
         self.init()
         walkingMilesPerHour = try container.decodeIfPresent(Double.self, forKey: .walkingMilesPerHour) ?? defaults.walkingMilesPerHour
-        maxWalkMinutes = try container.decodeIfPresent(Double.self, forKey: .maxWalkMinutes) ?? defaults.maxWalkMinutes
+        if let meters = try container.decodeIfPresent(Double.self, forKey: .maxWalkMeters) {
+            maxWalkMeters = meters
+        } else if let minutes = try? decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Double.self, forKey: .maxWalkMinutes) {
+            // Saved as minutes before it became a distance: convert at their pace.
+            maxWalkMeters = minutes * walkingMilesPerHour * Coordinate.metersPerMile / 60
+        }
         boardingBufferSeconds = try container.decodeIfPresent(Double.self, forKey: .boardingBufferSeconds) ?? defaults.boardingBufferSeconds
         useMeasuredWalkTimes = try container.decodeIfPresent(Bool.self, forKey: .useMeasuredWalkTimes) ?? defaults.useMeasuredWalkTimes
         allowTransfers = try container.decodeIfPresent(Bool.self, forKey: .allowTransfers) ?? defaults.allowTransfers
@@ -768,7 +781,7 @@ final class CommuteModel: ObservableObject {
 
     private func candidateStations(near coordinate: Coordinate?, limit: Int) -> [Station] {
         guard let coordinate else { return [] }
-        let radius = preferences.maxWalkMinutes * 60 * (preferences.walkingMilesPerHour * 0.44704)
+        let radius = preferences.maxWalkMeters
         return network.stations(near: coordinate, within: max(radius, 500))
             .prefix(limit)
             .map(\.station)

@@ -196,18 +196,37 @@ struct SettingsView: View {
                 HStack {
                     Text("Longest walk to a stop")
                     Spacer()
-                    Text("\(Int(model.preferences.maxWalkMinutes)) min")
+                    Text(walkDistanceText)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                Slider(value: $model.preferences.maxWalkMinutes, in: 5...40, step: 1)
+                Slider(value: walkDistanceBinding, in: walkDistanceRange, step: walkDistanceStep)
                     .accessibilityLabel("Longest walk to a station, stop or bike dock")
-                    .accessibilityValue("\(Int(model.preferences.maxWalkMinutes)) minutes")
+                    .accessibilityValue(walkDistanceText)
             }
             Toggle("Use real walking directions", isOn: $model.preferences.useMeasuredWalkTimes)
         } header: {
             Text("Walking")
         }
+    }
+
+    /// The walk limit in the phone's own units: miles in the US and UK, km elsewhere.
+    private var usesMiles: Bool { Locale.current.measurementSystem != .metric }
+    private var walkUnitMeters: Double { usesMiles ? Coordinate.metersPerMile : 1000 }
+    private var walkDistanceRange: ClosedRange<Double> { usesMiles ? 0.25...2.5 : 0.25...4 }
+    private let walkDistanceStep = 0.05
+
+    private var walkDistanceBinding: Binding<Double> {
+        Binding(
+            get: { model.preferences.maxWalkMeters / walkUnitMeters },
+            set: { model.preferences.maxWalkMeters = $0 * walkUnitMeters }
+        )
+    }
+
+    private var walkDistanceText: String {
+        let value = model.preferences.maxWalkMeters / walkUnitMeters
+        let number = value.formatted(.number.precision(.fractionLength(0...2)))
+        return "\(number) " + (usesMiles ? (abs(value - 1) < 0.001 ? "mile" : "miles") : "km")
     }
 
     // MARK: - Routing
