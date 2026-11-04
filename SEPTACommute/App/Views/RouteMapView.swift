@@ -51,8 +51,11 @@ struct RouteMapView: View {
     var segments: [MapSegment]
     var stops: [MapStop]
     var height: CGFloat = 220
+    /// A segment to zoom to, with the rest dimmed; nil shows the whole trip.
+    var focus: Int? = nil
 
     @State private var isExpanded = false
+    @State private var camera: MapCameraPosition?
     /// Street-following geometry for walk and bike legs, once MapKit answers.
     @State private var routed: [String: [CLLocationCoordinate2D]] = [:]
 
@@ -76,6 +79,10 @@ struct RouteMapView: View {
             .task(id: segments.map(\.id).joined(separator: "|")) {
                 await routeStreetLegs()
             }
+            // A new focus (or the street routes arriving) reframes the camera.
+            .onChange(of: focus) { _, newFocus in
+                withAnimation(.easeInOut) { camera = fitting(newFocus) }
+            }
             .fullScreenCover(isPresented: $isExpanded) {
                 NavigationStack {
                     map(interactive: true)
@@ -92,9 +99,10 @@ struct RouteMapView: View {
     }
 
     private func map(interactive: Bool) -> some View {
-        Map(initialPosition: initialPosition, interactionModes: interactive ? .all : []) {
-            ForEach(segments) { original in
-                let segment = resolved(original)
+        Map(position: Binding(get: { camera ?? fitting(focus) }, set: { camera = $0 }),
+            interactionModes: interactive ? .all : []) {
+            ForEach(Array(segments.enumerated()), id: \.element.id) { index, original in
+                let segment = dimmed(resolved(original), index: index)
                 switch segment.style {
                 case .ride:
                     // A white casing under the line, like a printed transit map.
@@ -184,8 +192,24 @@ struct RouteMapView: View {
         }
     }
 
-    private var initialPosition: MapCameraPosition {
-        let points = segments.flatMap(\.coordinates) + stops.map(\.coordinate)
+    /// Everything but the focused segment fades back.
+    private func dimmed(_ segment: MapSegment, index: Int) -> MapSegment {
+        guard let focus, focus != index else { return segment }
+        var copy = segment
+        copy.color = copy.color.opacity(0.3)
+        return copy
+    }
+
+    /// The camera framing the focused segment, or the whole trip.
+    private func fitting(_ focus: Int?) -> MapCameraPosition {
+        if let focus, segments.indices.contains(focus) {
+            let segment = resolved(segments[focus])
+            return frame(segment.coordinates, minimumMeters: 300)
+        }
+        return frame(segments.map(resolved).flatMap(\.coordinates) + stops.map(\.coordinate), minimumMeters: 800)
+    }
+
+    private func frame(_ points: [CLLocationCoordinate2D], minimumMeters: Double) -> MapCameraPosition {
         guard !points.isEmpty else { return .automatic }
         var rect = MKMapRect.null
         for point in points {
@@ -194,7 +218,7 @@ struct RouteMapView: View {
         }
         // Breathing room so the pins aren't on the edge, and a floor so a short
         // walk isn't zoomed in to a single building.
-        let minimum = 800.0 * MKMapPointsPerMeterAtLatitude(points[0].latitude)
+        let minimum = minimumMeters * MKMapPointsPerMeterAtLatitude(points[0].latitude)
         let width = max(rect.width, minimum)
         let height = max(rect.height, minimum)
         let padded = MKMapRect(
@@ -300,9 +324,17 @@ actor StreetRoutes {
     }
 }
 
-/// Hands a leg off to Apple Maps for turn-by-turn — spoken directions included,
-/// which is what a rider with AirPods in actually wants.
-enum AppleMapsHandoff {
+/// Which app turn-by-turn directions open in. Set in Settings.
+enum MapsApp: String, Codable, CaseIterable, Identifiable {
+    case apple, google
+
+    var id: String { rawValue }
+    var label: String { self == .apple ? "Apple Maps" : "Google Maps" }
+}
+
+/// Hands a leg off to the rider's maps app for turn-by-turn directions — spoken
+/// directions included, which is what a rider with AirPods in actually wants.
+enum MapsHandoff {
     enum Mode {
         case walking, cycling, transit
 
@@ -313,20 +345,44 @@ enum AppleMapsHandoff {
             case .transit: return MKLaunchOptionsDirectionsModeTransit
             }
         }
+
+        var googleTravelMode: String {
+            switch self {
+            case .walking: return "walking"
+            case .cycling: return "bicycling"
+            case .transit: return "transit"
+            }
+        }
     }
 
     /// `from: nil` starts from wherever the phone is.
     @MainActor
-    static func open(from: Coordinate?, fromName: String? = nil, to: Coordinate, toName: String, mode: Mode) {
-        let source: MKMapItem
-        if let from {
-            source = MKMapItem(placemark: MKPlacemark(coordinate: from.clCoordinate))
-            source.name = fromName
-        } else {
-            source = MKMapItem.forCurrentLocation()
+    static func open(app: MapsApp, from: Coordinate?, fromName: String? = nil, to: Coordinate, toName: String, mode: Mode) {
+        switch app {
+        case .apple:
+            let source: MKMapItem
+            if let from {
+                source = MKMapItem(placemark: MKPlacemark(coordinate: from.clCoordinate))
+                source.name = fromName
+            } else {
+                source = MKMapItem.forCurrentLocation()
+            }
+            let destination = MKMapItem(placemark: MKPlacemark(coordinate: to.clCoordinate))
+            destination.name = toName
+            MKMapItem.openMaps(with: [source, destination], launchOptions: [MKLaunchOptionsDirectionsModeKey: mode.launchValue])
+        case .google:
+            // Google's universal link: opens the Google Maps app when it's
+            // installed, the website when it isn't. No origin means "my location".
+            var components = URLComponents(string: "https://www.google.com/maps/dir/")!
+            var items = [
+                URLQueryItem(name: "api", value: "1"),
+                URLQueryItem(name: "destination", value: "\(to.latitude),\(to.longitude)"),
+                URLQueryItem(name: "travelmode", value: mode.googleTravelMode),
+                URLQueryItem(name: "dir_action", value: "navigate"),
+            ]
+            if let from { items.append(URLQueryItem(name: "origin", value: "\(from.latitude),\(from.longitude)")) }
+            components.queryItems = items
+            if let url = components.url { UIApplication.shared.open(url) }
         }
-        let destination = MKMapItem(placemark: MKPlacemark(coordinate: to.clCoordinate))
-        destination.name = toName
-        MKMapItem.openMaps(with: [source, destination], launchOptions: [MKLaunchOptionsDirectionsModeKey: mode.launchValue])
     }
 }

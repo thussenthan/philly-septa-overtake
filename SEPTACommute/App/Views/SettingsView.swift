@@ -147,6 +147,11 @@ struct SettingsView: View {
     private var moreWaysSection: some View {
         Section {
             Toggle("Show alternative routes", isOn: $model.preferences.showAllSEPTA)
+            Picker("Directions in", selection: $model.preferences.mapsApp) {
+                ForEach(MapsApp.allCases) { app in
+                    Text(app.label).tag(app)
+                }
+            }
             Toggle("Show Indego bike share", isOn: $model.preferences.showIndego)
             if model.preferences.showIndego {
                 Picker("Indego pass", selection: $model.preferences.indegoPass) {
@@ -314,18 +319,19 @@ struct CreditsView: View {
     var body: some View {
         List {
             Section("SEPTA") {
-                Text("Timetables, stops, fares and route shapes come from SEPTA's published GTFS feed, used under SEPTA's developer licence. Service alerts come from SEPTA's public alerts feed.")
-                Link("SEPTA developer licence", destination: URL(string: "https://www.septa.org/license-agreement/")!)
+                Text("Timetables, fares, route shapes • service alerts")
+                Link("Developer licence", destination: URL(string: "https://www.septa.org/license-agreement/")!)
             }
             Section("Indego") {
-                Text("Live bike and dock counts come from Indego's public GBFS feed. Prices are Indego's published rates, used to estimate a ride.")
+                Text("Live dock counts • published prices")
                 Link("Indego pricing", destination: URL(string: "https://www.rideindego.com/pricing/")!)
             }
             Section("Maps") {
-                Text("Maps, walking and cycling routes, and turn-by-turn directions are provided by Apple Maps.")
+                Text("Apple Maps • elevation from Open-Meteo")
             }
             Section {
-                Text("Overtake is an independent app. It is not affiliated with, endorsed by, or supported by SEPTA, Indego, the City of Philadelphia, Bicycle Transit Systems or BCycle. Their names and colours are used only to describe their services.")
+                Text("Not affiliated with SEPTA, Indego, the City of Philadelphia, Bicycle Transit Systems or BCycle.")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -334,56 +340,63 @@ struct CreditsView: View {
     }
 }
 
-/// Explains the ordering so a rider can trust it — or overrule it.
+/// How the app decides, in short bullets grouped by topic.
 struct RankingExplainerView: View {
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Options are sorted by when you actually arrive at the door, not by which train leaves first.")
-                    .font(.headline)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                paragraph("Every option shown is one you can still catch. If the walk to the station is longer than the time until the train leaves, it isn't listed.")
-                paragraph("An option is hidden only when another is at least as good on all of: arrival time, number of train changes, walking time, and how late you can leave. That last one is why a slower train sometimes still appears — it may let you leave ten minutes later.")
-                paragraph("Two options that get you there the same minute are shown as one. Arriving together, the longer of the two only asks you to set off earlier for nothing — usually it is the nearer station, where you'd stand on the platform for the difference.")
-                paragraph("Below arrival time, the order is: the trip that takes less of your day, then the one that walks you less, then the one that keeps you on a train for less of it, then the one that leaves you waiting less.")
-                paragraph("\"Leave in …\" counts down to the last moment you can set off and still make the train, including the walk and a safety margin you can adjust.")
-                paragraph("On the Broad Street Line, the express skips fourteen of the line's twenty-two stations and only runs weekday peaks between Fern Rock and Walnut-Locust. It never goes to South Philadelphia, so for anything south of Walnut-Locust the local is the only train.")
-                paragraph("The Broad-Ridge Spur also runs fast on Broad St and stops at Fairmount, which the express skips — so for some trips the Spur beats both.")
-                paragraph("Between about midnight and 5 AM the trains stop and SEPTA runs the B1 Owl bus along Broad St at street level. Those trips are shown too, boarding at the curb rather than in the station.")
-
-                heading("Alternative routes")
-                paragraph("Below the main answer, the app searches all of SEPTA — Metro, trolleys, buses and Regional Rail — on equal terms, several times over with each mode left out in turn, so a cheaper bus isn't hidden just because a faster train exists.")
-                paragraph("An alternative is shown only if nothing else on the screen is both at least as cheap and gets you there at least as soon. Fares are SEPTA Key prices; Regional Rail is priced by zone and day.")
-                paragraph("Bus and Regional Rail times are SEPTA's published schedule, not live positions.")
-
-                heading("Indego bike share")
-                paragraph("Dock counts are live from Indego. A trip is the walk to a dock with a bike, the ride, and the walk from a dock with space — all three count towards the time shown.")
-                paragraph("Prices are what the ride adds for the pass you pick in Settings; the pass fee itself isn't counted. \"Cheapest\" appears only when the bike is the cheapest of everything on the screen. Ride times assume about 9 mph on a classic bike and 12½ mph on an e-bike.")
+        List {
+            topic("The answer", symbol: "clock", [
+                "Sorted by when you reach the door, not by which train leaves first.",
+                "Only trains you can still catch, walk included.",
+                "\u{201C}Leave in\u{201D} counts down to the last moment to set off, safety margin included.",
+                "A slower train stays listed if it lets you leave later.",
+            ])
+            topic("Broad Street Line", symbol: "tram", [
+                "The B2 express skips 14 of 22 stations and runs weekday peaks only.",
+                "It never goes south of Walnut-Locust.",
+                "The B3 Spur also runs fast, and stops at Fairmount.",
+                "Late at night the B1 Owl bus runs along Broad St instead.",
+            ])
+            topic("Alternative routes", symbol: "arrow.triangle.branch", [
+                "Buses, trolleys, Metro and Regional Rail, searched on equal terms.",
+                "Shown only if nothing else is both cheaper and sooner.",
+                "SEPTA Key fares • published schedule, not live.",
+            ])
+            topic("Indego", symbol: "bicycle", [
+                "Live dock counts • walk, ride and walk all counted.",
+                "Ride time includes the climb; uphill, the e-bike is suggested.",
+                "Price is what the ride adds to your pass.",
+            ])
+            Section {
                 ForEach(IndegoPass.allCases) { pass in
-                    paragraph("\(pass.label): \(pass.passPriceNote).")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pass.label).font(.subheadline)
+                        Text(pass.passPriceNote).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-
-                heading("Value of your time")
-                paragraph("With an hourly rate set, every option is scored as its fare plus its door-to-door time at that rate, and the Best value list puts the lowest first. Your hourly wage is a good number to start from. The main recommendation is unchanged.")
+            } header: {
+                Text("Indego passes")
             }
-            .padding(20)
+            topic("Best value", symbol: "dollarsign.circle", [
+                "Fare + door-to-door time at your hourly rate.",
+                "Climbing on a classic bike counts twice: time and effort.",
+                "Doesn't change the main answer.",
+            ])
         }
         .navigationTitle("How it works")
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func heading(_ text: String) -> some View {
-        Text(text)
-            .font(.headline)
-            .padding(.top, 8)
-    }
-
-    private func paragraph(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+    private func topic(_ title: String, symbol: String, _ points: [String]) -> some View {
+        Section {
+            ForEach(points, id: \.self) { point in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("•").foregroundStyle(Theme.accent)
+                    Text(point).font(.subheadline)
+                }
+            }
+        } header: {
+            Label(title, systemImage: symbol)
+        }
     }
 }
 
@@ -543,10 +556,12 @@ struct PlaceEditor: View {
 struct PlaceNameField: View {
     var role: SavedPlace.Role
     @Binding var name: String
+    /// Off where the section header already says what this is.
+    var showsLabel = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: "Call it")
+            if showsLabel { SectionLabel(text: "Call it") }
             TextField(placeholder, text: $name)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
@@ -577,7 +592,7 @@ struct PlaceNameField: View {
     }
 
     private var placeholder: String {
-        role == .custom ? "Clinic, gym, a friend's place…" : "Work"
+        role == .custom ? "Clinic, gym, a friend’s place…" : "Name it, e.g. Work"
     }
 }
 

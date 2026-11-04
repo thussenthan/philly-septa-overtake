@@ -38,9 +38,17 @@ public enum IndegoBike: String, Sendable, Hashable, CaseIterable {
     case classic, electric
 
     public var label: String { self == .classic ? "Classic bike" : "E-bike" }
-    /// Typical city riding speed including lights, in metres per second.
+    /// Typical city riding speed on the flat, including lights, in metres per second.
     /// Classic ≈ 9 mph, electric ≈ 12.5 mph (pedal-assist tops out at 17).
     public var metersPerSecond: Double { self == .classic ? 4.0 : 5.6 }
+
+    /// Extra seconds per metre climbed.
+    ///
+    /// Lifting rider and bike (~90 kg) one metre is ~880 J. A casual rider has
+    /// ~100 W to spare, so about 9 s a metre on a classic bike; Indego's motor
+    /// carries most of it, leaving about 2 s. Descents aren't credited — nobody
+    /// bombs down Manayunk's hills on a shared bike.
+    public var secondsPerMeterClimbed: Double { self == .classic ? 9 : 2 }
 }
 
 /// How the rider pays for Indego. Set in Settings.
@@ -82,14 +90,14 @@ public enum IndegoPass: String, Codable, Sendable, Hashable, CaseIterable, Ident
     /// What the pass costs and what it covers, for the Settings footnote.
     public var passPriceNote: String {
         switch self {
-        case .payAsYouGo: return "$4.50 per 30-min classic ride; e-bikes +30¢/min; over 30 min +30¢/min"
-        case .dayPass: return "$15 for 24 h; 60-min classic rides; e-bikes +20¢/min"
-        case .indego30: return "$20 / 30 days; 60-min classic rides; e-bikes +20¢/min"
-        case .indego365: return "$156 / year; 60-min classic rides; e-bikes +20¢/min"
-        case .indego365Plus: return "$230 / year; two 30-min e-bike rides a day included, then +20¢/min"
-        case .access: return "$5 / 30 days for ACCESS cardholders; e-bikes +7¢/min"
-        case .access365: return "$48 / year for ACCESS cardholders; e-bikes +7¢/min"
-        case .access365Plus: return "$100 / year for ACCESS cardholders; two 30-min e-bike rides a day, then +7¢/min"
+        case .payAsYouGo: return "$4.50 / 30 min • e-bike +30¢/min"
+        case .dayPass: return "$15 / day • e-bike +20¢/min"
+        case .indego30: return "$20 / month • e-bike +20¢/min"
+        case .indego365: return "$156 / year • e-bike +20¢/min"
+        case .indego365Plus: return "$230 / year • 2 e-bike rides a day • then +20¢/min"
+        case .access: return "$5 / month • e-bike +7¢/min"
+        case .access365: return "$48 / year • e-bike +7¢/min"
+        case .access365Plus: return "$100 / year • 2 e-bike rides a day • then +7¢/min"
         }
     }
 
@@ -139,11 +147,69 @@ public struct IndegoOption: Sendable, Hashable, Identifiable {
     public var price: Double
     /// Bikes of this kind at the pickup dock right now.
     public var bikesAvailable: Int
-    /// Straight-line ride distance in metres.
+    /// Ride distance in metres: along the cycling route when it's known,
+    /// otherwise straight line × circuity.
     public var rideMeters: Double
+    /// Total climb along the ride, when the route's elevation is known.
+    public var climbMeters: Double?
+    /// The part of `rideSeconds` spent climbing — on a classic bike, effort as
+    /// well as time.
+    public var climbSeconds: TimeInterval {
+        (climbMeters ?? 0) * bike.secondsPerMeterClimbed
+    }
 
     public var id: String { "\(bike.rawValue)-\(pickup.id)-\(dropoff.id)" }
     public var totalDuration: TimeInterval { arrival.timeIntervalSince(leaveAt) }
+}
+
+/// A cycling route between two docks: its length and how much it climbs.
+public struct IndegoRouteInfo: Sendable, Hashable {
+    public var meters: Double
+    public var climbMeters: Double?
+
+    public init(meters: Double, climbMeters: Double?) {
+        self.meters = meters
+        self.climbMeters = climbMeters
+    }
+
+    /// Total ascent along an elevation profile.
+    ///
+    /// The free elevation model is a 90 m surface model, and in a city it is
+    /// noisy: a Broad Street profile jumps 23 m → 2 m → 13 m where the street is
+    /// flat. Summed naively that made City Hall to Temple a 71 m climb; the real
+    /// rise is about 20. A three-point median removes the spikes, and rises under
+    /// three metres are treated as noise rather than hills.
+    public static func climb(profile raw: [Double], noise: Double = 3) -> Double {
+        let profile = median(raw, window: 3)
+        guard var low = profile.first else { return 0 }
+        var total = 0.0
+        var high = low
+        for value in profile.dropFirst() {
+            if value > high { high = value }
+            if value < high - noise {
+                // A descent: bank the climb so far and start a new one from here.
+                total += max(0, high - low)
+                low = value
+                high = value
+            } else if value < low {
+                low = value
+                high = value
+            }
+        }
+        return total + max(0, high - low)
+    }
+
+    static func median(_ values: [Double], window: Int) -> [Double] {
+        guard values.count > 2 else { return values }
+        let half = window / 2
+        return values.indices.map { i in
+            // The ends keep their own value: a lopsided window there would pull the
+            // start and finish of the ride towards their neighbours.
+            guard i >= half, i < values.count - half else { return values[i] }
+            let slice = values[(i - half)...(i + half)].sorted()
+            return slice[slice.count / 2]
+        }
+    }
 }
 
 public struct IndegoPlanner: Sendable {
@@ -157,6 +223,13 @@ public struct IndegoPlanner: Sendable {
     /// Streets are not straight lines; bikes follow them a bit more closely than
     /// walkers cut corners, so a slightly higher factor than walking.
     public var rideCircuity: Double = 1.3
+
+    /// Measured cycling routes between docks, keyed by `routeKey(from:to:)`.
+    public var routes: [String: IndegoRouteInfo] = [:]
+
+    public static func routeKey(from pickup: IndegoStation, to dropoff: IndegoStation) -> String {
+        "\(pickup.id)>\(dropoff.id)"
+    }
 
     public init(walking: WalkingModel = WalkingModel(), pass: IndegoPass = .payAsYouGo) {
         self.walking = walking
@@ -206,8 +279,13 @@ public struct IndegoPlanner: Sendable {
                 let available = bike == .classic ? pickup.classicBikes : pickup.electricBikes
                 guard available > 0 else { continue }
                 for (dropoff, egressMeters) in dropoffs where dropoff.id != pickup.id {
-                    let rideMeters = pickup.coordinate.distance(to: dropoff.coordinate)
-                    let ride = rideMeters * rideCircuity / bike.metersPerSecond + unlockSeconds + dockSeconds
+                    let measured = routes[Self.routeKey(from: pickup, to: dropoff)]
+                    let rideMeters = measured?.meters
+                        ?? pickup.coordinate.distance(to: dropoff.coordinate) * rideCircuity
+                    let climb = measured?.climbMeters ?? 0
+                    let ride = rideMeters / bike.metersPerSecond
+                        + climb * bike.secondsPerMeterClimbed
+                        + unlockSeconds + dockSeconds
                     let access = walking.startupSeconds + walkSeconds(accessMeters)
                     let egress = walkSeconds(egressMeters)
                     let arrival = now.addingTimeInterval(access + ride + egress)
@@ -223,7 +301,8 @@ public struct IndegoPlanner: Sendable {
                         arrival: arrival,
                         price: pass.price(minutes: ride / 60, bike: bike),
                         bikesAvailable: available,
-                        rideMeters: rideMeters
+                        rideMeters: rideMeters,
+                        climbMeters: measured?.climbMeters
                     )
                 }
             }

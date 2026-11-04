@@ -156,9 +156,8 @@ recommendation into a taller box was not.
 
 ### The station board
 
-Most Metro stations have no departure sign, so the app can be one. When you're standing
-in a station the home screen offers **Everything leaving Erie**, and the list icon in the
-top corner opens the same board for any station. It shows every train that will let a
+Most Metro stations have no departure sign, so the app can be one. The list icon in the
+top corner opens the board, starting at the station you're standing in. It shows every train that will let a
 rider on — each direction on its own card, whatever its destination — with a live
 countdown and the clock time. A train that terminates at the station, or whose doors
 don't open there, isn't a departure and isn't listed. Times are the published schedule,
@@ -719,7 +718,10 @@ There is no account, no analytics, and no server. Addresses and preferences live
 - **Apple Maps**: map tiles, walking and cycling routes for the trip maps, and
   walking directions when measured walk times are on. These send Apple the start
   and end of each route.
-- **Opening Apple Maps** for turn-by-turn directions, only when you tap a step.
+- **Open-Meteo's elevation API** (only with bike share shown), with points along a
+  dock-to-dock bike route, to measure how much it climbs.
+- **Opening your maps app** (Apple Maps or Google Maps) for turn-by-turn directions,
+  only when you tap a directions arrow.
 
 Otherwise your location stays on the device.
 
@@ -734,7 +736,8 @@ Live bike availability is Indego's public GBFS feed, and the bike prices are
 Indego's published rates. SEPTA's and Indego's names, route names and colours
 appear here to describe their services. **Overtake is not affiliated with,
 endorsed by, or supported by SEPTA, Indego, the City of Philadelphia, Bicycle
-Transit Systems or BCycle.** Maps and directions are Apple Maps.
+Transit Systems or BCycle.** Maps and directions are Apple Maps; elevation is
+Open-Meteo's.
 
 The code itself is not open source — see [LICENSE](LICENSE). It is published to be
 read, not reused.

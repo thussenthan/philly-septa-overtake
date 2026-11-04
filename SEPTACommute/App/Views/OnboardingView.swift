@@ -8,6 +8,9 @@ struct OnboardingView: View {
     @State private var page = 0
     /// What the rider calls the far end of their day. Defaults to "Work" on save.
     @State private var awayName = ""
+    /// While typing an address the suggestions need the room; the footer, which
+    /// the keyboard pushes up over them, steps aside.
+    @State private var isTyping = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,12 +18,19 @@ struct OnboardingView: View {
                 welcome.tag(0)
                 addresses.tag(1)
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
+            // The system page dots float over the content, and with the keyboard
+            // up they landed on the address suggestions. Drawn in the footer instead.
+            .tabViewStyle(.page(indexDisplayMode: .never))
 
-            footer
+            if !isTyping { footer }
         }
         .background(Color(.systemGroupedBackground))
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.2)) { isTyping = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.2)) { isTyping = false }
+        }
     }
 
     // MARK: - Pages
@@ -33,7 +43,7 @@ struct OnboardingView: View {
                     Text(AppIdentity.tagline)
                         .font(.largeTitle.weight(.bold))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("SEPTA runs local trains, express trains that skip half the stops, trolleys and the Broad-Ridge Spur, often over the same tracks. Which one gets you where you're going fastest changes minute by minute.")
+                    Text("The fastest way door to door, worked out minute by minute.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -42,19 +52,22 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     bullet("clock.badge.exclamationmark",
                            "Wait, or go now?",
-                           "Compares boarding the local that's about to leave against holding out for the express.")
+                           "The local now, or the express in a few minutes.")
                     bullet("arrow.triangle.swap",
                            "Half and half",
-                           "Sometimes the trick is riding the local a few stops and letting the express overtake you.")
+                           "Ride the local, let the express overtake you.")
                     bullet("figure.walk",
                            "Door to door",
-                           "Counts the walk at both ends, so \"faster train\" doesn't mean \"longer trip\".")
+                           "Walking counts at both ends.")
+                    bullet("bicycle",
+                           "More ways",
+                           "Buses • Regional Rail • Indego bikes.")
                     bullet("wand.and.stars",
-                           "Open it and you're done",
-                           "It guesses where you're going from where you are — near home means you're heading out, anywhere else means you're heading home.")
+                           "Open it and go",
+                           "Near home, it plans the trip out; anywhere else, home.")
                     bullet("hand.raised.fill",
                            "Stays on your phone",
-                           "Timetables are built in. Your addresses never leave the device.")
+                           "Your addresses never leave the device.")
                 }
             }
             .padding(24)
@@ -67,7 +80,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your two ends of the day")
                         .font(.title2.weight(.bold))
-                    Text("Add both and the app can guess which way you're going the moment you open it. You can change these any time in Settings.")
+                    Text("So the app knows which way you're heading. Change them any time in Settings.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -109,7 +122,7 @@ struct OnboardingView: View {
                 if role == .school {
                     // Asked here rather than after the fact: naming it is one tap, and
                     // the name is what every later screen calls this end of the trip.
-                    PlaceNameField(role: role, name: $awayName)
+                    PlaceNameField(role: role, name: $awayName, showsLabel: false)
                 }
                 AddressField(role: role, prompt: prompt) { address, coordinate in
                     let typed = awayName.trimmingCharacters(in: .whitespaces)
@@ -143,7 +156,7 @@ struct OnboardingView: View {
             return "Nearest Metro station is \(nearest.station.name), \(Format.distance(meters: nearest.meters)) away"
         }
         let walk = WalkingModel().egressSeconds(straightLineMeters: nearest.meters)
-        return "Nearest station: \(nearest.station.name), about \(Format.minutes(walk)) on foot"
+        return "\(nearest.station.name) • \(Format.minutes(walk)) walk"
     }
 
     private func bullet(_ symbol: String, _ title: String, _ body: String) -> some View {
@@ -166,6 +179,15 @@ struct OnboardingView: View {
 
     private var footer: some View {
         VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ForEach(0..<2) { index in
+                    Circle()
+                        .fill(index == page ? Color.primary : Color.secondary.opacity(0.4))
+                        .frame(width: 7, height: 7)
+                }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Page \(page + 1) of 2")
             if page == 0 {
                 Button {
                     withAnimation { page = 1 }
@@ -191,7 +213,7 @@ struct OnboardingView: View {
                 .controlSize(.large)
                 .disabled(!places.isConfigured)
 
-                Text("Location access lets the app work out where you're starting from. You can also pick a station by hand.")
+                Text("Location finds your nearest stop. You can also pick one by hand.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

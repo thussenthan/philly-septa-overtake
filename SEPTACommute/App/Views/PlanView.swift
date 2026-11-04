@@ -50,7 +50,8 @@ struct PlanView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         tripRow
                         answerSection
-                        if let station = model.currentStation { boardLink(for: station) }
+                        // The station board is the list button in the top corner; a
+                        // second way in, down here, was the same thing twice.
                         // Supplemental: bike share, buses, Regional Rail and value
                         // ranking, under everything the Metro answer already shows.
                         // Also the place a trip the Metro can't serve still gets one.
@@ -419,31 +420,6 @@ struct PlanView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 30)
         }
-    }
-
-    /// Standing in a station is exactly when a platform sign would help, and most of
-    /// these stations have none.
-    private func boardLink(for station: Station) -> some View {
-        Button { activeSheet = .board } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 18)
-                Text("Everything leaving \(station.name)")
-                    .font(.footnote.weight(.medium))
-                    .lineLimit(2)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private static func openSystemSettings() {

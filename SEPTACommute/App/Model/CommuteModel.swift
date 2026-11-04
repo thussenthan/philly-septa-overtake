@@ -63,6 +63,8 @@ struct RiderPreferences: Codable, Equatable {
     var indegoPass: IndegoPass = .payAsYouGo
     /// Show options using buses and Regional Rail.
     var showAllSEPTA: Bool = true
+    /// Where turn-by-turn directions open.
+    var mapsApp: MapsApp = .apple
 
     /// Stored as an optional so preferences saved before this setting existed still
     /// decode — otherwise adding a key would silently reset every other setting.
@@ -121,6 +123,7 @@ extension RiderPreferences {
         showIndego = try container.decodeIfPresent(Bool.self, forKey: .showIndego) ?? defaults.showIndego
         indegoPass = (try? container.decodeIfPresent(IndegoPass.self, forKey: .indegoPass)) ?? defaults.indegoPass
         showAllSEPTA = try container.decodeIfPresent(Bool.self, forKey: .showAllSEPTA) ?? defaults.showAllSEPTA
+        mapsApp = (try? container.decodeIfPresent(MapsApp.self, forKey: .mapsApp)) ?? defaults.mapsApp
     }
 }
 
@@ -187,6 +190,8 @@ final class CommuteModel: ObservableObject {
     var extendedSearchKey: String?
     /// The two ends the current alternatives belong to.
     var extendedEndpoints: String?
+    /// Measured dock-to-dock bike rides (length and climb), for the Indego planner.
+    var bikeRoutes: [String: IndegoRouteInfo] = [:]
 
     private var cancellables: Set<AnyCancellable> = []
     private var timer: AnyCancellable?

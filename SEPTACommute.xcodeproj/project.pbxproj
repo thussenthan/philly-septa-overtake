@@ -436,7 +436,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Overtake;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find nearby stations, stops and bike docks and to time the walk. Walking and cycling routes are worked out by Apple Maps. Nothing is stored off your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Finds your nearest station, stop or bike dock and times the walk. Routes are drawn by Apple Maps.";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -469,7 +469,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Overtake;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location is used to find nearby stations, stops and bike docks and to time the walk. Walking and cycling routes are worked out by Apple Maps. Nothing is stored off your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Finds your nearest station, stop or bike dock and times the walk. Routes are drawn by Apple Maps.";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

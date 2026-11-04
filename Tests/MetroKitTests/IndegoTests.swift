@@ -75,4 +75,21 @@ final class IndegoTests: XCTestCase {
         XCTAssertEqual(stations.first?.electricBikes, 2)
         XCTAssertEqual(stations.first?.openDocks, 7)
     }
+
+    func testClimbIgnoresElevationModelNoise() {
+        // Open-Meteo's profile up Broad St, City Hall to Temple: about 20 m of real
+        // rise, with spikes from the surface model.
+        let broad: [Double] = [12, 12, 15, 23, 2, 13, 20, 14, 15, 15, 13, 15, 14, 16, 19, 20, 20, 22, 22, 20,
+                               27, 26, 23, 23, 24, 28, 24, 28, 31, 30, 26, 25, 25, 30, 35, 28, 30, 33, 32, 32]
+        let climb = IndegoRouteInfo.climb(profile: broad)
+        XCTAssertGreaterThan(climb, 12)
+        XCTAssertLessThan(climb, 30)
+        XCTAssertEqual(IndegoRouteInfo.climb(profile: [10, 10, 10, 10, 10]), 0)
+        // A real hill, down and up again, counts both climbs.
+        XCTAssertEqual(IndegoRouteInfo.climb(profile: [0, 10, 20, 30, 30, 20, 10, 10, 20, 30, 40, 40]), 60, accuracy: 0.001)
+    }
+
+    func testHillsSlowTheClassicMoreThanTheEBike() {
+        XCTAssertGreaterThan(IndegoBike.classic.secondsPerMeterClimbed, IndegoBike.electric.secondsPerMeterClimbed * 3)
+    }
 }

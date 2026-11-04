@@ -23,7 +23,7 @@ struct MoreWaysSection: View {
             if !alternatives.isEmpty {
                 alternativesCard(alternatives)
             }
-            if model.preferences.showIndego, !model.indegoOptions.isEmpty {
+            if model.preferences.showIndego, !model.visibleIndegoOptions.isEmpty {
                 indegoCard
             }
             if let ranking = model.valueRanking, ranking.count > 1, let rate = model.preferences.valueOfTimePerHour {
@@ -75,7 +75,7 @@ struct MoreWaysSection: View {
             }
             .padding(.horizontal, 4)
             VStack(spacing: 0) {
-                ForEach(Array(model.indegoOptions.enumerated()), id: \.element.id) { index, option in
+                ForEach(Array(model.visibleIndegoOptions.enumerated()), id: \.element.id) { index, option in
                     if index > 0 { Divider().padding(.leading, 54) }
                     Button {
                         openIndego = IndegoSelection(
@@ -93,7 +93,8 @@ struct MoreWaysSection: View {
                             option: option,
                             reference: reference,
                             referenceNoun: model.referenceNoun,
-                            isCheapestOverall: model.isCheapestOverall(option)
+                            isCheapestOverall: model.isCheapestOverall(option),
+                            hillClimb: model.hillyClassic?.climbMeters
                         )
                     }
                     .buttonStyle(.plain)
@@ -136,7 +137,7 @@ struct MoreWaysSection: View {
 
     private func valueCard(ranking: [ValueCandidate], rate: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionLabel(text: "Best value at \(Format.money(rate))/hr")
+            SectionLabel(text: "Best value")
                 .padding(.leading, 4)
             VStack(spacing: 0) {
                 ForEach(Array(ranking.enumerated()), id: \.element.id) { index, candidate in
@@ -153,19 +154,26 @@ struct MoreWaysSection: View {
                             Text(candidate.title)
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(1)
-                            Text("\(fare) + \(Format.minutes(candidate.travelTime)) · arrive \(Format.clock(candidate.arrival))")
+                            // The concrete things first; the blended score last and
+                            // quietest, since it's the one a rider can't check.
+                            Text("\(fare) • \(Format.minutes(candidate.travelTime)) • \(total) value")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(total)
-                            .font(.subheadline.weight(.semibold))
-                            .monospacedDigit()
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(Format.clock(candidate.arrival))
+                                .font(.subheadline.weight(.semibold))
+                                .monospacedDigit()
+                            Text("arrive")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Number \(index + 1): \(candidate.title). \(fare) plus \(Format.minutes(candidate.travelTime)), arriving \(Format.clock(candidate.arrival)). Worth \(total) at your rate.")
+                    .accessibilityLabel("Number \(index + 1): \(candidate.title). \(fare), \(Format.minutes(candidate.travelTime)), arriving \(Format.clock(candidate.arrival)). \(total) counting your time.")
                 }
             }
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
@@ -338,6 +346,8 @@ struct ExtendedDetailView: View {
     var reference: Date?
     var referenceNoun: String = "the train"
 
+    @EnvironmentObject private var model: CommuteModel
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -361,9 +371,9 @@ struct ExtendedDetailView: View {
 
                 Button {
                     guard let destination else { return }
-                    AppleMapsHandoff.open(from: origin, fromName: "Start", to: destination, toName: destinationName, mode: .transit)
+                    MapsHandoff.open(app: model.preferences.mapsApp, from: origin, fromName: "Start", to: destination, toName: destinationName, mode: .transit)
                 } label: {
-                    Label("Transit directions in Apple Maps", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                    Label("Open in \(model.preferences.mapsApp.label)", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -402,7 +412,7 @@ struct ExtendedDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
 
-                Text("Scheduled times from SEPTA's published bus and Regional Rail timetables, not live positions. Fares are SEPTA Key estimates; Regional Rail fares depend on zone and time of day.")
+                Text("Scheduled times • SEPTA Key fare")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

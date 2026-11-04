@@ -26,12 +26,16 @@ struct ValueCandidate: Identifiable {
     var leaveBy: Date
     var arrival: Date
     var fare: Double
+    /// Time spent pedalling uphill on a classic bike. Already inside the travel
+    /// time; counted a second time in value, because a climb costs effort as
+    /// well as minutes — which is what makes the e-bike win on hills.
+    var effortSeconds: TimeInterval = 0
 
     /// Door-to-door travel time — the time actually spent getting there.
     var travelTime: TimeInterval { max(0, arrival.timeIntervalSince(leaveBy)) }
 
     func cost(perHour rate: Double) -> Double {
-        fare + travelTime / 3600 * rate
+        fare + (travelTime + effortSeconds) / 3600 * rate
     }
 }
 
@@ -149,9 +153,57 @@ extension CommuteModel {
         }
         var walking = preferences.plannerOptions().walking
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
-        let planner = IndegoPlanner(walking: walking, pass: preferences.indegoPass)
-        indegoOptions = planner.options(from: origin, to: destination, stations: indego.stations, departAt: Date())
+        var planner = IndegoPlanner(walking: walking, pass: preferences.indegoPass)
+        planner.routes = bikeRoutes
+        let options = planner.options(from: origin, to: destination, stations: indego.stations, departAt: Date())
+        indegoOptions = options
+
+        // Measure the chosen rides (route length and climb), then plan again with
+        // them. A measured ride can change which docks win; those get measured on
+        // the next pass, and the cache settles it.
+        let unmeasured = options
+            .map { (key: IndegoPlanner.routeKey(from: $0.pickup, to: $0.dropoff), from: $0.pickup.coordinate, to: $0.dropoff.coordinate) }
+            .filter { bikeRoutes[$0.key] == nil }
+        guard !unmeasured.isEmpty else { return }
+        Task { [weak self] in
+            let changed = await BikeRouteService.shared.measure(unmeasured)
+            let all = await BikeRouteService.shared.all
+            guard changed, let self else { return }
+            self.bikeRoutes = all
+            self.updateIndegoOptions()
+        }
     }
+
+    /// Bike options worth listing: those nothing else on screen beats on both
+    /// price and arrival. A bike that costs more and arrives later than a train
+    /// (or than the other bike) is just noise. Worked out when shown, so it is
+    /// always against the current plan rather than whichever landed first.
+    var visibleIndegoOptions: [IndegoOption] { frontier(of: indegoOptions) }
+
+    private func frontier(of options: [IndegoOption]) -> [IndegoOption] {
+        let fareRules = network.fare
+        func minute(_ date: Date) -> Int { Int(date.timeIntervalSince1970 / 60) }
+        func cents(_ amount: Double) -> Int { Int((amount * 100).rounded()) }
+        let transit: [(Int, Int)] = (plan?.journeys ?? []).map {
+            ($0.isWalkOnly ? 0 : cents($0.fare(fareRules)?.withFreeTransfers ?? 0), minute($0.arrivalTime))
+        }
+        return options.filter { option in
+            let c = cents(option.price), m = minute(option.arrival)
+            let beaten: ((Int, Int)) -> Bool = { $0.0 <= c && $0.1 <= m && ($0.0 < c || $0.1 < m) }
+            if transit.contains(where: beaten) { return false }
+            let others = options.filter { $0.id != option.id }.map { (cents($0.price), minute($0.arrival)) }
+            return !others.contains(where: beaten)
+        }
+    }
+
+    /// The classic option, when its route climbs enough that the e-bike is worth
+    /// suggesting.
+    var hillyClassic: IndegoOption? {
+        indegoOptions.first { $0.bike == .classic && ($0.climbMeters ?? 0) >= Self.hillyClimbMeters }
+    }
+
+    /// About six storeys: enough to arrive sweaty on a classic bike.
+    static let hillyClimbMeters: Double = 20
 
     // MARK: Alternative routes
 
@@ -205,7 +257,7 @@ extension CommuteModel {
 
     /// True when this bike option is the cheapest way there of everything listed.
     func isCheapestOverall(_ option: IndegoOption) -> Bool {
-        let bikes = indegoOptions.map(\.price).min() ?? .infinity
+        let bikes = visibleIndegoOptions.map(\.price).min() ?? .infinity
         guard option.price <= bikes + 0.005 else { return false }
         guard let other = cheapestNonBikeFare else { return true }
         return option.price < other - 0.005
@@ -249,16 +301,28 @@ extension CommuteModel {
                 fare: itinerary.fare
             ))
         }
-        for option in indegoOptions {
+        for option in visibleIndegoOptions {
             candidates.append(ValueCandidate(
                 id: "indego-" + option.id,
                 kind: .indego(option),
                 title: "Indego \(option.bike.label.lowercased())",
                 leaveBy: option.leaveAt,
                 arrival: option.arrival,
-                fare: option.price
+                fare: option.price,
+                effortSeconds: option.bike == .classic ? option.climbSeconds : 0
             ))
         }
-        return candidates.sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
+        // Only what's on the price/arrival frontier: an option that costs more and
+        // arrives later than another is never the better pick, whatever the rate.
+        func minute(_ date: Date) -> Int { Int(date.timeIntervalSince1970 / 60) }
+        func cents(_ amount: Double) -> Int { Int((amount * 100).rounded()) }
+        let frontier = candidates.filter { candidate in
+            !candidates.contains { other in
+                other.id != candidate.id
+                    && cents(other.fare) <= cents(candidate.fare) && minute(other.arrival) <= minute(candidate.arrival)
+                    && (cents(other.fare) < cents(candidate.fare) || minute(other.arrival) < minute(candidate.arrival))
+            }
+        }
+        return frontier.sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
     }
 }

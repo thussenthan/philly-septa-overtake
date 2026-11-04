@@ -45,7 +45,21 @@ final class AddressSearch: NSObject, ObservableObject {
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
         completer.region = Self.philadelphiaRegion
+        // Suggest only places SEPTA reaches. The region alone is a preference,
+        // and "1500 Market St" came back in San Francisco and Harrisburg.
+        if #available(iOS 18.0, *) {
+            completer.region = Self.serviceRegion
+            completer.regionPriority = .required
+        }
     }
+
+    /// Everywhere SEPTA runs, Regional Rail included: Trenton to Wilmington,
+    /// Thorndale to Doylestown.
+    static let serviceRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 40.0, longitude: -75.25),
+        latitudinalMeters: 150_000,
+        longitudinalMeters: 150_000
+    )
 
     /// Turn a suggestion into a coordinate.
     func resolve(_ suggestion: Suggestion) async -> (address: String, coordinate: Coordinate)? {
