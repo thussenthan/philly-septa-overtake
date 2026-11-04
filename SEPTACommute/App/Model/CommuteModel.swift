@@ -31,8 +31,9 @@ enum AppearanceChoice: String, Codable, CaseIterable, Identifiable {
 /// Rider-adjustable knobs, persisted.
 struct RiderPreferences: Codable, Equatable {
     var walkingMilesPerHour: Double = 3.0
-    /// Longest walk to a station the rider will entertain, in minutes.
-    var maxWalkMinutes: Double = 15
+    /// Longest walk to a station, stop or bike dock the rider will entertain, in
+    /// minutes. Twenty is about a mile at an ordinary pace.
+    var maxWalkMinutes: Double = 20
     /// Extra seconds of safety margin before every boarding.
     var boardingBufferSeconds: Double = 30
     /// Whether to spend network calls on real walking directions.

@@ -194,14 +194,14 @@ struct SettingsView: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Longest walk to a station")
+                    Text("Longest walk to a stop")
                     Spacer()
                     Text("\(Int(model.preferences.maxWalkMinutes)) min")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                Slider(value: $model.preferences.maxWalkMinutes, in: 5...30, step: 1)
-                    .accessibilityLabel("Longest walk to a station")
+                Slider(value: $model.preferences.maxWalkMinutes, in: 5...40, step: 1)
+                    .accessibilityLabel("Longest walk to a station, stop or bike dock")
                     .accessibilityValue("\(Int(model.preferences.maxWalkMinutes)) minutes")
             }
             Toggle("Use real walking directions", isOn: $model.preferences.useMeasuredWalkTimes)
@@ -399,6 +399,7 @@ struct RankingExplainerView: View {
                 "Cost: gas from your mpg, 10¢/mi wear, parking and tolls.",
                 "Tolls come from HERE, priced with a transponder (E-ZPass). Add a free HERE key under Your car.",
                 "Without a key, routes with tolls are left out rather than guessed.",
+                "Walking the whole way counts too, timed by Apple Maps.",
                 "Doesn't change the main answer.",
             ])
         }

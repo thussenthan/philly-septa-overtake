@@ -19,6 +19,7 @@ struct ValueCandidate: Identifiable {
         case extended(ExtendedItinerary)
         case indego(IndegoOption)
         case driving(DrivingEstimate)
+        case walking(TimeInterval)
     }
 
     var id: String
@@ -66,6 +67,9 @@ extension CommuteModel {
     /// the Metro plan.
     func planSupplemental() {
         updateDrivingEstimate()
+        if preferences.valueOfTimePerHour != nil, let origin = originCoordinate, let destination = destinationCoordinate {
+            measureWalks([(from: origin, to: destination)])
+        }
         if preferences.showIndego {
             indego.refreshIfNeeded()
             updateIndegoOptions()
@@ -84,13 +88,14 @@ extension CommuteModel {
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
         let margin = preferences.boardingBufferSeconds
         let now = Date()
+        let walkRadius = walkingRadiusMeters
 
         // Replans come every thirty seconds and on every location fix. The search
         // is five full passes over all of SEPTA, so it runs only when something it
         // depends on has changed: the two ends (to ~50 m), the minute, the settings.
         func rounded(_ c: Coordinate) -> String { String(format: "%.4f,%.4f", c.latitude, c.longitude) }
         let endpoints = rounded(origin) + ">" + rounded(destination)
-        let key = "\(endpoints)|\(Int(now.timeIntervalSince1970 / 60))|\(walking.metersPerSecond)|\(margin)"
+        let key = "\(endpoints)|\(Int(now.timeIntervalSince1970 / 60))|\(walking.metersPerSecond)|\(margin)|\(walkRadius)"
         guard key != extendedSearchKey else { return }
         extendedSearchKey = key
         // A different trip: the old trip's alternatives must not sit under the new
@@ -105,6 +110,7 @@ extension CommuteModel {
             let work = Task.detached(priority: .utility) { () -> [ExtendedItinerary]? in
                 guard let network = ExtendedData.network else { return [] }
                 var planner = ExtendedPlanner(network: network, walking: walking, boardingMarginSeconds: margin)
+                planner.accessRadiusMeters = walkRadius
                 // One search returns the fastest option per number of rides, so on its
                 // own the fastest mode wins everything and a cheaper-but-slower one
                 // (a bus instead of Regional Rail) is never seen. Searching again with
@@ -159,6 +165,24 @@ extension CommuteModel {
             guard let self, self.originCoordinate == origin, self.destinationCoordinate == destination else { return }
             if self.drivingEstimates != estimates { self.drivingEstimates = estimates }
         }
+    }
+
+    /// How far, as the crow flies, the rider's longest walk reaches: the setting
+    /// in minutes at their pace, with the street grid's detour taken off. Used
+    /// only to choose which stops and docks to consider; the walks shown are
+    /// measured.
+    var walkingRadiusMeters: Double {
+        let walking = preferences.plannerOptions().walking
+        let mps = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
+        return preferences.maxWalkMinutes * 60 * mps / walking.circuityFactor
+    }
+
+    /// Walking the whole way, timed along real streets by Apple Maps.
+    var walkingTrip: (seconds: TimeInterval, arrival: Date)? {
+        guard let origin = originCoordinate, let destination = destinationCoordinate,
+              let seconds = measuredWalks[MeasuredWalks.key(from: origin, to: destination)] else { return nil }
+        let startup = preferences.plannerOptions().walking.startupSeconds
+        return (seconds + startup, Date().addingTimeInterval(seconds + startup))
     }
 
     /// Ask Apple Maps for these walks, then redraw whatever depends on them.
@@ -224,6 +248,7 @@ extension CommuteModel {
         var walking = preferences.plannerOptions().walking
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
         var planner = IndegoPlanner(walking: walking, pass: preferences.indegoPass)
+        planner.maxWalkMeters = walkingRadiusMeters
         planner.routes = bikeRoutes
         planner.walks = measuredWalks
         let options = planner.options(from: origin, to: destination, stations: indego.stations, departAt: Date())
@@ -362,7 +387,20 @@ extension CommuteModel {
         guard let rate = preferences.valueOfTimePerHour, rate > 0 else { return nil }
         var candidates: [ValueCandidate] = []
         let fareRules = network.fare
-        for journey in plan?.journeys ?? [] {
+        // Walking the whole way, measured; it stands in for the main planner's
+        // estimated walk-only option when there is one.
+        let walk = walkingTrip
+        if let walk {
+            candidates.append(ValueCandidate(
+                id: "walk",
+                kind: .walking(walk.seconds),
+                title: "Walk",
+                leaveBy: walk.arrival.addingTimeInterval(-walk.seconds),
+                arrival: walk.arrival,
+                fare: 0
+            ))
+        }
+        for journey in plan?.journeys ?? [] where !(journey.isWalkOnly && walk != nil) {
             let fare = journey.fare(fareRules)?.withFreeTransfers ?? 0
             let title = journey.isWalkOnly ? "Walk" : journey.rides.map(\.routeBadge).joined(separator: " → ")
             candidates.append(ValueCandidate(
