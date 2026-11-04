@@ -51,6 +51,12 @@ struct PlanView: View {
                         tripRow
                         answerSection
                         if let station = model.currentStation { boardLink(for: station) }
+                        // Supplemental: bike share, buses, Regional Rail and value
+                        // ranking, under everything the Metro answer already shows.
+                        // Also the place a trip the Metro can't serve still gets one.
+                        if model.target != nil, model.resolvedOrigin != nil {
+                            MoreWaysSection().padding(.top, 6)
+                        }
                     }
                     // Tighter than the usual inset: the answer card is the screen, and
                     // every point of margin is a point it isn't using.
@@ -283,12 +289,14 @@ struct PlanView: View {
             // route, a timetable that has run out — but it lived behind "1 note" on the
             // status row, while the card here said only to check septa.org.
             let empty = emptyPlanCopy
-            MessageCard(
-                symbol: empty.symbol,
-                title: empty.title,
-                message: model.noteMessages.first
-                    ?? "No trips found in the next hour and a half. Check septa.org for service alerts."
-            )
+            VStack(alignment: .leading, spacing: 14) {
+                MessageCard(
+                    symbol: empty.symbol,
+                    title: empty.title,
+                    message: model.noteMessages.first
+                        ?? "No trips found in the next hour and a half. Check septa.org for service alerts."
+                )
+            }
         } else {
             ProgressView("Working out your options…")
                 .frame(maxWidth: .infinity)

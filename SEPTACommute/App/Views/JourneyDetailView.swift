@@ -20,9 +20,17 @@ struct JourneyDetailView: View {
     /// names it; this is where its text belongs.
     var alert: ServiceAlert?
 
+    @EnvironmentObject private var model: CommuteModel
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                RouteMapView(
+                    journey: journey,
+                    network: network,
+                    origin: model.originCoordinate,
+                    destination: model.destinationCoordinate
+                )
                 overview
                 if let alert { alertBox(alert) }
                 timeline
