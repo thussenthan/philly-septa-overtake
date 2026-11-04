@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Draw the app icon: the O of Overtake, as a piece of transit map.
+"""Draw the app icon: two tracks, and the express overtaking the local.
 
-The same letterform the wordmark uses — the geometry below is the `"O"` entry from
-`TransitLetter.shapes` in `SEPTACommute/App/Views/Wordmark.swift`, so the icon and
-the title bar are demonstrably the same mark rather than two things that resemble
-each other. Change one and re-run this.
-
-An octagon stroked in SEPTA's Broad Street orange with a white stop at every vertex.
-No text: it has to read at 40 points in a Settings row, where a word cannot.
+The app's whole idea in one picture. A blue local runs along the top track,
+stopping everywhere. The orange express starts below it, skips the stops, cuts up
+at 45° and finishes ahead of the local on the same track. Lines and stops are drawn
+the way the wordmark draws them, so the icon and the title read as one network
+diagram. No text: it has to read at 40 points in a Settings row.
 
 Rendered at 4x and downsampled, because Pillow has no anti-aliasing of its own and a
 transit diagram is all edges.
@@ -23,50 +21,63 @@ from PIL import Image, ImageDraw
 
 SIZE = 1024
 SCALE = 4
-BACKGROUND = "#0B0B0C"
-# SEPTA's published Broad Street Line orange, which is also the app's accent.
-STROKE = "#F26100"
+# A faint top-to-bottom gradient, near black, so the tile isn't flat on a dark
+# home screen.
+BACKGROUND_TOP = (24, 25, 28)
+BACKGROUND = (11, 11, 12)
+# SEPTA's Broad Street orange (the app's accent) for the express, and the
+# Market-Frankford blue for the local.
+EXPRESS = "#F26100"
+LOCAL = "#0097D6"
 STOP = "#FFFFFF"
-
-# TransitLetter.shapes["O"], on its 0.62 x 1.0 box with the origin top left.
-LETTER_WIDTH = 0.62
-OUTLINE = [
-    (0.18, 0.0), (0.44, 0.0), (0.62, 0.25), (0.62, 0.75),
-    (0.44, 1.0), (0.18, 1.0), (0.0, 0.75), (0.0, 0.25),
-]
 
 OUTPUT = Path("SEPTACommute/Resources/Assets.xcassets/AppIcon.appiconset")
 FILENAME = "AppIcon.png"
+
+# Unit coordinates (0…1) on the square tile.
+TOP_TRACK = 0.38
+BOTTOM_TRACK = 0.64
+LINE_WIDTH = 0.095
+LOCAL_LINE = [(0.14, TOP_TRACK), (0.62, TOP_TRACK)]
+LOCAL_STOPS = [0.14, 0.30, 0.46, 0.62]
+EXPRESS_LINE = [(0.14, BOTTOM_TRACK), (0.54, BOTTOM_TRACK), (0.80, TOP_TRACK), (0.86, TOP_TRACK)]
 
 
 def draw_icon(canvas: int) -> Image.Image:
     image = Image.new("RGB", (canvas, canvas), BACKGROUND)
     pen = ImageDraw.Draw(image)
+    for y in range(0, canvas, SCALE):
+        t = y / canvas
+        colour = tuple(round(BACKGROUND_TOP[i] + (BACKGROUND[i] - BACKGROUND_TOP[i]) * t) for i in range(3))
+        pen.rectangle([0, y, canvas, y + SCALE], fill=colour)
 
-    # The letter is taller than it is wide, so height decides the scale.
-    cap = canvas * 0.62
-    origin_x = (canvas - LETTER_WIDTH * cap) / 2
-    origin_y = (canvas - cap) / 2
-    points = [(origin_x + x * cap, origin_y + y * cap) for x, y in OUTLINE]
+    def point(p):
+        return (p[0] * canvas, p[1] * canvas)
 
-    stroke = cap * 0.17
-    radius = cap * 0.115
-    ring = cap * 0.035
+    def line(points, colour):
+        width = int(LINE_WIDTH * canvas)
+        pixels = [point(p) for p in points]
+        for a, b in zip(pixels, pixels[1:]):
+            pen.line([a, b], fill=colour, width=width)
+        # Round joins and caps by hand — Pillow's are square.
+        r = width / 2
+        for x, y in pixels:
+            pen.ellipse([x - r, y - r, x + r, y + r], fill=colour)
 
-    # Closed, and with round joins drawn by hand — Pillow's are square, which on an
-    # octagon leaves visible notches at every corner.
-    for start, end in zip(points, points[1:] + points[:1]):
-        pen.line([start, end], fill=STROKE, width=int(stroke))
-    for x, y in points:
-        pen.ellipse([x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2], fill=STROKE)
+    def stop(p, colour, radius=0.058, ring=0.019):
+        x, y = point(p)
+        outer, inner = radius * canvas, (radius - ring) * canvas
+        pen.ellipse([x - outer, y - outer, x + outer, y + outer], fill=colour)
+        pen.ellipse([x - inner, y - inner, x + inner, y + inner], fill=STOP)
 
-    # Stops last, so they sit on top of the line the way they do on the map.
-    for x, y in points:
-        pen.ellipse([x - radius, y - radius, x + radius, y + radius], fill=STROKE)
-        pen.ellipse(
-            [x - radius + ring, y - radius + ring, x + radius - ring, y + radius - ring],
-            fill=STOP,
-        )
+    line(LOCAL_LINE, LOCAL)
+    line(EXPRESS_LINE, EXPRESS)
+    # Stops last, so they sit on top of the lines as they do on the map.
+    for x in LOCAL_STOPS:
+        stop((x, TOP_TRACK), LOCAL)
+    stop((0.14, BOTTOM_TRACK), EXPRESS)
+    # The express's one stop ahead — bigger, because it's where you get there first.
+    stop((0.86, TOP_TRACK), EXPRESS, radius=0.075, ring=0.024)
     return image
 
 
