@@ -390,8 +390,8 @@ struct RankingExplainerView: View {
             topic("Best value", symbol: "dollarsign.circle", [
                 "Fare + door-to-door time at your hourly rate.",
                 "Climbing on a classic bike counts twice: time and effort.",
-                "Driving: Apple Maps time with traffic, plus 5 min to park.",
-                "Cost: gas from your mpg, 10¢/mi wear, your toll and parking.",
+                "Driving: every Apple Maps route, with live traffic.",
+                "Cost: gas from your mpg, 10¢/mi wear, parking, and each toll the route passes.",
                 "Doesn't change the main answer.",
             ])
         }
@@ -402,10 +402,7 @@ struct RankingExplainerView: View {
     private func topic(_ title: String, symbol: String, _ points: [String]) -> some View {
         Section {
             ForEach(points, id: \.self) { point in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("•").foregroundStyle(Theme.accent)
-                    Text(point).font(.subheadline)
-                }
+                Text(point).font(.subheadline)
             }
         } header: {
             Label(title, systemImage: symbol)

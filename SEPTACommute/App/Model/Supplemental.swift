@@ -334,11 +334,12 @@ extension CommuteModel {
             ))
         }
         for drive in drivingEstimates {
-            let others = drivingEstimates.count > 1
+            let via = drive.name.isEmpty ? "" : " via \(drive.name)"
+            let toll = drive.tolls.isEmpty ? "" : " (\(drive.tolls.map(\.name).joined(separator: ", ")))"
             candidates.append(ValueCandidate(
                 id: drive.id,
                 kind: .driving(drive),
-                title: drive.hasTolls ? "Drive, with tolls" : (others ? "Drive, no tolls" : "Drive"),
+                title: "Drive" + via + toll,
                 leaveBy: drive.departure,
                 arrival: drive.arrival,
                 fare: drive.cost

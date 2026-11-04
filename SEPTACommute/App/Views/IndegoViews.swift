@@ -175,7 +175,7 @@ struct IndegoDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    leg(0, symbol: "figure.walk", tint: option.bike.color,
+                    leg(0, symbol: "figure.walk", tint: Theme.accent,
                         title: "Walk \(Format.minutes(option.walkToPickup)) to \(option.pickup.name)",
                         detail: "\(option.pickup.classicBikes) classic · \(option.pickup.electricBikes) e-bikes") {
                         MapsHandoff.open(
@@ -197,7 +197,7 @@ struct IndegoDetailView: View {
                         )
                     }
                     Divider().padding(.leading, 36)
-                    leg(2, symbol: "figure.walk", tint: option.bike.color,
+                    leg(2, symbol: "figure.walk", tint: Theme.accent,
                         title: "Dock, walk \(Format.minutes(option.walkFromDropoff)) to \(destinationName)",
                         detail: "\(option.dropoff.openDocks) open docks") {
                         guard let destination else { return }
@@ -269,7 +269,7 @@ struct IndegoDetailView: View {
                     .labelStyle(.titleAndIcon)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .foregroundStyle(option.bike.foreground)
+                    .foregroundStyle(tint == Theme.accent ? Theme.foreground(onHex: "F26100") : option.bike.foreground)
                     .background(tint, in: Capsule())
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())

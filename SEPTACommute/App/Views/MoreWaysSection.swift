@@ -27,7 +27,7 @@ struct MoreWaysSection: View {
                 indegoCard
             }
             if let ranking = model.valueRanking, ranking.count > 1, let rate = model.preferences.valueOfTimePerHour {
-                valueCard(ranking: Array(ranking.prefix(4)), rate: rate)
+                valueCard(ranking: ranking, rate: rate)
             }
         }
         .navigationDestination(item: $openIndego) { selection in
@@ -153,10 +153,10 @@ struct MoreWaysSection: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(candidate.title)
                                 .font(.subheadline.weight(.medium))
-                                .lineLimit(1)
+                                .lineLimit(2)
                             // The concrete things first; the blended score last and
                             // quietest, since it's the one a rider can't check.
-                            Text("\(fare) · \(Format.minutes(candidate.travelTime)) · \(total) value")
+                            Text("\(fare) • \(Format.minutes(candidate.travelTime)) • \(total) value")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

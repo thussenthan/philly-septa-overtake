@@ -15,14 +15,14 @@ final class IndegoTests: XCTestCase {
         XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 40, bike: .classic), 7.50, accuracy: 0.001)
         XCTAssertEqual(IndegoPass.payAsYouGo.price(minutes: 30, bike: .electric), 13.50, accuracy: 0.001)
         // Passes: 60 classic minutes included, 20¢/min after and for e-bikes.
-        XCTAssertEqual(IndegoPass.indego30.price(minutes: 20, bike: .classic), 0, accuracy: 0.001)
-        XCTAssertEqual(IndegoPass.indego30.price(minutes: 70, bike: .classic), 2.0, accuracy: 0.001)
-        XCTAssertEqual(IndegoPass.dayPass.price(minutes: 20, bike: .electric), 4.0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.standard.price(minutes: 20, bike: .classic), 0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.standard.price(minutes: 70, bike: .classic), 2.0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.standard.price(minutes: 20, bike: .electric), 4.0, accuracy: 0.001)
         // Access: 7¢/min.
         XCTAssertEqual(IndegoPass.access.price(minutes: 20, bike: .electric), 1.4, accuracy: 0.001)
         // Plus: a 30-minute e-bike ride is included.
-        XCTAssertEqual(IndegoPass.indego365Plus.price(minutes: 20, bike: .electric), 0, accuracy: 0.001)
-        XCTAssertEqual(IndegoPass.access365Plus.price(minutes: 40, bike: .electric), 0.7, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.plus.price(minutes: 20, bike: .electric), 0, accuracy: 0.001)
+        XCTAssertEqual(IndegoPass.accessPlus.price(minutes: 40, bike: .electric), 0.7, accuracy: 0.001)
     }
 
     func testClassicIsListedFirstWhenAvailableAndElectricIsFaster() {
@@ -91,5 +91,17 @@ final class IndegoTests: XCTestCase {
 
     func testHillsSlowTheClassicMoreThanTheEBike() {
         XCTAssertGreaterThan(IndegoBike.classic.secondsPerMeterClimbed, IndegoBike.electric.secondsPerMeterClimbed * 3)
+    }
+
+    func testOldPassNamesStillDecode() throws {
+        func decode(_ raw: String) throws -> IndegoPass {
+            try JSONDecoder().decode(IndegoPass.self, from: Data("\"\(raw)\"".utf8))
+        }
+        XCTAssertEqual(try decode("indego30"), .standard)
+        XCTAssertEqual(try decode("dayPass"), .standard)
+        XCTAssertEqual(try decode("indego365Plus"), .plus)
+        XCTAssertEqual(try decode("access365"), .access)
+        XCTAssertEqual(try decode("access365Plus"), .accessPlus)
+        XCTAssertEqual(try decode("payAsYouGo"), .payAsYouGo)
     }
 }

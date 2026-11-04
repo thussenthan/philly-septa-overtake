@@ -251,16 +251,14 @@ struct OnboardingView: View {
                             .padding(12)
                         if model.preferences.showIndego {
                             Divider().padding(.leading, 12)
-                            HStack {
-                                Text("Pass")
-                                Spacer()
-                                Picker("Pass", selection: $model.preferences.indegoPass) {
-                                    ForEach(IndegoPass.allCases) { pass in Text(pass.label).tag(pass) }
-                                }
-                                .labelsHidden()
+                            // A menu picker's label wrapped and spilled out of the card
+                            // when it was long; the short labels and a fixed height fix it.
+                            Picker("Pass", selection: $model.preferences.indegoPass) {
+                                ForEach(IndegoPass.allCases) { pass in Text(pass.label).tag(pass) }
                             }
+                            .pickerStyle(.menu)
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
+                            .frame(minHeight: 44)
                         }
                     }
                     .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
