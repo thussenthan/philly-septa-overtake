@@ -48,5 +48,3 @@ BCycle.
 
 Maps and walking and cycling directions are provided by Apple Maps. Elevation
 data comes from Open-Meteo (https://open-meteo.com).
-Drive routes and toll costs, when the user supplies a HERE key, come from HERE
-Technologies' Routing API (https://www.here.com).

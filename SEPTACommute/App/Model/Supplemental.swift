@@ -160,8 +160,7 @@ extension CommuteModel {
         }
         let car = preferences.car
         Task { [weak self] in
-            let hereKey = HereKeyStore.key
-            let estimates = await DrivingService.shared.estimates(from: origin, to: destination, car: car, hereKey: hereKey, now: Date())
+            let estimates = await DrivingService.shared.estimates(from: origin, to: destination, car: car, now: Date())
             guard let self, self.originCoordinate == origin, self.destinationCoordinate == destination else { return }
             if self.drivingEstimates != estimates { self.drivingEstimates = estimates }
         }
@@ -439,11 +438,10 @@ extension CommuteModel {
         }
         for drive in drivingEstimates {
             let via = drive.name.isEmpty ? "" : " via \(drive.name)"
-            let toll = drive.toll > 0.005 ? " (\(Format.money(drive.toll)) tolls)" : ""
             candidates.append(ValueCandidate(
                 id: drive.id,
                 kind: .driving(drive),
-                title: "Drive" + via + toll,
+                title: "Drive" + via,
                 leaveBy: drive.departure,
                 arrival: drive.arrival,
                 fare: drive.cost
