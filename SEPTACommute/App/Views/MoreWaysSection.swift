@@ -26,7 +26,7 @@ struct MoreWaysSection: View {
             if model.preferences.showIndego, !model.visibleIndegoOptions.isEmpty {
                 indegoCard
             }
-            if let ranking = model.valueRanking, ranking.count > 1, let rate = model.preferences.valueOfTimePerHour {
+            if let ranking = model.valueRanking, !ranking.isEmpty, let rate = model.preferences.valueOfTimePerHour {
                 valueCard(ranking: ranking, rate: rate)
             }
         }

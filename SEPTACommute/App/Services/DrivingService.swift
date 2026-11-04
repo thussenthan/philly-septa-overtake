@@ -30,12 +30,11 @@ struct DrivingEstimate: Equatable, Identifiable {
     var cost: Double { fuel + tollTotal + wear + parking }
     var arrival: Date { departure.addingTimeInterval(seconds) }
 
-    /// Fuel from the route's average speed: slow means city driving, fast means
-    /// highway, and in between is a blend of the car's two ratings.
+    /// Fuel from the car's highway rating for the miles the directions spend on
+    /// highways, and its city rating for the rest.
     static func priced(_ route: DrivingService.Route, car: CarProfile, departure: Date) -> DrivingEstimate {
         let miles = route.meters / Coordinate.metersPerMile
-        let mph = route.seconds > 0 ? miles / (route.seconds / 3600) : 0
-        let highwayShare = min(1, max(0, (mph - 20) / 30))
+        let highwayShare = route.meters > 0 ? min(1, route.highwayMeters / route.meters) : 0
         let city = max(car.cityMPG, 1), highway = max(car.highwayMPG, 1)
         let gallons = miles * (highwayShare / highway + (1 - highwayShare) / city)
         return DrivingEstimate(
@@ -59,7 +58,19 @@ actor DrivingService {
         var name: String
         var seconds: TimeInterval
         var meters: Double
+        var highwayMeters: Double
         var tolls: [Tolls.Charge]
+    }
+
+    /// Road names that mean highway driving, anywhere: interstates and US routes,
+    /// expressways, freeways, turnpikes, motorways, autoroutes, autobahns.
+    private static let highwayPattern = try! NSRegularExpression(
+        pattern: #"\b(I-\d+|US-\d+|Interstate|Expressway|Expy|Freeway|Fwy|Turnpike|Tpke|Motorway|M\d+|A\d+|Autobahn|Autoroute|Autopista|Autostrada|Thruway|Parkway|Pkwy)\b"#,
+        options: [.caseInsensitive]
+    )
+
+    private static func isHighway(_ instructions: String) -> Bool {
+        highwayPattern.firstMatch(in: instructions, range: NSRange(instructions.startIndex..., in: instructions)) != nil
     }
 
     private var cache: (key: String, at: Date, routes: [Route])?
@@ -80,7 +91,8 @@ actor DrivingService {
                 for route in await Self.routes(from: from, to: to, now: now, variant: variant) {
                     // The same road twice, from two requests, is one option.
                     let duplicate = found.contains {
-                        abs($0.meters - route.meters) < 150 && abs($0.seconds - route.seconds) < 45
+                        ($0.name == route.name && abs($0.meters - route.meters) < 500)
+                            || (abs($0.meters - route.meters) < 150 && abs($0.seconds - route.seconds) < 45)
                     }
                     if !duplicate { found.append(route) }
                 }
@@ -117,7 +129,9 @@ actor DrivingService {
             // Apple Maps knows of a toll the table doesn't: leave the route out
             // rather than rank it on a price that is missing a charge.
             if route.hasTolls && tolls.isEmpty { return nil }
-            return Route(name: route.name, seconds: route.expectedTravelTime, meters: route.distance, tolls: tolls)
+            let highwayMeters = route.steps.filter { isHighway($0.instructions) }.reduce(0) { $0 + $1.distance }
+            return Route(name: route.name, seconds: route.expectedTravelTime, meters: route.distance,
+                         highwayMeters: highwayMeters, tolls: tolls)
         }
     }
 }

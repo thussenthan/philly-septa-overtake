@@ -232,6 +232,8 @@ public struct IndegoPlanner: Sendable {
 
     /// Measured cycling routes between docks, keyed by `routeKey(from:to:)`.
     public var routes: [String: IndegoRouteInfo] = [:]
+    /// Measured walking times, keyed by `MeasuredWalks.key(from:to:)`.
+    public var walks: [String: TimeInterval] = [:]
 
     public static func routeKey(from pickup: IndegoStation, to dropoff: IndegoStation) -> String {
         "\(pickup.id)>\(dropoff.id)"
@@ -292,8 +294,10 @@ public struct IndegoPlanner: Sendable {
                     let ride = rideMeters / bike.metersPerSecond
                         + climb * bike.secondsPerMeterClimbed
                         + unlockSeconds + dockSeconds
-                    let access = walking.startupSeconds + walkSeconds(accessMeters)
-                    let egress = walkSeconds(egressMeters)
+                    let measuredAccess = walks[MeasuredWalks.key(from: origin, to: pickup.coordinate)]
+                    let measuredEgress = walks[MeasuredWalks.key(from: dropoff.coordinate, to: destination)]
+                    let access = walking.startupSeconds + (measuredAccess ?? walkSeconds(accessMeters))
+                    let egress = measuredEgress ?? walkSeconds(egressMeters)
                     let arrival = now.addingTimeInterval(access + ride + egress)
                     if let current = best, current.arrival <= arrival { continue }
                     best = IndegoOption(
@@ -309,7 +313,7 @@ public struct IndegoPlanner: Sendable {
                         bikesAvailable: available,
                         rideMeters: rideMeters,
                         climbMeters: measured?.climbMeters,
-                        isMeasured: measured != nil
+                        isMeasured: measured != nil && measuredAccess != nil && measuredEgress != nil
                     )
                 }
             }
@@ -371,5 +375,13 @@ public enum IndegoFeed {
                 isReturning: (s.is_returning ?? 1) == 1
             )
         }
+    }
+}
+
+/// Keys for walking times measured along real streets, shared by every planner
+/// that shows a walk to the rider.
+public enum MeasuredWalks {
+    public static func key(from: Coordinate, to: Coordinate) -> String {
+        String(format: "%.5f,%.5f>%.5f,%.5f", from.latitude, from.longitude, to.latitude, to.longitude)
     }
 }

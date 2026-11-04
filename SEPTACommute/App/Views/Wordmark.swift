@@ -102,9 +102,9 @@ struct TransitLetter {
     /// stop, not two stacked on top of each other.
     ///
     /// Open strokes get a stop at each end, which is where a line on a diagram
-    /// terminates. A *closed* stroke has no ends, so endpoints-only left the O with a
-    /// single dot on an otherwise blank ring; it gets one at every vertex instead,
-    /// which is both what the octagon wants and what the app icon draws.
+    /// terminates. A *closed* stroke has no ends; a stop at every vertex made the O
+    /// eight beads on a small letter, so it gets one in the middle of every other
+    /// side instead — top, right, bottom, left on the octagon.
     var stops: [CGPoint] {
         var seen = Set<String>()
         var result: [CGPoint] = []
@@ -122,8 +122,11 @@ struct TransitLetter {
         let isClosed = polyline.count > 3
             && abs(first.x - last.x) < 0.001
             && abs(first.y - last.y) < 0.001
-        // Drop the repeated closing point; it is the same stop as the first.
-        return isClosed ? Array(polyline.dropLast()) : [first, last]
+        guard isClosed else { return [first, last] }
+        let sides = zip(polyline, polyline.dropFirst()).enumerated()
+        return sides.filter { $0.offset % 2 == 0 }.map { _, side in
+            CGPoint(x: (side.0.x + side.1.x) / 2, y: (side.0.y + side.1.y) / 2)
+        }
     }
 
     // Columns and rows the letterforms are built from.

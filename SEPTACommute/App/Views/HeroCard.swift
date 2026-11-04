@@ -99,23 +99,12 @@ struct HeroCard: View {
         }
     }
 
-    /// Only on itineraries with a change of train, and only when how you paid
-    /// changes what you pay.
-    ///
-    /// The fare is $2.90 for almost every trip on this network, so printing it
-    /// everywhere would be decoration. The exception is a transfer: SEPTA includes it
-    /// free on Key and contactless and charges again for cash, and a rider deciding
-    /// between one train and two deserves to know that costs them another $2.90.
+    /// Fares assume contactless (or SEPTA Key), where a change of train within two
+    /// hours is free, so a trip with a change costs what one without does and
+    /// there is nothing to say on the card. How it works states the assumption.
     @ViewBuilder
     private var fareRow: some View {
-        if journey.rides.count > 1, let fare = journey.fare(network.fare), fare.mediumMatters {
-            walkRow(
-                "\(Format.money(fare.withFreeTransfers, currency: fare.currency)) — the change is free with "
-                    + "\(network.fare.freeTransferMedia.first ?? "SEPTA Key")"
-                    + ", \(Format.money(fare.perBoarding, currency: fare.currency)) paying twice",
-                symbol: "creditcard"
-            )
-        }
+        EmptyView()
     }
 
     /// Everything needed to get on the right train and off at the right stop, and

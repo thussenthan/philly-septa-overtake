@@ -130,6 +130,14 @@ extension CommuteModel {
             }
             guard !Task.isCancelled, let self, let result else { return }
             self.extendedItineraries = result
+            // Measure the walks at either end of anything that could be shown.
+            let ends: [(from: Coordinate, to: Coordinate)] = result.filter(\.usesBusOrRail).flatMap { itinerary in
+                [itinerary.legs.first, itinerary.legs.last].compactMap { leg -> (from: Coordinate, to: Coordinate)? in
+                    guard case .walk(let walk)? = leg else { return nil }
+                    return (walk.from, walk.to)
+                }
+            }
+            self.measureWalks(ends)
         }
     }
 
@@ -150,6 +158,46 @@ extension CommuteModel {
             guard let self, self.originCoordinate == origin, self.destinationCoordinate == destination else { return }
             if self.drivingEstimates != estimates { self.drivingEstimates = estimates }
         }
+    }
+
+    /// Ask Apple Maps for these walks, then redraw whatever depends on them.
+    func measureWalks(_ pairs: [(from: Coordinate, to: Coordinate)]) {
+        let missing = pairs.filter { measuredWalks[MeasuredWalks.key(from: $0.from, to: $0.to)] == nil }
+        guard !missing.isEmpty else { return }
+        Task { [weak self] in
+            let changed = await WalkRouteService.shared.measure(missing)
+            let all = await WalkRouteService.shared.all
+            let failed = await WalkRouteService.shared.failedKeys()
+            guard let self else { return }
+            self.failedWalks = failed
+            guard changed else { return }
+            self.measuredWalks = all
+            self.updateIndegoOptions()
+        }
+    }
+
+    /// An alternative route with its first and last walks along real streets.
+    ///
+    /// `nil` while those walks are still being measured, so the list only ever
+    /// shows real walking times. If Apple Maps can't be reached the estimate is
+    /// used rather than hiding the route, the same as the main plan offline.
+    func measured(_ itinerary: ExtendedItinerary) -> ExtendedItinerary? {
+        var result = itinerary
+        let last = itinerary.legs.count - 1
+        for (index, leg) in itinerary.legs.enumerated() where index == 0 || index == last {
+            guard case .walk(var walk) = leg else { continue }
+            let key = MeasuredWalks.key(from: walk.from, to: walk.to)
+            guard let real = measuredWalks[key] else {
+                if failedWalks.contains(key) { continue }
+                return nil
+            }
+            let delta = real - walk.seconds
+            walk.seconds = real
+            result.legs[index] = .walk(walk)
+            if index == 0 { result.leaveBy = result.leaveBy.addingTimeInterval(-delta) }
+            else { result.arrival = result.arrival.addingTimeInterval(delta) }
+        }
+        return result
     }
 
     func cancelAlternativesSearch() {
@@ -176,8 +224,13 @@ extension CommuteModel {
         walking.metersPerSecond = preferences.walkingMilesPerHour * Coordinate.metersPerMile / 3600
         var planner = IndegoPlanner(walking: walking, pass: preferences.indegoPass)
         planner.routes = bikeRoutes
+        planner.walks = measuredWalks
         let options = planner.options(from: origin, to: destination, stations: indego.stations, departAt: Date())
         indegoOptions = options
+
+        // The walks to and from the docks, along real streets.
+        let walkPairs = options.flatMap { [(from: origin, to: $0.pickup.coordinate), (from: $0.dropoff.coordinate, to: destination)] }
+        measureWalks(walkPairs)
 
         // Measure the chosen rides (route length and climb), then plan again with
         // them. A measured ride can change which docks win; those get measured on
@@ -257,6 +310,7 @@ extension CommuteModel {
         // above; this list is for what buses and Regional Rail add.
         let candidates = extendedItineraries
             .filter(\.usesBusOrRail)
+            .compactMap { measured($0) }
             .filter { $0.leaveBy.timeIntervalSince(now) > -30 }
             .sorted { (cents($0.fare), $0.arrival) < (cents($1.fare), $1.arrival) }
         for candidate in candidates {
@@ -278,7 +332,9 @@ extension CommuteModel {
         let fareRules = network.fare
         let metro = (plan?.journeys ?? []).map { $0.isWalkOnly ? 0 : ($0.fare(fareRules)?.withFreeTransfers ?? 0) }
         let alternatives = alternativeRoutes.filter(\.fareIsKnown).map(\.fare)
-        return (metro + alternatives).min()
+        // A drive counts when the rider has said they have a car.
+        let drives = drivingEstimates.map(\.cost)
+        return (metro + alternatives + drives).min()
     }
 
     /// True when this bike option is the cheapest way there of everything listed.
@@ -361,6 +417,10 @@ extension CommuteModel {
                     && (cents(other.fare) < cents(candidate.fare) || minute(other.arrival) < minute(candidate.arrival))
             }
         }
-        return frontier.sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
+        // Two options at the same price and minute are one choice to the rider;
+        // keep the first (the main plan's, then alternatives, bikes, drives).
+        var seen = Set<String>()
+        let distinct = frontier.filter { seen.insert("\(cents($0.fare))@\(minute($0.arrival))").inserted }
+        return distinct.sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
     }
 }

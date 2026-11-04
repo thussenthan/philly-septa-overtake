@@ -197,6 +197,9 @@ final class CommuteModel: ObservableObject {
     var extendedEndpoints: String?
     /// Measured dock-to-dock bike rides (length and climb), for the Indego planner.
     var bikeRoutes: [String: IndegoRouteInfo] = [:]
+    /// Walks measured along real streets (bike docks, alternative-route ends).
+    @Published var measuredWalks: [String: TimeInterval] = [:]
+    var failedWalks: Set<String> = []
     /// The same trip by car (fastest, and toll-free when that differs), for Best value only.
     @Published var drivingEstimates: [DrivingEstimate] = []
 

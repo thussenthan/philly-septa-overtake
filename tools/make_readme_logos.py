@@ -66,10 +66,14 @@ def adjusted(hex_colour: str, dark: bool) -> str:
 
 
 def stops(polyline: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """TransitLetter.stopPoints(of:): every vertex of a closed stroke, the ends of an open one."""
+    """TransitLetter.stopPoints(of:): the middle of every other side of a closed
+    stroke, the ends of an open one."""
     first, last = polyline[0], polyline[-1]
     closed = len(polyline) > 3 and abs(first[0] - last[0]) < 0.001 and abs(first[1] - last[1]) < 0.001
-    return polyline[:-1] if closed else [first, last]
+    if not closed:
+        return [first, last]
+    sides = list(zip(polyline, polyline[1:]))
+    return [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) for i, (a, b) in enumerate(sides) if i % 2 == 0]
 
 
 def wordmark(dark: bool, height: float = 100) -> str:

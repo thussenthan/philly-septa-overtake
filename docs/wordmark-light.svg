@@ -1,14 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 706.00 128.00" width="706" height="128" role="img" aria-label="Overtake">
   <title>Overtake</title>
   <polyline points="32.00,14.00 58.00,14.00 76.00,39.00 76.00,89.00 58.00,114.00 32.00,114.00 14.00,89.00 14.00,39.00 32.00,14.00" fill="none" stroke="#0097D6" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="32.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="58.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="76.00" cy="39.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="76.00" cy="89.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="58.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="32.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="14.00" cy="89.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
-  <circle cx="14.00" cy="39.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="45.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="76.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="45.00" cy="114.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
+  <circle cx="14.00" cy="64.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
   <polyline points="102.00,14.00 133.00,114.00 164.00,14.00" fill="none" stroke="#0097D6" stroke-width="17.00" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="102.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>
   <circle cx="164.00" cy="14.00" r="11.50" fill="#FFFFFF" stroke="#0097D6" stroke-width="3.50"/>

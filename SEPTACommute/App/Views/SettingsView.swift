@@ -355,6 +355,11 @@ struct CreditsView: View {
 struct RankingExplainerView: View {
     var body: some View {
         List {
+            topic("Fares", symbol: "creditcard", [
+                "Every fare assumes you tap a contactless card or phone, or SEPTA Key.",
+                "That makes changes free within 2 hours, up to 2 of them.",
+                "Cash and Quick Trip pay again at every boarding; the app doesn't count that.",
+            ])
             topic("The answer", symbol: "clock", [
                 "Sorted by when you reach the door, not by which train leaves first.",
                 "Only trains you can still catch, walk included.",
