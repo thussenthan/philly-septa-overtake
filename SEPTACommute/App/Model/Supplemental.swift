@@ -154,7 +154,8 @@ extension CommuteModel {
         }
         let car = preferences.car
         Task { [weak self] in
-            let estimates = await DrivingService.shared.estimates(from: origin, to: destination, car: car, now: Date())
+            let hereKey = HereKeyStore.key
+            let estimates = await DrivingService.shared.estimates(from: origin, to: destination, car: car, hereKey: hereKey, now: Date())
             guard let self, self.originCoordinate == origin, self.destinationCoordinate == destination else { return }
             if self.drivingEstimates != estimates { self.drivingEstimates = estimates }
         }
@@ -373,7 +374,14 @@ extension CommuteModel {
                 fare: fare
             ))
         }
-        for itinerary in alternativeRoutes where itinerary.fareIsKnown {
+        // Every option the app knows of — not just what the sections above chose
+        // to show — goes in; the frontier below is the only filter. Metro-only
+        // trips come from the main planner, which times them properly.
+        let now = Date()
+        let everyAlternative = extendedItineraries
+            .filter { $0.usesBusOrRail && $0.fareIsKnown && $0.leaveBy.timeIntervalSince(now) > -30 }
+            .compactMap { measured($0) }
+        for itinerary in everyAlternative {
             candidates.append(ValueCandidate(
                 id: "ext-" + itinerary.id,
                 kind: .extended(itinerary),
@@ -383,7 +391,7 @@ extension CommuteModel {
                 fare: itinerary.fare
             ))
         }
-        for option in visibleIndegoOptions {
+        for option in indegoOptions where option.isMeasured {
             candidates.append(ValueCandidate(
                 id: "indego-" + option.id,
                 kind: .indego(option),
@@ -396,7 +404,7 @@ extension CommuteModel {
         }
         for drive in drivingEstimates {
             let via = drive.name.isEmpty ? "" : " via \(drive.name)"
-            let toll = drive.tolls.isEmpty ? "" : " (\(drive.tolls.map(\.name).joined(separator: ", ")))"
+            let toll = drive.toll > 0.005 ? " (\(Format.money(drive.toll)) tolls)" : ""
             candidates.append(ValueCandidate(
                 id: drive.id,
                 kind: .driving(drive),

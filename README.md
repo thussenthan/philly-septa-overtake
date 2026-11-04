@@ -61,8 +61,10 @@ Underneath the answer, and never instead of it, there are a few more ways to go:
   opens Apple Maps for spoken turn-by-turn directions.
 - **Best value.** Put a price on your time (it defaults to $25 an hour) and every
   option is ranked by fare plus door-to-door time at that rate. Tell it you have a
-  car and driving joins in, priced from your mpg, the gas price, wear, tolls and
-  parking, with Apple Maps' live drive time.
+  car and driving joins in, priced from your mpg, the gas price, wear and parking.
+  Tolls come from HERE's routing service, priced for each route anywhere it goes,
+  with your own free HERE key; without one, routes with tolls are left out rather
+  than guessed.
 - **A map of every trip.** Rides follow SEPTA's published route shapes, and walks
   and bike rides follow the streets.
 
@@ -720,6 +722,8 @@ There is no account, no analytics, and no server. Addresses and preferences live
 - **Apple Maps**: map tiles, walking and cycling routes for the trip maps, and
   walking directions when measured walk times are on. These send Apple the start
   and end of each route.
+- **HERE Routing** (only with a car and your own HERE key), with the two ends of the
+  trip, for drive routes and their tolls. The key stays in the Keychain on your phone.
 - **Open-Meteo's elevation API** (only with bike share shown), with points along a
   dock-to-dock bike route, to measure how much it climbs.
 - **Opening your maps app** (Apple Maps or Google Maps) for turn-by-turn directions,

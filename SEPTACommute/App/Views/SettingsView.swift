@@ -395,8 +395,10 @@ struct RankingExplainerView: View {
             topic("Best value", symbol: "dollarsign.circle", [
                 "Fare + door-to-door time at your hourly rate.",
                 "Climbing on a classic bike counts twice: time and effort.",
-                "Driving: every Apple Maps route, with live traffic.",
-                "Cost: gas from your mpg, 10¢/mi wear, parking, and each toll the route passes.",
+                "Driving: up to six routes with live traffic, plus the best toll-free one.",
+                "Cost: gas from your mpg, 10¢/mi wear, parking and tolls.",
+                "Tolls come from HERE, priced with a transponder (E-ZPass). Add a free HERE key under Your car.",
+                "Without a key, routes with tolls are left out rather than guessed.",
                 "Doesn't change the main answer.",
             ])
         }
