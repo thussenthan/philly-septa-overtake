@@ -38,9 +38,10 @@ public enum IndegoBike: String, Sendable, Hashable, CaseIterable {
     case classic, electric
 
     public var label: String { self == .classic ? "Classic bike" : "E-bike" }
-    /// Typical city riding speed on the flat, including lights, in metres per second.
-    /// Classic ≈ 9 mph, electric ≈ 12.5 mph (pedal-assist tops out at 17).
-    public var metersPerSecond: Double { self == .classic ? 4.0 : 5.6 }
+    /// Typical city riding speed on the flat, lights and stops included, in metres
+    /// per second. Bike-share trips average about 8 mph on a classic bike; pedal
+    /// assist (it tops out at 17) makes it about 11.
+    public var metersPerSecond: Double { self == .classic ? 3.6 : 4.9 }
 
     /// Extra seconds per metre climbed.
     ///
@@ -154,6 +155,9 @@ public struct IndegoOption: Sendable, Hashable, Identifiable {
     public var rideMeters: Double
     /// Total climb along the ride, when the route's elevation is known.
     public var climbMeters: Double?
+    /// True when the ride's length comes from a real cycling route rather than
+    /// the straight-line estimate used to choose which docks to measure.
+    public var isMeasured: Bool = false
     /// The part of `rideSeconds` spent climbing — on a classic bike, effort as
     /// well as time.
     public var climbSeconds: TimeInterval {
@@ -220,8 +224,8 @@ public struct IndegoPlanner: Sendable {
     /// Furthest a rider will walk to or from a dock.
     public var maxWalkMeters: Double = 900
     /// Unlocking at the kiosk and docking at the far end.
-    public var unlockSeconds: TimeInterval = 60
-    public var dockSeconds: TimeInterval = 45
+    public var unlockSeconds: TimeInterval = 30
+    public var dockSeconds: TimeInterval = 15
     /// Streets are not straight lines; bikes follow them a bit more closely than
     /// walkers cut corners, so a slightly higher factor than walking.
     public var rideCircuity: Double = 1.3
@@ -304,7 +308,8 @@ public struct IndegoPlanner: Sendable {
                         price: pass.price(minutes: ride / 60, bike: bike),
                         bikesAvailable: available,
                         rideMeters: rideMeters,
-                        climbMeters: measured?.climbMeters
+                        climbMeters: measured?.climbMeters,
+                        isMeasured: measured != nil
                     )
                 }
             }

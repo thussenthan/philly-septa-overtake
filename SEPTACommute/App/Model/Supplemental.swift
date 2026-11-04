@@ -199,7 +199,12 @@ extension CommuteModel {
     /// price and arrival. A bike that costs more and arrives later than a train
     /// (or than the other bike) is just noise. Worked out when shown, so it is
     /// always against the current plan rather than whichever landed first.
-    var visibleIndegoOptions: [IndegoOption] { frontier(of: indegoOptions) }
+    ///
+    /// Only rides measured along a real cycling route are shown. The straight-line
+    /// estimate exists to pick which docks to ask Apple Maps about — the planner
+    /// weighs dozens of dock pairs, far more than MapKit allows requests for —
+    /// and is never what the rider sees.
+    var visibleIndegoOptions: [IndegoOption] { frontier(of: indegoOptions.filter(\.isMeasured)) }
 
     private func frontier(of options: [IndegoOption]) -> [IndegoOption] {
         let fareRules = network.fare
@@ -246,7 +251,12 @@ extension CommuteModel {
         var kept: [ExtendedItinerary] = []
         // An option whose leave-by has passed can't be caught; the list is only as
         // fresh as the last search, so that is checked here, at display time.
+        // A trip on the Metro alone is the main planner's to answer: it times
+        // station entry, exit and transfers that this search leaves out, so the
+        // same train would show up here a couple of minutes "sooner". Those live
+        // above; this list is for what buses and Regional Rail add.
         let candidates = extendedItineraries
+            .filter(\.usesBusOrRail)
             .filter { $0.leaveBy.timeIntervalSince(now) > -30 }
             .sorted { (cents($0.fare), $0.arrival) < (cents($1.fare), $1.arrival) }
         for candidate in candidates {
@@ -254,18 +264,13 @@ extension CommuteModel {
             // An unpriced fare can't claim to be cheap: it competes on time alone.
             let c = candidate.fareIsKnown ? cents(candidate.fare) : Int.max
             // Ties go to what is already shown: the Metro answer, then whatever
-            // was kept first (cheaper, then sooner). The Metro planner counts
-            // station entry and exit time that this search leaves out, so its
-            // arrivals run a couple of minutes long; an alternative has to beat it
-            // by more than that to be news.
-            if rivals.contains(where: { $0.cents <= c && $0.minute <= m + Self.rivalSlackMinutes }) { continue }
+            // was kept first (cheaper, then sooner).
+            if rivals.contains(where: { $0.cents <= c && $0.minute <= m }) { continue }
             if kept.contains(where: { ($0.fareIsKnown ? cents($0.fare) : Int.max) <= c && minute($0.arrival) <= m }) { continue }
             kept.append(candidate)
         }
         return Array(kept.sorted { $0.arrival < $1.arrival }.prefix(4))
     }
-
-    private static let rivalSlackMinutes = 3
 
     /// The lowest price of anything else on screen, for the Indego badge. Walking
     /// counts, at nothing.
