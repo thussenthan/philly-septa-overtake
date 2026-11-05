@@ -156,11 +156,8 @@ struct SettingsView: View {
             }
             Toggle("Show Indego bike share", isOn: $model.preferences.showIndego)
             if model.preferences.showIndego {
-                Picker("Indego pass", selection: $model.preferences.indegoPass) {
-                    ForEach(IndegoPass.allCases) { pass in
-                        Text(pass.label).tag(pass)
-                    }
-                }
+                IndegoPassFields(pass: $model.preferences.indegoPass)
+                    .padding(.vertical, 4)
             }
         } header: {
             Text("More ways to go")

@@ -253,18 +253,8 @@ struct OnboardingView: View {
                             Divider().padding(.leading, 12)
                             // A menu picker's label wrapped and spilled out of the card
                             // when it was long; the short labels and a fixed height fix it.
-                            HStack {
-                                Text("Pass")
-                                Spacer()
-                                Picker("Pass", selection: $model.preferences.indegoPass) {
-                                    ForEach(IndegoPass.allCases) { pass in Text(pass.label).tag(pass) }
-                                }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
-                                .fixedSize()
-                            }
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 44)
+                            IndegoPassFields(pass: $model.preferences.indegoPass)
+                                .padding(12)
                         }
                     }
                     .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
