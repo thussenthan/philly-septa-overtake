@@ -67,7 +67,9 @@ struct JourneyDetailView: View {
     private var shareText: String {
         var lines = ["\(originName) → \(destinationName)"]
         if !journey.isWalkOnly {
-            lines.append("Leave by \(Format.clock(journey.urgency.leaveBy))")
+            lines.append(journey.startsAtStation
+                ? "Train departs \(Format.clock(journey.urgency.boardingDeparture))"
+                : "Leave by \(Format.clock(journey.urgency.leaveBy))")
         }
         for leg in journey.legs {
             switch leg {
@@ -103,13 +105,17 @@ struct JourneyDetailView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 18) {
-                stat("Leave", Format.clock(journey.departureTime))
+                if journey.startsAtStation {
+                    stat("Train", Format.clock(journey.urgency.boardingDeparture))
+                } else {
+                    stat("Leave", Format.clock(journey.departureTime))
+                }
                 stat("Arrive", Format.clock(journey.arrivalTime))
                 stat("Total", Format.minutes(journey.totalDuration))
             }
 
             if !journey.isWalkOnly {
-                UrgencyBadge(urgency: journey.urgency)
+                UrgencyBadge(urgency: journey.urgency, atStation: journey.startsAtStation)
             }
             if let footnote = summary.footnote {
                 Label(footnote, systemImage: "info.circle")

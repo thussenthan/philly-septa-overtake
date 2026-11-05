@@ -224,3 +224,39 @@ final class PlannerRegressionTests: XCTestCase {
         XCTAssertFalse(commute.outbound(at: Fixture.date(17, 30)))
     }
 }
+
+// MARK: - Already at the station
+
+/// "Leave in 4 min" means nothing to someone standing on the platform, so a
+/// journey that starts there has to say so.
+final class AtStationTests: XCTestCase {
+    func testStandingAtTheStationStartsAtTheStation() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .place(name: "Here", coordinate: Fixture.coordinate(of: "a", offsetMeters: 5)),
+            destination: .station("f"),
+            departAt: Fixture.date(7, 58)
+        ))
+        let journey = try XCTUnwrap(plan.journeys.first { !$0.isWalkOnly })
+        XCTAssertTrue(journey.startsAtStation)
+    }
+
+    func testAWalkAwayDoesNot() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .place(name: "Home", coordinate: Fixture.coordinate(of: "a", offsetMeters: 400)),
+            destination: .station("f"),
+            departAt: Fixture.date(7, 58)
+        ))
+        let journey = try XCTUnwrap(plan.journeys.first { !$0.isWalkOnly })
+        XCTAssertFalse(journey.startsAtStation)
+    }
+
+    func testWalkOnlyNeverCounts() throws {
+        let plan = Fixture.planner().plan(PlanRequest(
+            origin: .place(name: "A St", coordinate: Fixture.coordinate(of: "a")),
+            destination: .place(name: "B St", coordinate: Fixture.coordinate(of: "b")),
+            departAt: Fixture.date(23, 30)
+        ))
+        let journey = try XCTUnwrap(plan.journeys.first { $0.isWalkOnly })
+        XCTAssertFalse(journey.startsAtStation)
+    }
+}

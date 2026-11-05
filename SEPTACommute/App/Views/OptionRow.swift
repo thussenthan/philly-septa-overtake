@@ -81,8 +81,13 @@ struct OptionRow: View {
         if journey.isWalkOnly {
             parts.append("no train to catch")
         } else {
-            let slack = journey.urgency.secondsUntilLeaveBy(asOf: now)
-            parts.append("leave \(Format.relativeLeave(slack))")
+            if journey.startsAtStation {
+                let wait = journey.urgency.secondsUntilBoarding(asOf: now)
+                parts.append("train \(Format.relativeLeave(wait))")
+            } else {
+                let slack = journey.urgency.secondsUntilLeaveBy(asOf: now)
+                parts.append("leave \(Format.relativeLeave(slack))")
+            }
         }
         return parts.joined(separator: " · ")
     }

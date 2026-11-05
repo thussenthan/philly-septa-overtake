@@ -208,16 +208,19 @@ struct JourneyCardView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             } else {
-                UrgencyBadge(urgency: journey.urgency)
+                UrgencyBadge(urgency: journey.urgency, atStation: journey.startsAtStation)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text("Train at \(Format.clock(journey.urgency.boardingDeparture))")
                             .font(.caption.weight(.medium))
-                        CountdownText(
-                            target: journey.urgency.boardingDeparture,
-                            style: .caption.weight(.bold),
-                            color: .primary
-                        )
+                        // The badge already counts down to the train when you're there.
+                        if !journey.startsAtStation {
+                            CountdownText(
+                                target: journey.urgency.boardingDeparture,
+                                style: .caption.weight(.bold),
+                                color: .primary
+                            )
+                        }
                     }
                     if let footnote = summary.footnote {
                         Text(footnote)
@@ -247,7 +250,9 @@ struct JourneyCardView: View {
         var parts: [String] = [summary.title]
         if !summary.detail.isEmpty { parts.append(summary.detail) }
         if !journey.isWalkOnly {
-            parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
+            if !journey.startsAtStation {
+                parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
+            }
             parts.append("train departs \(Format.clock(journey.urgency.boardingDeparture))")
         }
         parts.append("arrive \(Format.clock(journey.arrivalTime))")

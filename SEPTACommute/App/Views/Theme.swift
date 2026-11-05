@@ -193,18 +193,24 @@ struct CountdownText: View {
 /// "Leave now" / "Leave in 6 min", coloured by urgency.
 struct UrgencyBadge: View {
     var urgency: Urgency
+    /// Already at the station: "Train in 4m" instead of "Leave in 4m".
+    var atStation = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = urgency.secondsUntilLeaveBy(asOf: context.date)
+            let remaining = atStation
+                ? urgency.secondsUntilBoarding(asOf: context.date)
+                : urgency.secondsUntilLeaveBy(asOf: context.date)
             let level = Urgency(
                 leaveBy: urgency.leaveBy,
                 boardingDeparture: urgency.boardingDeparture,
-                slack: remaining
+                slack: atStation ? remaining - 30 : remaining
             ).level
 
             HStack(spacing: 5) {
-                Image(systemName: level == .relaxed ? "figure.walk" : "figure.walk.motion")
+                Image(systemName: atStation
+                    ? "tram.fill"
+                    : (level == .relaxed ? "figure.walk" : "figure.walk.motion"))
                     .font(.caption2.weight(.bold))
                 Text(label(for: level, remaining: remaining))
                     .font(.caption.weight(.bold))
@@ -219,8 +225,9 @@ struct UrgencyBadge: View {
     private func label(for level: Urgency.Level, remaining: TimeInterval) -> String {
         switch level {
         case .missed: return "Too late"
-        case .leaveNow: return "Leave now"
-        case .leaveSoon, .relaxed: return "Leave in \(Format.compactMinutes(remaining))"
+        case .leaveNow: return atStation ? "Boarding now" : "Leave now"
+        case .leaveSoon, .relaxed:
+            return "\(atStation ? "Train in" : "Leave in") \(Format.compactMinutes(remaining))"
         }
     }
 }

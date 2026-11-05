@@ -393,6 +393,14 @@ public struct Journey: Identifiable, Sendable, Hashable {
     public var transferCount: Int { max(0, rides.count - 1) }
     public var isWalkOnly: Bool { rides.isEmpty }
 
+    /// True when the rider is already at the boarding station: there is a train but
+    /// no walk worth naming before it. "Leave in 4 min" means nothing to someone
+    /// standing on the platform; what they need is when the train comes.
+    public var startsAtStation: Bool {
+        guard !isWalkOnly else { return false }
+        return !walks.contains { $0.purpose == .access && $0.duration >= 60 }
+    }
+
     public var boardStation: StationID? { rides.first?.boardStation }
     public var alightStation: StationID? { rides.last?.alightStation }
 

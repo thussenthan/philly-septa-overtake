@@ -57,7 +57,7 @@ struct HeroCard: View {
                 Text("Walk \(Format.minutes(journey.totalDuration))")
                     .font(.system(size: walkSize, weight: .bold, design: .rounded))
             } else {
-                LeaveCountdown(urgency: journey.urgency)
+                LeaveCountdown(urgency: journey.urgency, atStation: journey.startsAtStation)
             }
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 1) {
@@ -347,7 +347,11 @@ struct HeroCard: View {
     private var accessibilityDescription: String {
         var parts: [String] = [summary.title]
         if !journey.isWalkOnly {
-            parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
+            if journey.startsAtStation {
+                parts.append("train departs \(Format.clock(journey.urgency.boardingDeparture))")
+            } else {
+                parts.append("leave by \(Format.clock(journey.urgency.leaveBy))")
+            }
             for ride in journey.rides {
                 parts.append("\(ride.routeBadge) \(ride.platformDescription) from \(stationName(ride.boardStation)) to \(stationName(ride.alightStation))")
                 if ride.kind == .nightBus { parts.append("boards at the curb, not in the station") }
@@ -370,6 +374,9 @@ struct HeroCard: View {
 /// thirty seconds stale is a train missed.
 struct LeaveCountdown: View {
     var urgency: Urgency
+    /// The rider is already at the station: count down to the train, not to a
+    /// moment to set off.
+    var atStation = false
     @EnvironmentObject private var model: CommuteModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Scales with Dynamic Type; a fixed 32 pt number stayed small beside everything
@@ -378,11 +385,15 @@ struct LeaveCountdown: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = urgency.secondsUntilLeaveBy(asOf: context.date)
+            // At the station the clock that matters is the train's, not the
+            // leave-by (which only sits a boarding margin ahead of it).
+            let remaining = atStation
+                ? urgency.secondsUntilBoarding(asOf: context.date)
+                : urgency.secondsUntilLeaveBy(asOf: context.date)
             let level = Urgency(
                 leaveBy: urgency.leaveBy,
                 boardingDeparture: urgency.boardingDeparture,
-                slack: remaining
+                slack: atStation ? remaining - 30 : remaining
             ).level
             let tint = Theme.color(for: level)
 
@@ -390,17 +401,19 @@ struct LeaveCountdown: View {
                 if remaining < -5 {
                     // "Go now" past the moment the train left sent a rider running for
                     // one that had gone. Say so, and find the next one straight away.
-                    Text("Just missed it")
+                    Text(atStation ? "Just left" : "Just missed it")
                         .font(.system(size: numberSize * 0.75, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                 } else if remaining <= 30 {
-                    Text("Go now")
+                    Text(atStation ? "Boarding now" : "Go now")
                         .font(.system(size: numberSize, weight: .bold, design: .rounded))
                         .foregroundStyle(tint)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
                 } else {
-                    Text("Leave in")
+                    Text(atStation ? "Train in" : "Leave in")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                     Text(Format.countdown(remaining))
@@ -415,7 +428,9 @@ struct LeaveCountdown: View {
             }
             .accessibilityLabel(
                 remaining < -5 ? "missed, finding the next train"
-                    : remaining <= 30 ? "leave now" : "leave in \(Format.minutes(remaining))"
+                    : atStation
+                        ? (remaining <= 30 ? "boarding now" : "train in \(Format.minutes(remaining))")
+                        : (remaining <= 30 ? "leave now" : "leave in \(Format.minutes(remaining))")
             )
         }
     }
