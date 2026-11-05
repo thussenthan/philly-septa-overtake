@@ -270,7 +270,7 @@ struct CommuteWidgetView: View {
             return [entry.placeholder, entry.detail].compactMap { $0 }.joined(separator: ". ")
         }
         var parts = [step.lines.map(\.badge).joined(separator: ", then ")]
-        parts.append(step.isWalkOnly ? "walk now" : "leave by \(Format.clock(step.leaveBy))")
+        parts.append(step.isWalkOnly ? "walk now" : (step.atStation ? "train departs" : "leave by") + " \(Format.clock(step.leaveBy))")
         if let board = step.boardName { parts.append("from \(board)") }
         var arrival = "arrive \(Format.clock(step.arrival))"
         if let destination = entry.destinationName { arrival += " at \(destination)" }
@@ -369,7 +369,7 @@ struct CommuteWidgetView: View {
                 HStack(spacing: 4) {
                     Text(step.lines.map(\.badge).joined(separator: "→"))
                         .font(.caption.weight(.bold))
-                    Text(step.isWalkOnly ? "walk" : "leave")
+                    Text(step.isWalkOnly ? "walk" : step.cue)
                         .font(.caption2)
                         .foregroundStyle(palette.secondary)
                     Group {
@@ -401,9 +401,9 @@ struct CommuteWidgetView: View {
             if step.isWalkOnly {
                 Text("Walk · arrive \(Format.clock(step.arrival))")
             } else if let countdown = entry.countdown {
-                Text("\(lines) · leave in \(countdown)")
+                Text("\(lines) · \(step.cue) in \(countdown)")
             } else {
-                Text("\(lines) · leave in \(Text(step.leaveBy, style: .timer))")
+                Text("\(lines) · \(step.cue) in \(Text(step.leaveBy, style: .timer))")
             }
         } else {
             Text(entry.placeholder ?? "Next train")
@@ -467,7 +467,7 @@ struct CommuteWidgetView: View {
     @ViewBuilder
     private func countdown(_ step: WidgetPlanStep, size: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(step.isWalkOnly ? "walk now" : "leave in")
+            Text(step.isWalkOnly ? "walk now" : "\(step.cue) in")
                 .font(.caption2)
                 .foregroundStyle(palette.secondary)
             Group {

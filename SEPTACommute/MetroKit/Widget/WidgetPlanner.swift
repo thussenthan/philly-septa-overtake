@@ -32,7 +32,8 @@ public struct WidgetPlanStep: Sendable, Hashable {
     public var platformDescription: String?
     /// Where to be standing.
     public var boardName: String?
-    /// The last moment the rider can set off. What the countdown counts to.
+    /// The last moment the rider can set off. What the countdown counts to. For a
+    /// rider already at the station it is the train's own departure.
     public var leaveBy: Date
     public var arrival: Date
     public var isWalkOnly: Bool
@@ -43,6 +44,12 @@ public struct WidgetPlanStep: Sendable, Hashable {
     public var penaltyText: String?
     /// When the next-best option would get you there, if there is one.
     public var nextArrival: Date?
+    /// The rider is already at the boarding station, so there is nothing to "leave"
+    /// for: the countdown is to the train.
+    public var atStation: Bool
+
+    /// "leave" or "train": the word that follows the countdown's lead-in.
+    public var cue: String { atStation ? "train" : "leave" }
 
     public init(
         validFrom: Date,
@@ -54,8 +61,10 @@ public struct WidgetPlanStep: Sendable, Hashable {
         arrival: Date,
         isWalkOnly: Bool,
         penaltyText: String? = nil,
-        nextArrival: Date? = nil
+        nextArrival: Date? = nil,
+        atStation: Bool = false
     ) {
+        self.atStation = atStation
         self.validFrom = validFrom
         self.lines = lines
         self.title = title
@@ -264,11 +273,12 @@ public enum WidgetPlanner {
             title: narrator.summary(for: journey).title,
             platformDescription: journey.rides.first?.platformDescription,
             boardName: journey.rides.first.map { network.station($0.boardStation)?.name ?? $0.boardStation.rawValue },
-            leaveBy: journey.urgency.leaveBy,
+            leaveBy: journey.startsAtStation ? journey.urgency.boardingDeparture : journey.urgency.leaveBy,
             arrival: journey.arrivalTime,
             isWalkOnly: journey.isWalkOnly,
             penaltyText: penaltyText,
-            nextArrival: runnerUp?.arrivalTime
+            nextArrival: runnerUp?.arrivalTime,
+            atStation: journey.startsAtStation
         )
     }
 }

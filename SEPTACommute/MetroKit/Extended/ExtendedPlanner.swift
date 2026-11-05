@@ -71,6 +71,19 @@ public struct ExtendedItinerary: Sendable, Hashable, Identifiable {
         legs.compactMap { if case let .ride(r) = $0 { return r } else { return nil } }
     }
 
+    /// The rider is already at the first stop: no walk of a minute or more comes
+    /// before the first vehicle, so "leave in…" has nothing to refer to.
+    public var startsAtStop: Bool {
+        guard case .ride? = legs.first else {
+            if case let .walk(w)? = legs.first { return w.seconds < 60 && !rides.isEmpty }
+            return false
+        }
+        return true
+    }
+
+    /// When the first vehicle departs.
+    public var firstDeparture: Date? { rides.first.map { $0.departure } }
+
     public var walkingSeconds: TimeInterval {
         legs.reduce(0) { total, leg in
             if case let .walk(w) = leg { return total + w.seconds }

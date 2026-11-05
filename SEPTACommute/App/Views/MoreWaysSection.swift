@@ -308,6 +308,12 @@ struct ExtendedRow: View {
     }
 
     private var leaveText: String {
+        // Already at the stop: the number that matters is the vehicle's, not a
+        // leave-by that only sits a boarding margin ahead of it.
+        if itinerary.startsAtStop, let departure = itinerary.firstDeparture {
+            let wait = departure.timeIntervalSinceNow
+            return wait < 60 ? "boarding now" : "departs in \(Format.minutes(wait))"
+        }
         let seconds = itinerary.leaveBy.timeIntervalSinceNow
         return seconds < 60 ? "leave now" : "leave in \(Format.minutes(seconds))"
     }
@@ -359,7 +365,9 @@ struct ExtendedDetailView: View {
                     VStack(alignment: .leading) {
                         Text("Arrive \(Format.clock(itinerary.arrival))")
                             .font(.title2.weight(.bold))
-                        Text("Leave by \(Format.clock(itinerary.leaveBy)) · \(Format.minutes(itinerary.arrival.timeIntervalSince(itinerary.leaveBy))) door to door")
+                        Text(itinerary.startsAtStop
+                             ? "Departs \(Format.clock(itinerary.firstDeparture ?? itinerary.leaveBy)) · \(Format.minutes(itinerary.arrival.timeIntervalSince(itinerary.firstDeparture ?? itinerary.leaveBy))) on board"
+                             : "Leave by \(Format.clock(itinerary.leaveBy)) · \(Format.minutes(itinerary.arrival.timeIntervalSince(itinerary.leaveBy))) door to door")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
