@@ -433,9 +433,13 @@ final class ExtendedPlannerTests: XCTestCase {
         let net = Self.network
         // Route 61 winds along Ridge Avenue and Main Street, Manayunk.
         let route = try XCTUnwrap(net.routes.firstIndex { $0.shortName == "61" && $0.mode == .bus })
-        let pattern = try XCTUnwrap((0..<net.patternCount)
-            .filter { net.patternRoute[$0] == route && net.patternShape[$0] >= 0 }
-            .max { net.patternStart[$0 + 1] - net.patternStart[$0] < net.patternStart[$1 + 1] - net.patternStart[$1] })
+        // Spelled out with types: older compilers (GitHub's runner) time out
+        // type-checking the one-line version.
+        func stopCount(_ p: Int) -> Int { Int(net.patternStart[p + 1]) - Int(net.patternStart[p]) }
+        let candidates: [Int] = (0..<net.patternCount).filter { (p: Int) -> Bool in
+            Int(net.patternRoute[p]) == route && net.patternShape[p] >= 0
+        }
+        let pattern = try XCTUnwrap(candidates.max { (a: Int, b: Int) -> Bool in stopCount(a) < stopCount(b) })
         let count = Int(net.patternStart[pattern + 1] - net.patternStart[pattern])
         let board = 2, alight = count - 3
         let path = net.ridePath(pattern: pattern, boardPos: board, alightPos: alight)
