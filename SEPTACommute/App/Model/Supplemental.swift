@@ -32,6 +32,9 @@ struct ValueCandidate: Identifiable {
     /// time; counted a second time in value, because a climb costs effort as
     /// well as minutes — which is what makes the e-bike win on hills.
     var effortSeconds: TimeInterval = 0
+    /// True when `fare` leaves out a charge of unknown size (a drive's tolls):
+    /// the real price is at least this.
+    var fareIsLowerBound = false
 
     /// Door-to-door travel time — the time actually spent getting there.
     var travelTime: TimeInterval { max(0, arrival.timeIntervalSince(leaveBy)) }
@@ -441,10 +444,11 @@ extension CommuteModel {
             candidates.append(ValueCandidate(
                 id: drive.id,
                 kind: .driving(drive),
-                title: "Drive" + via,
+                title: "Drive" + via + (drive.hasTolls ? " + tolls" : ""),
                 leaveBy: drive.departure,
                 arrival: drive.arrival,
-                fare: drive.cost
+                fare: drive.cost,
+                fareIsLowerBound: drive.hasTolls
             ))
         }
         // Only what's on the price/arrival frontier: an option that costs more and
@@ -453,7 +457,11 @@ extension CommuteModel {
         func cents(_ amount: Double) -> Int { Int((amount * 100).rounded()) }
         let frontier = candidates.filter { candidate in
             !candidates.contains { other in
-                other.id != candidate.id
+                // An option with an unknown toll can't claim to be cheaper than
+                // anything: its real price could be higher. It can still lose to
+                // something cheaper than its known floor and sooner.
+                !other.fareIsLowerBound
+                    && other.id != candidate.id
                     && cents(other.fare) <= cents(candidate.fare) && minute(other.arrival) <= minute(candidate.arrival)
                     && (cents(other.fare) < cents(candidate.fare) || minute(other.arrival) < minute(candidate.arrival))
             }

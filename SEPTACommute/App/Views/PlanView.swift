@@ -176,7 +176,7 @@ struct PlanView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
     }
 
     /// The arrow between the ends, which turns the trip round when it can be.
@@ -362,7 +362,7 @@ struct PlanView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 

@@ -113,12 +113,19 @@ final class SEPTANetworkTests: XCTestCase {
 
     /// The express exists, runs weekdays only, and terminates at Walnut-Locust —
     /// it never reaches South Philadelphia, which is the single most common
-    /// misconception about this line.
+    /// misconception about this line. The exception is SEPTA's game-day express to
+    /// NRG, which the dated timetable carries on its own dates and no others.
     func testExpressIsWeekdayOnlyAndStopsAtWalnutLocust() throws {
         let express = broadStreetPatterns.filter { $0.kind == .express }
-        XCTAssertEqual(express.count, 2, "expected one express pattern per direction")
+        let regular = express.filter { !$0.schedule.activeDays.isEmpty }
+        XCTAssertEqual(regular.count, 2, "expected one timetabled express pattern per direction")
 
-        for pattern in express {
+        for extra in express where extra.schedule.activeDays.isEmpty {
+            XCTAssertTrue(extra.serves("nrg"), "\(extra.id): a dated-only express should be a game-day run to NRG")
+            XCTAssertFalse(extra.schedule.activeKeys.isEmpty, "\(extra.id) runs on no date")
+        }
+
+        for pattern in regular {
             for day in DayType.weekdays {
                 XCTAssertTrue(pattern.schedule.runs(on: day), "\(pattern.id) should run on \(day)")
             }
@@ -511,7 +518,9 @@ final class SEPTANetworkTests: XCTestCase {
         // Nothing half-parsed: every pattern has stops, a schedule, and real stations.
         for pattern in network.patterns {
             XCTAssertGreaterThanOrEqual(pattern.stops.count, 2, "\(pattern.id) has too few stops")
-            XCTAssertFalse(pattern.schedule.activeDays.isEmpty, "\(pattern.id) runs on no day")
+            // Some patterns run only on particular dates (holidays, game days), so
+            // "runs" means on some date, not necessarily on some typical weekday.
+            XCTAssertFalse(pattern.schedule.activeKeys.isEmpty, "\(pattern.id) runs on no date")
             XCTAssertFalse(pattern.headsign.isEmpty, "\(pattern.id) has no headsign")
             for stop in pattern.stops {
                 XCTAssertNotNil(network.station(stop.station), "\(pattern.id) stops at unknown \(stop.station)")

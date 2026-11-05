@@ -250,31 +250,12 @@ def read_fares(feed: Feed) -> dict:
     }
 
 
-def advisory_end_date(feed: Feed) -> dt.date:
-    """The last date the feed defines any service for.
-
-    SEPTA publishes two windows and says so in its changelog. ``feed_info.txt``
-    carries the *authoritative* one — a fortnight — while ``calendar.txt`` and
-    ``calendar_dates.txt`` run a couple of weeks past it as "advisory only": real
-    timetables SEPTA expects to hold but has not committed to.
-
-    Both matter to the app. Past the authoritative end its times are SEPTA's own
-    projection rather than its promise, which is worth knowing but not worth an
-    alarm. Past *this* date there is no data at all, which is.
-    """
-    end = max(parse_date(r["end_date"]) for r in feed.table("calendar.txt"))
-    for row in feed.table("calendar_dates.txt"):
-        end = max(end, parse_date(row["date"]))
-    return end
-
-
 def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
     """Every date each service ID runs on, over the whole span the feed describes.
 
-    SEPTA attaches calendar_dates rows to essentially every date, so "this date
-    has an exception" says nothing about whether the day is ordinary. What does
-    distinguish an ordinary service from a special-event one is how many dates it
-    covers — see ``recurring_services``.
+    calendar.txt's weekly ranges, then calendar_dates.txt's additions (type 1) and
+    removals (type 2) — SEPTA leans on the latter heavily, attaching rows to nearly
+    every date, so neither file alone says what runs on a given day.
     """
     calendar = feed.table("calendar.txt")
     exceptions = feed.table("calendar_dates.txt")
@@ -302,31 +283,16 @@ def service_dates(feed: Feed) -> dict[str, set[dt.date]]:
     return dates
 
 
-# A service running on this many dates or fewer is a special-event or
-# single-date addition, not part of the ordinary weekly timetable.
+# Every service the feed defines is kept, however few dates it runs on.
 #
-# SEPTA adds B2 express trips to NRG whenever there is a game at the sports
-# complex — Eagles, Phillies, and one-off events like the 2026 World Cup. Those
-# trips are real, but they run on a handful of named dates, and treating them as
-# regular service would tell a rider on an ordinary Sunday that an express train
-# exists when it does not. Filtering by how many dates a service covers catches
-# all of them without needing to know what the event was.
-RECURRING_DATE_THRESHOLD = 3
-
-
-def is_special_event(days: set[dt.date]) -> bool:
-    """True for a service on RECURRING_DATE_THRESHOLD dates or fewer.
-
-    One definition for both places that ask. They used ``<``, which kept a
-    three-date event service in the timetable despite the rule above.
-    """
-    return len(days) <= RECURRING_DATE_THRESHOLD
-
-
-def recurring_services(feed: Feed) -> tuple[dict[str, set[dt.date]], set[str]]:
-    dates = service_dates(feed)
-    rare = {sid for sid, days in dates.items() if is_special_event(days)}
-    return dates, rare
+# Earlier versions dropped any service on three dates or fewer as a "special event",
+# because with one timetable per weekday there was nowhere to put it: a B2 express
+# for an Eagles game would otherwise have been promised on every Sunday. With a
+# timetable per *date* that reason is gone — a one-date service lands on exactly
+# its one date — and the filter was doing real harm: on v202611010 it threw away
+# Regional Rail's whole Christmas Day timetable (SID1897939, 249 trips), the
+# Thanksgiving / New Year's Day B1 and L1 service (439 trips), the Norristown bus
+# substitution and the regular Fox Chase / Paoli weekend trips of early November.
 
 
 # SEPTA's own ordering of the lines, for feeds that don't publish route_sort_order:
@@ -344,54 +310,80 @@ SORT_FALLBACK = {
 DAY_TYPES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
-def representative_dates(feed: Feed, dates: dict[str, set[dt.date]]) -> dict[str, dt.date]:
-    """Pick one real date per day of the week from inside the feed's validity window.
+@dataclass
+class DayKeys:
+    """The feed's service calendar, date by date.
 
-    One date per *weekday*, not one per weekday/Saturday/Sunday. Sampling a
-    single midweek date and calling it "the weekday timetable" silently discarded
-    every service scoped to a particular day — 435 trips on the full rail map.
-    Unioning the week instead would have been worse than dropping them: it would
-    promise a rider on a Monday a trip that only runs on Fridays.
+    A *day key* is one distinct set of active service IDs. Every date in the window
+    maps to exactly one, so two dates share a key only when SEPTA runs exactly the
+    same trips on both — ordinary Tuesdays collapse into one key, while Christmas,
+    Thanksgiving, a timetable change or a game day at the stadiums each get their own.
+    A pattern then carries one list of start times per key, which is the published
+    timetable for every date that key covers, exactly.
 
-    Sampling real dates (rather than unioning service IDs) still avoids stitching
-    together timetable revisions never in effect on the same day.
-
-    Which revision, though, matters once a feed spans months. SEPTA ships more than
-    one timetable revision inside a single feed, and the first version of this took
-    the *latest* occurrence of each weekday so as not to bake in one already
-    superseded. On a two-week feed that is right. On a sixteen-week one it hands the
-    app the revision that starts in the final fortnight and is wrong for the other
-    fourteen weeks — which is when the app is actually used. So each weekday takes
-    the revision, meaning the exact set of recurring services running that day, that
-    covers the most dates, and the latest date within it. A revision that spans only
-    part of the window loses to the one that spans most of it, holidays (each its own
-    unique set) never win, and a feed with revisions of equal length still falls
-    back to the latest, as before.
+    ``keys[i]`` is the key of ``start + i days``. ``weekday_default[d]`` (Monday = 0)
+    is the key that covers the most dates of that weekday (the latest on a tie): what
+    a reader of the data uses for a date outside the window, as a projection.
     """
-    info = feed.table("feed_info.txt")[0]
-    start, end = parse_date(info["feed_start_date"]), parse_date(info["feed_end_date"])
+    start: dt.date
+    keys: list[int]
+    sets: list[frozenset]
+    weekday_default: list[int]
 
+    @property
+    def end(self) -> dt.date:
+        return self.start + dt.timedelta(days=len(self.keys) - 1)
+
+    def key(self, day: dt.date) -> int | None:
+        index = (day - self.start).days
+        return self.keys[index] if 0 <= index < len(self.keys) else None
+
+    def keys_of_service(self, service_id: str) -> list[int]:
+        return [k for k, ids in enumerate(self.sets) if service_id in ids]
+
+    def dates_of_key(self, key: int) -> list[dt.date]:
+        return [self.start + dt.timedelta(days=i) for i, k in enumerate(self.keys) if k == key]
+
+
+def day_keys(dates: dict[str, set[dt.date]], services: set[str]) -> DayKeys:
+    """Day keys over every date on which any of ``services`` runs.
+
+    Only ``services`` count — the ones with trips in what is being generated — so an
+    exception on some bus route the output does not include cannot split a key.
+    """
+    relevant = {sid: days for sid, days in dates.items() if sid in services and days}
+    if not relevant:
+        raise SystemExit("no service dates for the selected trips")
+    first = min(min(days) for days in relevant.values())
+    last = max(max(days) for days in relevant.values())
     active: dict[dt.date, set[str]] = defaultdict(set)
-    for service_id, days in dates.items():
-        if is_special_event(days):
-            continue
+    for sid, days in relevant.items():
         for day in days:
-            if start <= day <= end:
-                active[day].add(service_id)
+            active[day].add(sid)
 
-    revisions: dict[str, dict[frozenset, list[dt.date]]] = defaultdict(lambda: defaultdict(list))
-    for day, service_ids in active.items():
-        revisions[DAY_TYPES[day.weekday()]][frozenset(service_ids)].append(day)
+    sets: list[frozenset] = []
+    index: dict[frozenset, int] = {}
+    keys: list[int] = []
+    day = first
+    while day <= last:
+        ids = frozenset(active.get(day, ()))
+        if ids not in index:
+            index[ids] = len(sets)
+            sets.append(ids)
+        keys.append(index[ids])
+        day += dt.timedelta(days=1)
 
-    chosen: dict[str, dt.date] = {}
-    for label, groups in revisions.items():
-        widest = max(groups.values(), key=lambda days: (len(days), max(days)))
-        chosen[label] = max(widest)
-
-    missing = [d for d in DAY_TYPES if d not in chosen]
-    if missing:
-        raise SystemExit(f"feed window {start}..{end} does not cover {missing}")
-    return chosen
+    weekday_default: list[int] = []
+    for weekday in range(7):
+        counts: dict[int, list[dt.date]] = defaultdict(list)
+        for i, key in enumerate(keys):
+            when = first + dt.timedelta(days=i)
+            if when.weekday() == weekday and sets[key]:
+                counts[key].append(when)
+        if not counts:
+            raise SystemExit(f"feed {first}..{last} has no service on {DAY_TYPES[weekday]}")
+        weekday_default.append(max(counts, key=lambda k: (len(counts[k]), max(counts[k]))))
+    return DayKeys(first, keys, sets, weekday_default)
 
 
 # --------------------------------------------------------------------------
@@ -433,15 +425,12 @@ class PatternKey:
 class Pattern:
     key: PatternKey
     headsign: str
-    # day type -> sorted trip start times, seconds after midnight
-    starts: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
+    # day key -> sorted trip start times, seconds after midnight
+    starts: dict[int, list[int]] = field(default_factory=lambda: defaultdict(list))
     trip_count: int = 0
     # Share of this pattern's stop times SEPTA actually publishes, rather than
     # interpolating between timing points. 100 on the subway, ~15 on the trolleys.
     published_time_percent: int = 100
-    # Trip start times per calendar date, kept only to check the day-type timetable
-    # against every date in the window rather than the seven that were sampled.
-    starts_by_date: dict[dt.date, set[int]] = field(default_factory=dict)
 
 
 def extract(feed: Feed, scope: str = "broad") -> dict:
@@ -492,13 +481,10 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
             (row.get("timepoint") or "1") == "1",
         ))
 
-    all_service_dates, rare_services = recurring_services(feed)
-    dates = representative_dates(feed, all_service_dates)
-    services_by_day = {
-        label: {sid for sid, days in all_service_dates.items()
-                if day in days and sid not in rare_services}
-        for label, day in dates.items()
-    }
+    all_service_dates = service_dates(feed)
+    used_services = {trip_index[t]["service_id"] for t in sequences}
+    keys = day_keys(all_service_dates, used_services)
+    service_keys = {sid: keys.keys_of_service(sid) for sid in used_services}
 
     # Build the station map before keying patterns, so a pattern's stops are
     # station ids rather than feed-specific platform ids.
@@ -524,24 +510,18 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
     patterns: dict[tuple, Pattern] = {}
     raw_groups: dict[tuple, list] = defaultdict(list)
     group_trips: dict[tuple, list] = defaultdict(list)
-    group_dates: dict[tuple, dict[dt.date, set[int]]] = defaultdict(dict)
-    window_start = parse_date(feed.table("feed_info.txt")[0]["feed_start_date"])
-    window_end = parse_date(feed.table("feed_info.txt")[0]["feed_end_date"])
     skipped_no_service = 0
-    skipped_rare = 0
     dropped_stops = 0
+    dropped_trips = 0
+    checked_trips: list[tuple[str, str, str, int]] = []
 
     for trip_id, rows in sequences.items():
         rows.sort(key=lambda r: r[0])
         trip = trip_index[trip_id]
         service_id = trip["service_id"]
-        if service_id in rare_services:
-            skipped_rare += 1
-            continue
-        day_types = [label for label, ids in services_by_day.items() if service_id in ids]
-        if not day_types:
-            # A service not in effect on any sampled date — a future timetable
-            # revision, or a day type we do not model.
+        trip_keys = service_keys.get(service_id) or []
+        if not trip_keys:
+            # The service has no date at all once calendar_dates removals apply.
             skipped_no_service += 1
             continue
 
@@ -565,17 +545,16 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
             flags.append((1 if no_pickup else 0) | (2 if no_dropoff else 0))
             exact += 1 if timepoint else 0
         if len(station_ids) < 2:
+            dropped_trips += 1
             continue
+        checked_trips.append((trip["route_id"], trip["direction_id"], service_id, origin_departure))
 
         # Bucket by end-to-end running time so genuinely different speeds stay
         # separate (a peak express run vs. a slow one) while jitter collapses.
         bucket = arrivals[-1] // RUNTIME_VARIANT_TOLERANCE
         group = (trip["route_id"], trip["direction_id"], tuple(station_ids), bucket, tuple(flags))
         raw_groups[group].append((tuple(arrivals), tuple(dwells), exact, len(station_ids)))
-        group_trips[group].append((origin_departure, day_types, trip.get("trip_headsign", "").strip()))
-        for day in all_service_dates.get(service_id, ()):
-            if window_start <= day <= window_end:
-                group_dates[group].setdefault(day, set()).add(origin_departure)
+        group_trips[group].append((origin_departure, trip_keys, trip.get("trip_headsign", "").strip()))
 
     # Collapse each group into one pattern timed by the median of its trips.
     runtime_spread: list[tuple[int, str]] = []
@@ -594,10 +573,9 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         headsign = next((t[2] for t in group_trips[group] if t[2]), "")
         pattern = Pattern(key=key, headsign=headsign)
         pattern.published_time_percent = round(100 * published / total_stops) if total_stops else 100
-        pattern.starts_by_date = group_dates.get(group, {})
-        for origin_departure, day_types, _ in group_trips[group]:
-            for label in day_types:
-                pattern.starts[label].append(origin_departure)
+        for origin_departure, trip_keys, _ in group_trips[group]:
+            for day_key in trip_keys:
+                pattern.starts[day_key].append(origin_departure)
         pattern.trip_count = len(group_trips[group])
         patterns[key.as_tuple()] = pattern
 
@@ -605,25 +583,13 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         for label in list(pattern.starts):
             pattern.starts[label] = sorted(set(pattern.starts[label]))
 
-    # Does the seven-day-type timetable actually hold for every date in the window?
-    #
-    # SEPTA hangs a calendar_dates row on nearly every date, so two Wednesdays can
-    # run different service IDs. Almost always they resolve to identical departures
-    # and sampling one Wednesday is exact — but a holiday, or a timetable change
-    # mid-window, would not, and silently averaging one away is the failure this
-    # catches. Reported rather than worked around: on the current feed there is
-    # nothing to work around, and a mechanism that never runs is worse than a check
-    # that tells you when you need one.
-    calendar_mismatches: list[tuple[str, str, int]] = []
-    for pattern in patterns.values():
-        for day, actual in pattern.starts_by_date.items():
-            claimed = set(pattern.starts.get(DAY_FIELDS[day.weekday()]) or [])
-            difference = len(actual ^ claimed)
-            if difference:
-                calendar_mismatches.append(
-                    (day.isoformat(), f"{pattern.key.route_id} {pattern.key.direction_id}", difference)
-                )
-    calendar_mismatches.sort(key=lambda m: -m[2])
+    # Check the emitted timetable against the feed for every date in the window:
+    # for each date, each route and direction's trip starts as the day keys say,
+    # against the trips whose service the raw calendar puts on that date. Built from
+    # the patterns on one side and straight from trips.txt on the other, so a slip in
+    # the key bookkeeping (or in the pattern grouping) shows up here.
+    calendar_mismatches, calendar_checked = verify_against_calendar(
+        keys, all_service_dates, list(patterns.values()), checked_trips)
     runtime_spread.sort(reverse=True)
 
     return {
@@ -639,12 +605,57 @@ def extract(feed: Feed, scope: str = "broad") -> dict:
         "route_ids": route_ids,
         "runtime_spread": runtime_spread[:6],
         "feed_info": feed.table("feed_info.txt")[0],
-        "advisory_end": advisory_end_date(feed).strftime("%Y%m%d"),
-        "representative_dates": {k: v.isoformat() for k, v in dates.items()},
+        "advisory_end": keys.end.strftime("%Y%m%d"),
+        "day_keys": keys,
         "calendar_mismatches": calendar_mismatches,
         "skipped_no_service": skipped_no_service,
-        "skipped_rare": skipped_rare,
+        "dropped_trips": dropped_trips,
+        "calendar_checked": calendar_checked,
     }
+
+
+def verify_against_calendar(
+    keys: DayKeys,
+    dates: dict[str, set[dt.date]],
+    patterns: list["Pattern"],
+    trips: list[tuple[str, str, str, int]],
+) -> tuple[list[tuple[str, str, int]], dict[str, list[int]]]:
+    """Compare, for every date in the window, what the output says runs with the feed.
+
+    Returns the mismatches as (date, "route direction", departures differing), and
+    per weekday [dates checked, departures compared]. The expected side is built
+    from ``trips`` (route, direction, service, start) and the raw service dates; the
+    actual side from the patterns' per-key start lists and the date → key table.
+    """
+    from collections import Counter
+    expected_by_date: dict[dt.date, Counter] = defaultdict(Counter)
+    for route_id, direction_id, service_id, start in trips:
+        for day in dates.get(service_id, ()):
+            expected_by_date[day][(route_id, direction_id, start)] += 1
+    # The output keeps each pattern's starts as a set, so compare sets of
+    # (route, direction, start) plus how many distinct patterns carry each.
+    by_key: dict[int, Counter] = defaultdict(Counter)
+    for pattern in patterns:
+        for key, starts in pattern.starts.items():
+            for start in starts:
+                by_key[key][(pattern.key.route_id, pattern.key.direction_id, start)] += 1
+    mismatches: list[tuple[str, str, int]] = []
+    checked: dict[str, list[int]] = {label: [0, 0] for label in DAY_TYPES}
+    day = keys.start
+    while day <= keys.end:
+        expected = set(expected_by_date.get(day, Counter()))
+        actual = set(by_key.get(keys.key(day), Counter()))
+        stats = checked[DAY_TYPES[day.weekday()]]
+        stats[0] += 1
+        stats[1] += len(expected)
+        differing: Counter = Counter()
+        for route_id, direction_id, _ in expected ^ actual:
+            differing[f"{route_id} {direction_id}"] += 1
+        for route, count in differing.items():
+            mismatches.append((day.isoformat(), route, count))
+        day += dt.timedelta(days=1)
+    mismatches.sort(key=lambda m: -m[2])
+    return mismatches, checked
 
 
 # --------------------------------------------------------------------------
@@ -1017,6 +1028,12 @@ def emit_swift(data: dict) -> str:
         encode_field("SEPTA GTFS " + info["feed_version"]),
         encode_field(data["advisory_end"]),
     ]))
+    # The service calendar: which day key each date of the window runs, then the
+    # key standing in for each weekday outside it. Before any pattern, so the
+    # decoder knows the keys when it meets them.
+    keys: DayKeys = data["day_keys"]
+    records.append("|".join(["C", keys.start.strftime("%Y%m%d"), ",".join(map(str, keys.keys))]))
+    records.append("|".join(["W", ",".join(map(str, keys.weekday_default))]))
     for line in sorted(line_rows.values(), key=lambda l: (l["sort"], l["badge"])):
         records.append("|".join(["L", encode_field(line["id"]), encode_field(line["badge"]),
                                  encode_field(line["name"]), encode_field(line["color"]),
@@ -1071,15 +1088,17 @@ def emit_swift(data: dict) -> str:
             in zip(station_ids, pattern.key.offsets, pattern.key.dwells, stop_flags)
         ))
 
-        by_timetable: dict[tuple[int, ...], list[str]] = {}
-        for label in DAY_TYPES:
-            starts = pattern.starts.get(label) or []
-            if not starts:
-                continue
-            by_timetable.setdefault(tuple(starts), []).append(label)
-        for starts, labels in by_timetable.items():
-            total_departures += len(starts) * len(labels)
-            records.append(f"D|{','.join(labels)}|{encode_blocks(list(starts))}")
+        # One D record per distinct timetable, listing every day key that runs it.
+        by_timetable: dict[tuple[int, ...], list[int]] = {}
+        for key in sorted(pattern.starts):
+            starts = pattern.starts[key]
+            if starts:
+                by_timetable.setdefault(tuple(starts), []).append(key)
+        for starts, key_list in by_timetable.items():
+            records.append(f"D|{','.join(map(str, key_list))}|{encode_blocks(list(starts))}")
+        # What the tests count: the week a reader sees through the weekday keys.
+        for key in keys.weekday_default:
+            total_departures += len(pattern.starts.get(key) or [])
 
     # ---- wrap it in Swift ----
     # Chunked so no single string literal is enormous, and so the array literal
@@ -1099,12 +1118,13 @@ def emit_swift(data: dict) -> str:
     add(f"//   {GTFS_URL}")
     add(f"//   feed_version {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}")
     add("//")
-    add("// Timetables are sampled from one real date per day of the week, taking the")
-    add("// latest occurrence of each inside the feed's validity window so a superseded")
-    add("// revision is not what gets baked in:")
-    for label in DAY_TYPES:
-        if label in data["representative_dates"]:
-            add(f"//   {label}: {data['representative_dates'][label]}")
+    add("// Timetables are date-exact: every date from "
+        f"{keys.start.isoformat()} to {keys.end.isoformat()} maps to a day key (a")
+    add(f"// distinct set of SEPTA service IDs; {len(keys.sets)} in this feed), and each pattern")
+    add("// lists its start times per day key. Outside that window a date falls back to")
+    add("// the key that covers the most dates of its weekday:")
+    for weekday, key in enumerate(keys.weekday_default):
+        add(f"//   {DAY_TYPES[weekday]}: key {key} ({len(keys.dates_of_key(key))} dates)")
     add("//")
     add("// Stored as text and parsed by NetworkDecoder rather than as Swift literals —")
     add("// see that file for why.")
@@ -1153,21 +1173,27 @@ def report(data: dict) -> None:
     info = data["feed_info"]
     print(f"feed {info['feed_version']}  valid {info['feed_start_date']}–{info['feed_end_date']}"
           f"  (advisory service data through {data['advisory_end']})")
-    print("representative dates: "
-          + ", ".join(f"{k} {v}" for k, v in sorted(data["representative_dates"].items(),
-                                                    key=lambda kv: DAY_TYPES.index(kv[0]))))
+    keys: DayKeys = data["day_keys"]
+    print(f"service dates {keys.start}..{keys.end}: {len(keys.keys)} dates, {len(keys.sets)} day keys")
+    print("weekday fallback keys (outside the window): "
+          + ", ".join(f"{DAY_TYPES[d][:3]} {k}" for d, k in enumerate(keys.weekday_default)))
     print(f"stations: {len(stations)}   patterns: {len(data['patterns'])}")
-    print(f"trips skipped: {data['skipped_rare']} special-event, "
-          f"{data['skipped_no_service']} not in effect on a sampled date")
+    print(f"trips skipped: {data['skipped_no_service']} with no service date, "
+          f"{data['dropped_trips']} with fewer than two stations")
     mismatches = data["calendar_mismatches"]
+    print("calendar check, every date against the feed:")
+    print(f"  {'weekday':<10} {'dates':>5} {'departures':>11} {'mismatches':>10}")
+    for label in DAY_TYPES:
+        dates_checked, departures = data["calendar_checked"][label]
+        bad = sum(m[2] for m in mismatches
+                  if DAY_TYPES[dt.date.fromisoformat(m[0]).weekday()] == label)
+        print(f"  {label:<10} {dates_checked:>5} {departures:>11} {bad:>10}")
     if mismatches:
-        affected = len({m[0] for m in mismatches})
-        print(f"calendar: {len(mismatches)} pattern-days across {affected} dates do not match "
-              f"their day type — the sampled weekday is not representative for those")
-        for date, route, count in mismatches[:6]:
+        print(f"calendar: {len(mismatches)} route-days across {len({m[0] for m in mismatches})} dates DIFFER from the feed")
+        for date, route, count in mismatches[:10]:
             print(f"     {date}  {route}  {count} departures differ")
     else:
-        print("calendar: the day-type timetable holds on every date in the feed window")
+        print("calendar: every date in the window matches the feed exactly")
     print(f"widest running-time spread collapsed into one pattern: "
           f"{[(f'{s}s', label) for s, label in data['runtime_spread']]}")
     print(f"surface stop-times dropped (no station within "
@@ -1195,7 +1221,8 @@ def report(data: dict) -> None:
         for pattern in sorted(by_route[route_id], key=lambda p: (p.key.direction_id, -p.trip_count)):
             ids = list(pattern.key.stops)
             direction = "SB" if pattern.key.direction_id == "0" else "NB"
-            counts = {k: len(v) for k, v in sorted(pattern.starts.items())}
+            counts = {DAY_TYPES[d][:3]: len(pattern.starts.get(k) or [])
+                      for d, k in enumerate(keys.weekday_default)}
             print(f"  {direction} {len(ids):2d} stops  {pattern.key.offsets[-1] / 60:6.2f} min  {counts}")
             print(f"     {ids[0]} → {ids[-1]}")
             if len(ids) <= 12:
@@ -1231,14 +1258,16 @@ def main() -> int:
     if args.json:
         args.json.write_text(json.dumps({
             "feed_info": data["feed_info"],
-            "representative_dates": data["representative_dates"],
+            "day_keys": {"start": data["day_keys"].start.isoformat(), "keys": data["day_keys"].keys},
             "stations": data["stations"],
         }, indent=2))
 
     report(data)
 
     if args.report:
-        return 0
+        return 1 if data["calendar_mismatches"] else 0
+    if data["calendar_mismatches"]:
+        raise SystemExit("refusing to write a timetable that disagrees with the feed's calendar")
 
     source = emit_swift(data)
     args.output.parent.mkdir(parents=True, exist_ok=True)

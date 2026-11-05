@@ -48,6 +48,7 @@ actor BikeRouteService {
         let polyline = route.polyline
         var points = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: polyline.pointCount)
         polyline.getCoordinates(&points, range: NSRange(location: 0, length: polyline.pointCount))
+        await StreetRoutes.shared.store(from: from.clCoordinate, to: to.clCoordinate, type: .cycling, path: points)
         let climb = await climbMeters(along: points, length: route.distance)
         return IndegoRouteInfo(meters: route.distance, climbMeters: climb)
     }

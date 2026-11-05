@@ -122,7 +122,7 @@ struct StationBoardView: View {
                 departureRow(row, now: now)
             }
         }
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private func departureRow(_ row: StationDeparture, now: Date) -> some View {

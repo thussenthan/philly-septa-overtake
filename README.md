@@ -62,8 +62,9 @@ Underneath the answer, and never instead of it, there are a few more ways to go:
 - **Best value.** Put a price on your time (it defaults to $25 an hour) and every
   option is ranked by fare plus door-to-door time at that rate. Tell it you have a
   car and driving joins in, priced from your mpg, the gas price, wear and parking,
-  with Apple Maps' live drive time. Routes with tolls are left out, because Apple
-  Maps can't say what they cost and the app won't guess.
+  with Apple Maps' live drive time. Routes with tolls are shown marked "+ tolls":
+  Apple Maps can't say what they cost and the app won't guess, so their price is a
+  floor and they never push a cheaper option off the list.
 - **A map of every trip.** Rides follow SEPTA's published route shapes, and walks
   and bike rides follow the streets.
 
@@ -280,9 +281,14 @@ python3 tools/build_extended.py     # buses, Regional Rail and route shapes
 ```
 
 Run both together: they read the same release, and the second writes
-`SEPTACommute/Resources/SEPTAExtended.txt` with its own validity dates. The Regional
-Rail feed is published separately and usually covers a shorter window than the
-Metro one, so it tends to be the first to need refreshing.
+`SEPTACommute/Resources/SEPTAExtended.txt` with its own validity dates. Each feed's
+window is the dates its `calendar.txt` / `calendar_dates.txt` give service for, not
+`feed_info.txt`'s: the rail feed_info ends after SEPTA's "authoritative" fortnight
+while its calendar runs months further. Then check both files against the feed:
+
+```sh
+python3 tools/verify_timetables.py --feed path/to/gtfs_public.zip
+```
 
 That rewrites `SEPTACommute/MetroKit/Data/GeneratedSEPTAData.swift`, a
 generated file of Swift literals — no bundle resources, no runtime parsing, and the
@@ -298,9 +304,9 @@ The feed is two zips, 39 files. What earns its place, and what doesn't:
 | `trips.txt`, `stop_times.txt` | the patterns and every departure time |
 | `stops.txt` | names, coordinates, `wheelchair_boarding` for step-free routing |
 | `routes.txt` | line colours, and `route_sort_order` so lists read in SEPTA's own order |
-| `calendar.txt` | which days each service runs |
+| `calendar.txt` | which dates each service runs |
 | `directions.txt` | northbound/southbound/eastbound/westbound, per route |
-| `feed_info.txt` | version and the validity window the app warns you about |
+| `feed_info.txt` | the feed version |
 | `calendar_dates.txt` | service exceptions, which SEPTA hangs on nearly every date |
 | `fare_*.txt`, `rider_categories.txt` | the fare, and whether a change of train is included |
 
@@ -327,22 +333,33 @@ assumes contactless or SEPTA Key throughout, so a change of train costs nothing 
 and the card doesn't mention money; How it works states the assumption, and the full
 rules are on the Service & data screen.
 
-**Is the seven-day-type timetable exact?** SEPTA hangs a `calendar_dates` row on
-nearly every date, so two Wednesdays can run different service IDs, and the generator
-samples one date per weekday. That's an assumption worth checking rather than
-believing, so `--report` now compares the emitted timetable against **every date in
-the feed window**, per pattern. On the current feed it holds everywhere except the
-seven holiday dates (Christmas, New Year's and the like):
+**Timetables are date-exact.** SEPTA's calendar is not a weekly timetable with a
+few holidays: `calendar_dates.txt` changes service date by date, and one feed carries
+timetable revisions (Regional Rail retimed on 22–23 November and again on 7 December
+in v202611010), holiday services (Thanksgiving, Christmas, New Year's) and game-day
+extras. So the generators no longer sample a date per weekday. Each date in the window
+maps to a *timetable key* — one distinct set of active service IDs, 26 for the Metro
+map and 41 bus / 11 rail for the whole network — and every pattern lists its
+departures per key, identical lists written once. The planners resolve a service day
+(noon − 12 h, after-midnight trips belonging to the day before) to its key, so any
+date shows exactly what SEPTA publishes for it. No services are filtered out: the old
+"three dates or fewer is a special event" rule existed only because a weekday
+timetable had nowhere to put a one-date service, and it was dropping Christmas rail
+service and the Thanksgiving B1/L1 timetable.
 
-```
-calendar: 577 pattern-days across 7 dates do not match their day type
-```
+Past the window, the Metro planner falls back to the key that covers the most dates
+of that weekday and says the timetable has run out; the all-of-SEPTA planner leaves
+an expired feed's modes out (or projects the same way with `skipExpiredModes` off).
 
-A feed this long (sixteen weeks) carries more than one timetable revision, so the
-generator takes, for each weekday, the revision that covers the most dates rather than
-the one in the final week — the latter would be right for a fortnight and wrong for
-the rest. The app's holiday fallback to a Sunday schedule stays; the report is what
-shows which holidays a feed actually differs on.
+`tools/verify_timetables.py` checks every date of both files against the raw GTFS —
+it shares no code with the generators — and both generators refuse to write a
+timetable that disagrees with the calendar. On v202611010, Monday to Sunday:
+
+| | dates | departures | mismatched (before → now) |
+|---|---:|---:|---:|
+| Metro planner | 112 | 314,645 | 4,523 → 0 |
+| Bus feed (bus, trolley, Metro) | 112 | 1,459,640 | 36,090 → 0 |
+| Regional Rail | 112 | 62,372 | 50,788 → 0 |
 
 Deliberately unused, with the reason:
 
@@ -362,11 +379,9 @@ tests now lock in:
 - **The express terminates at Walnut-Locust and never enters South Philadelphia.**
   The feed's `route_stops.txt` lists NRG for the B2, but no regular trip serves it.
   Patterns are derived from `trips.txt` + `stop_times.txt` instead.
-- **Special-event trips are excluded.** SEPTA adds express trips to NRG whenever
-  there's a game at the sports complex. They're real, but they run on a handful of
-  named dates, and taken at face value they'd tell a rider on an ordinary Sunday
-  that Sunday express service exists. Services covering three dates or fewer are
-  dropped, which catches them all without needing to know what the event was.
+- **Game-day express trips run on their dates only.** SEPTA adds B2 runs to NRG
+  when there's a game at the sports complex. With dated timetables they appear on
+  exactly those dates, and an ordinary Sunday shows no express.
 - **Platform suffixes are merged.** Express and local use separate tracks at Olney
   and City Hall, and the feed names them `Olney Transit Center - B1` and
   `... - B2 & B3`. Left alone, the express platform would be a different *station*
@@ -579,11 +594,6 @@ in-flight one, so a slow plan can't stutter the UI or land stale after a fresh o
 
 What `--report` still shows as imperfect, at the current feed:
 
-- **234 of 7,163 trips are dropped** because their service isn't in effect on any of
-  the seven sampled dates, and 83 more are special-event trips excluded on purpose.
-  The sampled dates are the *last* occurrence of each weekday in the feed window,
-  because the feed carries more than one timetable revision and sampling the first
-  week generates a superseded schedule.
 - **One surface stop doesn't snap to a station.** 131 Owl-bus stop-times are dropped
   for having no station within 350 m; all of them are `Broad St & Spring Garden St`,
   which has no rail station outside it.

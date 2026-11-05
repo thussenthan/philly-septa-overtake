@@ -69,7 +69,12 @@ public enum ScheduleBlock: Sendable, Hashable {
     }
 }
 
-/// When a pattern runs, keyed by day type.
+/// When a pattern runs: per dated timetable key, and per day type.
+///
+/// Generated data is *dated*: it carries the departures for each timetable key of
+/// the network's ``ServiceDates``, and a ``ServiceDay`` with a key is answered from
+/// those, exactly. The day-type view is what a key-less day sees — hand-built
+/// networks, and the weekday stand-ins for dates past the end of the data.
 public struct Schedule: Sendable {
     public let blocks: [DayType: [ScheduleBlock]]
 
@@ -81,22 +86,73 @@ public struct Schedule: Sendable {
     /// and sorting a fresh array of every departure of the day, thousands of times
     /// per plan.
     private let resolved: [DayType: [Int]]
+    /// Per timetable key; empty for a schedule without dates.
+    private let resolvedByKey: [Int: [Int]]
+
+    /// True when the schedule carries departures per timetable key.
+    public var isDated: Bool { !resolvedByKey.isEmpty }
 
     public init(blocks: [DayType: [ScheduleBlock]]) {
         self.blocks = blocks
-        var resolved: [DayType: [Int]] = [:]
-        for (dayType, dayBlocks) in blocks {
-            var seen = Set<Int>()
-            var times: [Int] = []
-            for block in dayBlocks {
-                for time in block.startTimes where seen.insert(time).inserted {
-                    times.append(time)
-                }
-            }
-            if !times.isEmpty { resolved[dayType] = times.sorted() }
-        }
-        self.resolved = resolved
+        self.resolved = blocks.compactMapValues(Self.resolve)
+        self.resolvedByKey = [:]
     }
+
+    /// A dated schedule: departures per timetable key, with the day-type view taken
+    /// from `weekdayKeys` (Monday first), the keys that stand in for each weekday.
+    public init(keyed: [Int: [ScheduleBlock]], weekdayKeys: [Int]) {
+        let byKey = keyed.compactMapValues(Self.resolve)
+        var blocks: [DayType: [ScheduleBlock]] = [:]
+        var resolved: [DayType: [Int]] = [:]
+        for (index, dayType) in DayType.allCases.enumerated() where index < weekdayKeys.count {
+            let key = weekdayKeys[index]
+            if let times = byKey[key] {
+                blocks[dayType] = keyed[key]
+                resolved[dayType] = times   // shared storage, not a copy
+            }
+        }
+        self.blocks = blocks
+        self.resolved = resolved
+        self.resolvedByKey = byKey
+    }
+
+    /// Expanded, sorted, de-duplicated start times; nil when there are none.
+    private static func resolve(_ dayBlocks: [ScheduleBlock]) -> [Int]? {
+        var seen = Set<Int>()
+        var times: [Int] = []
+        for block in dayBlocks {
+            for time in block.startTimes where seen.insert(time).inserted {
+                times.append(time)
+            }
+        }
+        return times.isEmpty ? nil : times.sorted()
+    }
+
+    /// Start times on a service day: from its timetable key when both it and this
+    /// schedule have dates, else from its day type.
+    @inline(__always)
+    private func times(on day: ServiceDay) -> [Int]? {
+        if let key = day.timetableKey, !resolvedByKey.isEmpty { return resolvedByKey[key] }
+        return resolved[day.dayType]
+    }
+
+    /// Ascending, de-duplicated trip start times on a service day. O(1).
+    public func startTimes(on day: ServiceDay) -> [Int] {
+        times(on: day) ?? []
+    }
+
+    /// Whether the pattern runs at all on a service day.
+    public func runs(on day: ServiceDay) -> Bool {
+        times(on: day) != nil
+    }
+
+    /// Departures for one timetable key; empty for a schedule without dates.
+    public func startTimes(forKey key: Int) -> [Int] {
+        resolvedByKey[key] ?? []
+    }
+
+    /// The timetable keys this pattern runs on, ascending.
+    public var activeKeys: [Int] { resolvedByKey.keys.sorted() }
 
     /// Convenience for service that runs identically every day.
     public init(everyDay: [ScheduleBlock]) {
@@ -142,7 +198,16 @@ public struct Schedule: Sendable {
     /// Index of the first start time at or after `secondsAfterMidnight`, by binary
     /// search. `nil` when the pattern is done for the day.
     func firstStartIndex(on dayType: DayType, atOrAfter secondsAfterMidnight: Double) -> Int? {
-        guard let times = resolved[dayType], !times.isEmpty else { return nil }
+        Self.firstIndex(in: resolved[dayType], atOrAfter: secondsAfterMidnight)
+    }
+
+    /// As above, for a service day (its timetable key when it has one).
+    func firstStartIndex(on day: ServiceDay, atOrAfter secondsAfterMidnight: Double) -> Int? {
+        Self.firstIndex(in: times(on: day), atOrAfter: secondsAfterMidnight)
+    }
+
+    private static func firstIndex(in times: [Int]?, atOrAfter secondsAfterMidnight: Double) -> Int? {
+        guard let times, !times.isEmpty else { return nil }
         var low = 0
         var high = times.count
         while low < high {

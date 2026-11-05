@@ -12,6 +12,9 @@ public struct Network: Sendable {
     public let provenance: DataProvenance
     /// What a ride costs, and whether a change of train is included in it.
     public let fare: FareRules
+    /// The date-by-date service calendar the patterns' dated schedules are keyed
+    /// by; nil for a network whose schedules only know days of the week.
+    public let serviceDates: ServiceDates?
 
     private let stationsByID: [StationID: Station]
     private let patternsByID: [PatternID: ServicePattern]
@@ -30,13 +33,15 @@ public struct Network: Sendable {
         stations: [Station],
         patterns: [ServicePattern],
         provenance: DataProvenance,
-        fare: FareRules = FareRules(amount: 0)
+        fare: FareRules = FareRules(amount: 0),
+        serviceDates: ServiceDates? = nil
     ) {
         self.lines = lines
         self.stations = stations
         self.patterns = patterns
         self.provenance = provenance
         self.fare = fare
+        self.serviceDates = serviceDates
 
         self.stationsByID = Dictionary(stations.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.patternsByID = Dictionary(patterns.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })

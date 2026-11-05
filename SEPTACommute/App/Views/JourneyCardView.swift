@@ -35,7 +35,7 @@ struct JourneyCardView: View {
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: 18)
-            .fill(.background.secondary)
+            .fill(Theme.card)
     }
 
     // MARK: - Header

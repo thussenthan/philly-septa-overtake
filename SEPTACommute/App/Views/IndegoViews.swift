@@ -215,7 +215,7 @@ struct IndegoDetailView: View {
                 }
                 .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
 
                 Text("Tap a step to see it on the map. Go opens \(model.preferences.mapsApp.label).")
                     .font(.caption)
@@ -223,6 +223,7 @@ struct IndegoDetailView: View {
             }
             .padding(20)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Indego")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -249,6 +250,7 @@ struct IndegoDetailView: View {
                     Image(systemName: symbol)
                         .frame(width: 24)
                         .foregroundStyle(tint)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(.subheadline.weight(isFocused ? .bold : .medium)).foregroundStyle(.primary)
                         if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }

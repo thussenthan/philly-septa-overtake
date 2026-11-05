@@ -44,14 +44,23 @@ public final class ExtendedNetwork: Sendable {
 
     public let busFeedVersion: String
     public let railFeedVersion: String
-    /// First and last dates (yyyyMMdd) for which *both* feeds are authoritative.
+    /// First and last dates (yyyyMMdd) that *both* feeds have service for.
     public let validFrom: String
     public let validUntil: String
-    /// Last date (yyyyMMdd) the bus feed (bus, trolley, Metro) is authoritative for.
+    /// Last date (yyyyMMdd) the bus feed (bus, trolley, Metro) has service for: the end
+    /// of its calendar, which is what the timetable covers date by date.
     /// Falls back to ``validUntil`` for an older resource without it.
     public let busValidUntil: String
-    /// Last date (yyyyMMdd) the Regional Rail feed is authoritative for.
+    /// Last date (yyyyMMdd) the Regional Rail feed has service for. Not the rail
+    /// feed_info end date, which marks only SEPTA's authoritative fortnight while the
+    /// calendar it publishes runs months further.
     public let railValidUntil: String
+
+    /// The bus feed's date → timetable-key table (bus, trolley, Metro); nil for a
+    /// version-1 resource, which only knows days of the week.
+    public let busServiceDates: ServiceDates?
+    /// The rail feed's date → timetable-key table.
+    public let railServiceDates: ServiceDates?
 
     /// The modes whose feed no longer covers `yyyyMMdd` (a service date): rail
     /// from the rail feed, bus/trolley/Metro from the bus feed.
@@ -101,10 +110,21 @@ public final class ExtendedNetwork: Sendable {
     /// Never later than `patternOffsets`.
     let patternBoardOffsets: [Int32]
     let patternFlags: [UInt8]          // bit 1 no pickup, bit 2 no drop-off
-    // Trip starts: for pattern p and day type d (0 = Monday), starts[lo..<hi] with
-    // lo = tripRanges[(p * 7 + d) * 2], hi = tripRanges[(p * 7 + d) * 2 + 1].
-    let tripRanges: [Int32]
+    // Trip starts, by timetable key. A pattern runs a handful of distinct timetables
+    // (ordinary weekdays, Saturdays, a holiday …) over many keys, so the key maps to
+    // one of the pattern's lists and the lists are stored once:
+    //   l = patternKeyList[patternKeyBase[p] + key]   (0 = no trips that day)
+    //   list g = patternFirstList[p] + l - 1, starts tripStarts[listStart[g] ..< listStart[g + 1]].
+    // Keys are the pattern's own feed's (rail patterns: the rail feed's); a version-1
+    // resource has seven, the days of the week, Monday = 0.
+    let patternIsRail: [Bool]
+    let patternKeyBase: [Int32]
+    let patternKeyList: [UInt16]
+    let patternFirstList: [Int32]
+    let listStart: [Int32]             // count + 1
     let tripStarts: [Int32]
+    /// Keys per feed: (bus, rail).
+    let keyCounts: (bus: Int, rail: Int)
 
     // Route geometry: shape i is shapePoints[shapeStart[i]..<shapeStart[i + 1]].
     let shapeStart: [Int32]            // count + 1
@@ -147,16 +167,44 @@ public final class ExtendedNetwork: Sendable {
     public var footpathCount: Int { footStop.count }
     /// Distinct route shapes (simplified GTFS `shapes.txt` geometry).
     public var shapeCount: Int { shapeStart.count - 1 }
-    /// Scheduled departures summed over the seven day types.
+    /// Scheduled departures in a typical week: each pattern's trips on the timetable
+    /// key that stands in for each day of the week.
     public var weeklyTripCount: Int {
         var total = 0
         for p in 0..<patternCount {
+            let dates = patternIsRail[p] ? railServiceDates : busServiceDates
             for d in 0..<7 {
-                let i = (p * 7 + d) * 2
-                total += Int(tripRanges[i + 1] - tripRanges[i])
+                let r = tripRange(pattern: p, key: dates?.weekdayKeys[d] ?? d)
+                total += r.upperBound - r.lowerBound
             }
         }
         return total
+    }
+
+    /// Indices into `tripStarts` of a pattern's trips on a timetable key, ascending
+    /// by start; empty for a key it does not run on, or -1 (no service).
+    @inline(__always)
+    func tripRange(pattern p: Int, key: Int) -> Range<Int> {
+        guard key >= 0 else { return 0..<0 }
+        let l = Int(patternKeyList[Int(patternKeyBase[p]) + key])
+        guard l > 0 else { return 0..<0 }
+        let g = Int(patternFirstList[p]) + l - 1
+        return Int(listStart[g])..<Int(listStart[g + 1])
+    }
+
+    /// The timetable key for one feed on a service date (a day number, see
+    /// ``ServiceDates/dayNumber(year:month:day:)``), or -1 for no service.
+    ///
+    /// Exact inside the feed's dates. Outside them there is nothing SEPTA has
+    /// published, so -1 — unless `project`, when the weekday's stand-in key is used
+    /// (what a planner keeping stale modes asks for). A version-1 resource has no
+    /// dates and keys by day type.
+    func timetableKey(rail: Bool, dayNumber: Int, dayType: DayType, project: Bool) -> Int {
+        let weekday = DayType.allCases.firstIndex(of: dayType) ?? 0
+        guard let dates = rail ? railServiceDates : busServiceDates else { return weekday }
+        let index = dayNumber - dates.firstDay
+        if dates.keys.indices.contains(index) { return dates.keys[index] }
+        return project ? dates.weekdayKeys[weekday] : -1
     }
 
     // MARK: Projection
@@ -270,8 +318,14 @@ public final class ExtendedNetwork: Sendable {
         var offsets: [Int32] = []
         var boardOffsets: [Int32] = []
         var flags: [UInt8] = []
-        var tripRanges: [Int32] = []
+        var version = 1
+        /// Day-key sets the T records refer to (version 2).
+        var groups: [[Int]] = []
+        // Per pattern, its T records: (keys, list index), lists as CSR over tripStarts.
+        var patternTimetables: [[(keys: [Int], list: Int32)]] = []
+        var listStart: [Int32] = [0]
         var tripStarts: [Int32] = []
+        var serviceDates: [ServiceDates?] = [nil, nil]
         var shapeStart: [Int32] = [0]
         var shapePoints: [Coordinate] = []
         var patternShape: [Int32] = []
@@ -285,6 +339,8 @@ public final class ExtendedNetwork: Sendable {
         validUntil = p.validUntil
         busValidUntil = p.busUntil.isEmpty ? p.validUntil : p.busUntil
         railValidUntil = p.railUntil.isEmpty ? p.validUntil : p.railUntil
+        busServiceDates = p.serviceDates[0]
+        railServiceDates = p.serviceDates[1]
         busFare = p.busFare
         transferWindowSeconds = p.window
         freeTransfers = p.free
@@ -316,8 +372,30 @@ public final class ExtendedNetwork: Sendable {
         patternOffsets = p.offsets
         patternBoardOffsets = p.boardOffsets
         patternFlags = p.flags
-        tripRanges = p.tripRanges
         tripStarts = p.tripStarts
+        listStart = p.listStart
+        let busKeys = p.serviceDates[0]?.keyCount ?? 7, railKeys = p.serviceDates[1]?.keyCount ?? 7
+        keyCounts = (busKeys, railKeys)
+        var isRail = [Bool](repeating: false, count: p.patternRoute.count)
+        var keyBase = [Int32](repeating: 0, count: p.patternRoute.count)
+        var firstList = [Int32](repeating: 0, count: p.patternRoute.count)
+        var keyList: [UInt16] = []
+        for pi in 0..<p.patternRoute.count {
+            let rail = p.routes[Int(p.patternRoute[pi])].mode == .rail
+            isRail[pi] = rail
+            keyBase[pi] = Int32(keyList.count)
+            let base = keyList.count
+            keyList.append(contentsOf: repeatElement(0, count: rail ? railKeys : busKeys))
+            let timetables = p.patternTimetables[pi]
+            firstList[pi] = timetables.first?.list ?? 0
+            for (local, t) in timetables.enumerated() {
+                for key in t.keys { keyList[base + key] = UInt16(local + 1) }
+            }
+        }
+        patternIsRail = isRail
+        patternKeyBase = keyBase
+        patternFirstList = firstList
+        patternKeyList = keyList
         shapeStart = p.shapeStart
         shapePoints = p.shapePoints
         patternShape = p.patternShape
@@ -676,9 +754,11 @@ private struct ExtendedTextParser {
             let tagRange = fields[0]
             let tag = tagRange.1 - tagRange.0 == 1 ? b[tagRange.0] : 0
             if !sawHeader {
-                guard string(tagRange) == "SEPTAEXT", fields.count >= 2, try int(fields[1]) == 1 else {
+                guard string(tagRange) == "SEPTAEXT", fields.count >= 2,
+                      let version = try? int(fields[1]), version == 1 || version == 2 else {
                     throw ExtendedNetworkError.unrecognizedHeader
                 }
+                parts.version = version
                 sawHeader = true
                 continue
             }
@@ -714,21 +794,61 @@ private struct ExtendedTextParser {
                 parts.shapeStart.append(Int32(parts.shapePoints.count))
             case UInt8(ascii: "T"):
                 guard currentPattern >= 0, fields.count >= 3 else { throw fail("trips without a pattern") }
-                let lo = Int32(parts.tripStarts.count)
+                var keys: [Int] = []
+                if parts.version >= 2 {
+                    let group = try int(fields[1])
+                    guard parts.groups.indices.contains(group) else { throw fail("unknown key group") }
+                    keys = parts.groups[group]
+                    let rail = parts.routes[Int(parts.patternRoute[currentPattern])].mode == .rail
+                    guard let dates = parts.serviceDates[rail ? 1 : 0] else { throw fail("trips before the service calendar") }
+                    let limit = dates.keyCount
+                    for key in keys where key >= limit { throw fail("timetable key out of range") }
+                } else {
+                    // Version 1: digits 1...7, Monday to Sunday.
+                    for d in fields[1].0..<fields[1].1 {
+                        let day = Int(b[d]) - 49
+                        guard day >= 0, day < 7 else { throw fail("bad day digit") }
+                        keys.append(day)
+                    }
+                }
                 var lastStart = Int.min
                 try list(fields[2], delta: true) {
                     guard $0 >= lastStart else { throw fail("trip starts out of order") }
                     lastStart = $0
                     parts.tripStarts.append(try int32($0))
                 }
-                let hi = Int32(parts.tripStarts.count)
-                for d in fields[1].0..<fields[1].1 {
-                    let day = Int(b[d]) - 49
-                    guard day >= 0, day < 7 else { throw fail("bad day digit") }
-                    let slot = (currentPattern * 7 + day) * 2
-                    parts.tripRanges[slot] = lo
-                    parts.tripRanges[slot + 1] = hi
+                guard parts.patternTimetables[currentPattern].count < Int(UInt16.max) else { throw fail("too many timetables") }
+                parts.patternTimetables[currentPattern].append((keys, Int32(parts.listStart.count - 1)))
+                parts.listStart.append(Int32(parts.tripStarts.count))
+            case UInt8(ascii: "K"):
+                guard fields.count >= 5 else { throw fail("service calendar needs 5 fields") }
+                let feed: Int
+                switch string(fields[1]) {
+                case "bus": feed = 0
+                case "rail": feed = 1
+                default: throw fail("unknown feed")
                 }
+                var keys: [Int] = [], weekdays: [Int] = []
+                try list(fields[3], delta: false) {
+                    guard $0 >= 0, $0 < Int(UInt16.max) else { throw fail("timetable key out of range") }
+                    keys.append($0)
+                }
+                try list(fields[4], delta: false) {
+                    guard $0 >= 0, $0 < Int(UInt16.max) else { throw fail("timetable key out of range") }
+                    weekdays.append($0)
+                }
+                guard let dates = ServiceDates(first: string(fields[2]), keys: keys, weekdayKeys: weekdays) else {
+                    throw fail("bad service calendar")
+                }
+                parts.serviceDates[feed] = dates
+            case UInt8(ascii: "G"):
+                guard fields.count >= 2 else { throw fail("key group needs keys") }
+                var keys: [Int] = []
+                try list(fields[1], delta: false) {
+                    guard $0 >= 0 else { throw fail("timetable key out of range") }
+                    keys.append($0)
+                }
+                parts.groups.append(keys)
             case UInt8(ascii: "P"):
                 guard fields.count >= 6 else { throw fail("pattern needs 6 fields") }
                 let route = try int(fields[1])
@@ -802,7 +922,7 @@ private struct ExtendedTextParser {
                     }
                 }
                 parts.patternStart.append(Int32(parts.stops.count))
-                parts.tripRanges.append(contentsOf: repeatElement(0, count: 14))
+                parts.patternTimetables.append([])
                 currentPattern += 1
             case UInt8(ascii: "R"):
                 guard fields.count >= 4 else { throw fail("route needs 4 fields") }
@@ -837,6 +957,9 @@ private struct ExtendedTextParser {
             }
         }
         guard sawHeader else { throw ExtendedNetworkError.unrecognizedHeader }
+        if parts.version >= 2, parts.serviceDates.contains(where: { $0 == nil }), !parts.patternRoute.isEmpty {
+            throw ExtendedNetworkError.malformed(line: line, reason: "version 2 needs both service calendars")
+        }
         let classes = parts.classCC.count
         guard parts.weekday.count == classes * classes, parts.weekend.count == classes * classes else {
             throw ExtendedNetworkError.malformed(line: line, reason: "fare table is not square")

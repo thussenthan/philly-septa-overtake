@@ -5,9 +5,9 @@ This is the supplemental planner's data, separate from ``build_schedule.py``'s
 Metro-only Swift literals. The whole network is far too big for Swift literals
 (the compiler would take minutes), so it is written as a compact text resource,
 ``SEPTACommute/Resources/SEPTAExtended.txt``, which ``ExtendedNetwork.decode`` reads
-at runtime. The service-calendar logic — one representative date per weekday,
-special-event services dropped, times past 24:00 — is imported from
-``build_schedule.py`` so both generators agree on what "a Tuesday" means.
+at runtime. The service-calendar logic — the date → day-key table, times past
+24:00 — is imported from ``build_schedule.py`` so both generators agree on what
+runs on a given date.
 
 Usage
 -----
@@ -17,8 +17,14 @@ Usage
 
 File format (UTF-8, one record per line, fields separated by TAB)
 -----------------------------------------------------------------
-    SEPTAEXT 1
+    SEPTAEXT 2
     M  bus_version  rail_version  valid_from  valid_until  bus_until  rail_until
+         bus_until / rail_until: the last date each feed has service for;
+         valid_from / valid_until: the dates both feeds cover
+    K  feed  first_date  keys  weekday_keys              feed: bus|rail; one per feed, before any P
+         keys:         the day key of each date from first_date (yyyymmdd) on, comma-separated;
+                       a day key is one distinct set of the feed's service IDs
+         weekday_keys: seven keys, Monday first, standing in for dates outside the table
     B  amount  transfer_window_s  free_transfers         bus/trolley/Metro fare, SEPTA Key
     R  short  long  mode  color                          mode: bus|trolley|metro|rail
     S  name  lat  lon  [fare_class]                      index = order; fare_class on rail stops only
@@ -39,8 +45,12 @@ File format (UTF-8, one record per line, fields separated by TAB)
                    trip of the pattern reaches that stop (only where >= EARLY_MIN_S);
                    the planner boards at offset − early. Shape and segments are
                    written empty when there is no shape but there is an early list.
-    T  days  starts                                      belongs to the preceding P
-         days:   digits 1..7 = Monday..Sunday that run exactly these trips
+    G  keys                                              a set of day keys, comma-separated (order = index)
+    T  group  starts                                     belongs to the preceding P
+         group:  index of the G record listing the day keys (of the pattern's feed: rail
+                 routes use the rail feed's) that run exactly these trips. Sets repeat
+                 across thousands of patterns ("every ordinary weekday"), so they are
+                 written once.
          starts: trip start times (seconds after service-day midnight, may exceed 86400),
                  first absolute, then deltas
 """
@@ -137,21 +147,17 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
         word = (row.get("direction") or "").strip()
         direction_words[(row["route_id"], row["direction_id"])] = word
 
-    all_dates, rare = bs.recurring_services(feed)
-    rep = bs.representative_dates(feed, all_dates)
-    services_by_day = {
-        label: {sid for sid, days in all_dates.items() if day in days and sid not in rare}
-        for label, day in rep.items()
-    }
+    all_dates = bs.service_dates(feed)
+    candidates = [t for t in feed.table("trips.txt") if t["route_id"] in routes and all_dates.get(t["service_id"])]
+    keys = bs.day_keys(all_dates, {t["service_id"] for t in candidates})
+    service_keys = {sid: tuple(keys.keys_of_service(sid)) for sid in {t["service_id"] for t in candidates}}
     trip_days: dict[str, tuple[int, ...]] = {}
     trips: dict[str, dict] = {}
-    for t in feed.table("trips.txt"):
-        days = tuple(i for i, label in enumerate(bs.DAY_TYPES) if t["service_id"] in services_by_day[label])
-        if days and t["route_id"] in routes:
-            trips[t["trip_id"]] = t
-            trip_days[t["trip_id"]] = days
+    for t in candidates:
+        trips[t["trip_id"]] = t
+        trip_days[t["trip_id"]] = service_keys[t["service_id"]]
     stats[prefix + "trips"] = len(trips)
-    stats[prefix + "dates"] = {k: v.isoformat() for k, v in rep.items()}
+    stats[prefix + "service_dates"] = f"{keys.start}..{keys.end}, {len(keys.sets)} day keys"
 
     rows = feed.raw_rows("stop_times.txt")
     col = next(rows)
@@ -215,6 +221,7 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
         headsign = max(headsigns.items(), key=lambda kv: (kv[1], kv[0]))[0]
         patterns.append({
             "route": prefix + route_id,
+            "rail_feed": prefix == "R",
             "headsign": headsign,
             "direction": direction_words.get((route_id, direction_id), ""),
             "stops": stops,
@@ -234,6 +241,7 @@ def extract_feed(feed: InnerFeed, prefix: str, stats: dict) -> dict:
         "stops": stops,
         "patterns": patterns,
         "feed_info": feed.table("feed_info.txt")[0],
+        "day_keys": keys,
         "shapes": read_shapes(feed, prefix, {sid for p in patterns for sid in p["shapes"]}),
     }
 
@@ -507,6 +515,13 @@ def build(feed_path: Path) -> tuple[str, dict]:
         return (mode_rank, int(order) if order.isdigit() else bs.SORT_UNKNOWN, r["route_short_name"] or rid)
 
     used_routes = sorted({p["route"] for p in patterns}, key=sort_key)
+    # The decoder tells a pattern's feed — so which day keys apply — by its mode:
+    # Regional Rail is the rail feed, everything else the bus feed.
+    for p in patterns:
+        is_rail = MODES.get(routes[p["route"]]["route_type"], "bus") == "rail"
+        if is_rail != p["rail_feed"]:
+            raise SystemExit(f"route {p['route']} is mode {'rail' if is_rail else 'non-rail'} "
+                             f"but comes from the {'rail' if p['rail_feed'] else 'bus'} feed")
     route_index = {rid: i for i, rid in enumerate(used_routes)}
     # Longest patterns first within a route, so the first appearance order of stops
     # follows the line and stop deltas come out as 1 most of the time.
@@ -519,13 +534,21 @@ def build(feed_path: Path) -> tuple[str, dict]:
                 stop_index[s] = len(stop_index)
 
     fi_bus, fi_rail = bus["feed_info"], rail["feed_info"]
-    lines = ["SEPTAEXT\t1"]
+    # The windows are the dates each feed actually has service for — calendar.txt
+    # and calendar_dates.txt — not feed_info's: SEPTA's rail feed_info stops at the
+    # end of its "authoritative" fortnight while its calendar runs three months on,
+    # and taking feed_info at its word dropped rail from every plan after it.
+    bus_keys, rail_keys = bus["day_keys"], rail["day_keys"]
+    ymd = lambda d: d.strftime("%Y%m%d")
+    lines = ["SEPTAEXT\t2"]
     lines.append("\t".join([
         "M", fi_bus.get("feed_version", ""), fi_rail.get("feed_version", ""),
-        max(fi_bus["feed_start_date"], fi_rail["feed_start_date"]),
-        min(fi_bus["feed_end_date"], fi_rail["feed_end_date"]),
-        fi_bus["feed_end_date"], fi_rail["feed_end_date"],
+        ymd(max(bus_keys.start, rail_keys.start)), ymd(min(bus_keys.end, rail_keys.end)),
+        ymd(bus_keys.end), ymd(rail_keys.end),
     ]))
+    for name, keys in (("bus", bus_keys), ("rail", rail_keys)):
+        lines.append("\t".join(["K", name, ymd(keys.start), ",".join(map(str, keys.keys)),
+                                 ",".join(map(str, keys.weekday_default))]))
     lines.append(f"B\t{amount:.2f}\t{window}\t{free}")
     for rid in used_routes:
         r = routes[rid]
@@ -574,8 +597,22 @@ def build(feed_path: Path) -> tuple[str, dict]:
             shape_points += len(pts)
         shape_of_id[sid] = shape_index[pts]
 
-    trip_count = 0
+    # Day-key sets, written once and referred to by index from the T records.
+    timetables: list[list[tuple[tuple, tuple[int, ...]]]] = []
+    group_index: dict[tuple[int, ...], int] = {}
     for p in patterns:
+        by_list: dict[tuple, list[int]] = defaultdict(list)
+        for key, starts in p["starts"].items():
+            by_list[tuple(starts)].append(key)
+        rows = sorted(((starts, tuple(sorted(keys))) for starts, keys in by_list.items()), key=lambda r: r[1][0])
+        timetables.append(rows)
+        for _, keys in rows:
+            group_index.setdefault(keys, len(group_index))
+    for keys in group_index:
+        lines.append("G\t" + ",".join(map(str, keys)))
+
+    trip_count = 0
+    for p, rows in zip(patterns, timetables):
         idx = [stop_index[s] for s in p["stops"]]
         flag_text = ",".join(f"{i}:{f}" for i, f in enumerate(p["flags"]) if f)
         fields = [
@@ -590,12 +627,10 @@ def build(feed_path: Path) -> tuple[str, dict]:
         if early_text:
             fields.append(early_text)
         lines.append("\t".join(fields))
-        by_list: dict[tuple, list[int]] = defaultdict(list)
-        for d, starts in p["starts"].items():
-            by_list[tuple(starts)].append(d)
-            trip_count += len(starts)
-        for starts, days in sorted(by_list.items(), key=lambda kv: min(kv[1])):
-            lines.append("T\t" + "".join(str(d + 1) for d in sorted(days)) + "\t" + deltas(starts))
+        for starts, keys in rows:
+            lines.append(f"T\t{group_index[keys]}\t{deltas(starts)}")
+        week = (rail_keys if p["rail_feed"] else bus_keys).weekday_default
+        trip_count += sum(len(p["starts"].get(key, ())) for key in week)
 
     stats.update({
         "routes": len(used_routes),

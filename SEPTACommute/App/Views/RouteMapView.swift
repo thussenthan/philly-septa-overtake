@@ -118,6 +118,9 @@ struct RouteMapView: View {
                         .stroke(segment.color, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [0.5, 7]))
                 }
             }
+            // Where the phone is, and which way it's facing — the blue dot and
+            // heading cone, as in Apple Maps. Shown only with location allowed.
+            UserAnnotation()
             ForEach(stops) { stop in
                 switch stop.role {
                 case .origin:
@@ -304,8 +307,18 @@ actor StreetRoutes {
     /// only after a pause rather than on every redraw.
     private var failures: [String: Date] = [:]
 
+    private static func key(_ from: CLLocationCoordinate2D, _ to: CLLocationCoordinate2D, _ type: MKDirectionsTransportType) -> String {
+        String(format: "%.5f,%.5f>%.5f,%.5f#%lu", from.latitude, from.longitude, to.latitude, to.longitude, type.rawValue)
+    }
+
+    /// A route fetched elsewhere (timing a bike ride), so drawing it on a map
+    /// doesn't cost a second request against Apple's per-minute limit.
+    func store(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, type: MKDirectionsTransportType, path: [CLLocationCoordinate2D]) {
+        cache[Self.key(from, to, type)] = path
+    }
+
     func path(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, type: MKDirectionsTransportType) async -> [CLLocationCoordinate2D]? {
-        let key = String(format: "%.5f,%.5f>%.5f,%.5f#%lu", from.latitude, from.longitude, to.latitude, to.longitude, type.rawValue)
+        let key = Self.key(from, to, type)
         if let hit = cache[key] { return hit }
         if let failed = failures[key], Date().timeIntervalSince(failed) < 120 { return nil }
         let request = MKDirections.Request()

@@ -72,6 +72,11 @@ enum Theme {
     /// so system controls drawn from the asset match.
     static let accent = adaptive("F26100")
 
+    /// A card on the grouped page: white on light grey in light mode, a raised
+    /// grey on black in dark. `.background.secondary` matched the page in light
+    /// mode, so cards had no edges.
+    static let card = Color(.secondarySystemGroupedBackground)
+
     /// A line's own published colour. Every line in the bundled data carries one,
     /// so a B trip is orange, an L trip blue, a trolley trip green.
     static func color(for line: Line?) -> Color {

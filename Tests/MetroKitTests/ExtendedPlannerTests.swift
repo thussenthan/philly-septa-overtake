@@ -177,19 +177,20 @@ final class ExtendedPlannerTests: XCTestCase {
         return f.string(from: d)
     }
 
-    /// Every time a route's trips (on `dayType`) can be boarded at the stop at
-    /// `coordinate`, as dates on the service day of `day` — computed independently
-    /// with the GTFS noon − 12 h rule.
-    func boardingTimes(route shortName: String, at coordinate: Coordinate, dayType: DayType, on day: Date) -> Set<Date> {
+    /// Every time a route's trips can be boarded at the stop at `coordinate`, as
+    /// dates on the service day of `day` — the trips of that date's timetable key,
+    /// placed with the GTFS noon − 12 h rule.
+    func boardingTimes(route shortName: String, at coordinate: Coordinate, on day: Date) -> Set<Date> {
         let net = Self.network
-        let start = ServiceCalendar(timeZone: Self.newYork).serviceDay(containing: day).start
-        let d = DayType.allCases.firstIndex(of: dayType)!
+        let frame = ServiceFrame(departAt: day, timeZone: Self.newYork)
+        let start = frame.start
         var out = Set<Date>()
         for p in 0..<net.patternCount where net.routes[Int(net.patternRoute[p])].shortName == shortName {
+            let key = net.timetableKey(rail: net.patternIsRail[p], dayNumber: frame.dayNumbers.1,
+                                       dayType: frame.today.dayType, project: true)
             let count = Int(net.patternStart[p + 1] - net.patternStart[p])
             for pos in 0..<count where net.stopCoordinates[net.stop(p, pos)] == coordinate {
-                let slot = (p * 7 + d) * 2
-                for t in Int(net.tripRanges[slot])..<Int(net.tripRanges[slot + 1]) {
+                for t in net.tripRange(pattern: p, key: key) {
                     out.insert(start.addingTimeInterval(TimeInterval(net.tripStarts[t] + net.boardOffset(p, pos))))
                 }
             }
@@ -197,11 +198,11 @@ final class ExtendedPlannerTests: XCTestCase {
         return out
     }
 
-    func assertRidesRunAtScheduledTimes(_ options: [ExtendedItinerary], dayType: DayType, on day: Date,
+    func assertRidesRunAtScheduledTimes(_ options: [ExtendedItinerary], on day: Date,
                                         file: StaticString = #filePath, line: UInt = #line) -> Int {
         var checked = 0
         for ride in options.flatMap(\.rides) {
-            let times = boardingTimes(route: ride.routeShortName, at: ride.boardCoordinate, dayType: dayType, on: day)
+            let times = boardingTimes(route: ride.routeShortName, at: ride.boardCoordinate, on: day)
             XCTAssertTrue(times.contains(ride.departure),
                           "\(ride.routeShortName) at \(ride.boardName) \(clock(ride.departure)) is not a scheduled time; nearest: \(times.sorted().filter { abs($0.timeIntervalSince(ride.departure)) < 5400 }.map(clock))",
                           file: file, line: line)
@@ -233,7 +234,7 @@ final class ExtendedPlannerTests: XCTestCase {
         let p = plannerKeepingStaleModes()
         let options = p.plan(from: from, to: to, departAt: start)
         XCTAssertTrue(options.contains { !$0.rides.isEmpty }, file: file, line: line)
-        XCTAssertGreaterThan(assertRidesRunAtScheduledTimes(options, dayType: .sunday, on: start, file: file, line: line), 0,
+        XCTAssertGreaterThan(assertRidesRunAtScheduledTimes(options, on: start, file: file, line: line), 0,
                              file: file, line: line)
         assertFeasible(options, departAt: start, from: from, to: to, file: file, line: line)
     }
@@ -267,7 +268,7 @@ final class ExtendedPlannerTests: XCTestCase {
         let from = Coordinate(latitude: 40.0518, longitude: -75.0613)
         let to = Coordinate(latitude: 40.0835, longitude: -75.0337)
         let holiday = planner.plan(from: from, to: to, departAt: thanksgiving)
-        XCTAssertGreaterThan(assertRidesRunAtScheduledTimes(holiday, dayType: .sunday, on: thanksgiving), 0)
+        XCTAssertGreaterThan(assertRidesRunAtScheduledTimes(holiday, on: thanksgiving), 0)
         // Same as the Sunday before, minute for minute.
         let sunday = planner.plan(from: from, to: to, departAt: at(10, 0, on: "20261122"))
         XCTAssertEqual(holiday.map { $0.rides.map { "\($0.routeShortName) \(clock($0.departure))" } },
@@ -310,8 +311,11 @@ final class ExtendedPlannerTests: XCTestCase {
         var day = f.date(from: early)!.addingTimeInterval(86_400 + 12 * 3600)
         while cal.component(.weekday, from: day) != 3 { day = day.addingTimeInterval(86_400) }
         let yyyymmdd = f.string(from: day)
-        try XCTSkipIf(yyyymmdd > late, "both feeds end too close together")
-        let expired: Set<ExtendedMode> = net.railValidUntil < net.busValidUntil ? [.rail] : [.bus, .trolley, .metro]
+        // When both feeds end together (they do on v202611010: SEPTA's rail calendar
+        // runs to the bus feed's end even though its feed_info stops in November),
+        // the first Tuesday after the end has every mode expired.
+        let expired: Set<ExtendedMode> = yyyymmdd > late ? Set(ExtendedMode.allCases)
+            : net.railValidUntil < net.busValidUntil ? [.rail] : [.bus, .trolley, .metro]
         XCTAssertEqual(net.expiredModes(onServiceDate: yyyymmdd), expired)
 
         let from = Coordinate(latitude: 39.9527, longitude: -75.1575)   // near Jefferson Station

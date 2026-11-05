@@ -17,12 +17,16 @@ import Foundation
 ///     M|feedVersion|feedStart|feedEnd|generated|source|advisoryEnd
 ///     L|id|badge|name|colorHex
 ///     S|id|name|subtitle|intersection|lat|lon|lineIDs,csv|1 (accessible), 0, or -
+///     C|firstDate|key,key,key,...           one timetable key per date, from firstDate (yyyyMMdd)
+///     W|mon,tue,wed,thu,fri,sat,sun          the key standing in for each weekday outside C
 ///     P|id|lineID|routeID|kind|direction|headsign
 ///     O|station:arrivalOffset:dwell,station:arrivalOffset:dwell,...
-///     D|day,day|blocks
+///     D|key,key|blocks                       or D|day,day|blocks (day names, no dates)
 ///
 /// `O` and `D` records attach to the most recent `P`. Blocks in a `D` record are
 /// separated by `;`, and are either `f:from:until:every` or `t:time,time,time`.
+/// A `D` record naming timetable keys (numbers) makes the pattern's schedule dated:
+/// see ``ServiceDates``. `C` and `W` come before the first pattern.
 public enum NetworkDecoder {
 
     public struct DecodeError: Error, CustomStringConvertible {
@@ -64,6 +68,10 @@ public enum NetworkDecoder {
         var pendingPublished = 100
         var pendingStops: [PatternStop] = []
         var pendingBlocks: [DayType: [ScheduleBlock]] = [:]
+        var pendingKeyed: [Int: [ScheduleBlock]] = [:]
+        var serviceStart: String?
+        var serviceKeys: [Int] = []
+        var weekdayKeys: [Int] = []
 
         func flushPattern() throws {
             guard let header = pendingHeader else { return }
@@ -86,13 +94,16 @@ public enum NetworkDecoder {
                 headsign: header.headsign,
                 publishedTimePercent: pendingPublished,
                 stops: pendingStops,
-                schedule: Schedule(blocks: pendingBlocks)
+                schedule: pendingKeyed.isEmpty
+                    ? Schedule(blocks: pendingBlocks)
+                    : Schedule(keyed: pendingKeyed, weekdayKeys: weekdayKeys)
             ))
             pendingHeader = nil
             pendingCompass = nil
             pendingPublished = 100
             pendingStops = []
             pendingBlocks = [:]
+            pendingKeyed = [:]
         }
 
         var lineNumber = 0
@@ -161,6 +172,23 @@ public enum NetworkDecoder {
                         isAccessible: accessible
                     ))
 
+                case "C":
+                    guard fields.count >= 3 else { throw DecodeError(line: lineNumber, reason: "short C record") }
+                    serviceStart = fields[1]
+                    serviceKeys = try fields[2].split(separator: ",").map {
+                        guard let key = Int($0), key >= 0 else {
+                            throw DecodeError(line: lineNumber, reason: "bad timetable key \($0)")
+                        }
+                        return key
+                    }
+
+                case "W":
+                    guard fields.count >= 2 else { throw DecodeError(line: lineNumber, reason: "short W record") }
+                    weekdayKeys = fields[1].split(separator: ",").compactMap { Int($0) }
+                    guard weekdayKeys.count == 7 else {
+                        throw DecodeError(line: lineNumber, reason: "W record needs seven keys")
+                    }
+
                 case "P":
                     try flushPattern()
                     guard fields.count >= 7 else { throw DecodeError(line: lineNumber, reason: "short P record") }
@@ -210,6 +238,13 @@ public enum NetworkDecoder {
                         }
                     }
                     for name in fields[1].split(separator: ",") {
+                        if let key = Int(name) {
+                            guard serviceStart != nil, weekdayKeys.count == 7 else {
+                                throw DecodeError(line: lineNumber, reason: "timetable key before the C and W records")
+                            }
+                            pendingKeyed[key, default: []].append(contentsOf: blocks)
+                            continue
+                        }
                         guard let day = DayType(rawValue: String(name)) else {
                             throw DecodeError(line: lineNumber, reason: "unknown day \(name)")
                         }
@@ -223,12 +258,21 @@ public enum NetworkDecoder {
         }
         try flushPattern()
 
+        var serviceDates: ServiceDates?
+        if let start = serviceStart {
+            guard let dates = ServiceDates(first: start, keys: serviceKeys, weekdayKeys: weekdayKeys) else {
+                throw DecodeError(line: 0, reason: "bad service calendar starting \(start)")
+            }
+            serviceDates = dates
+        }
+
         return Network(
             lines: lines,
             stations: stations,
             patterns: patterns,
             provenance: provenance,
-            fare: fare
+            fare: fare,
+            serviceDates: serviceDates
         )
     }
 }

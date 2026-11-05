@@ -9,11 +9,20 @@ import Foundation
 public struct ServiceDay: Hashable, Sendable {
     /// Noon on the service day, in the agency's time zone.
     public var noon: Date
+    /// The day of the week, or the holiday substitute (see ``ServiceCalendar``).
+    /// What a timetable without dates is looked up by.
     public var dayType: DayType
+    /// The dated timetable that runs on this day — an index into the network's
+    /// ``ServiceDates`` — or nil when the calendar has no dates to go on.
+    ///
+    /// When set it wins over `dayType`: it is SEPTA's own answer for this exact date,
+    /// holidays, timetable changes and one-off specials included.
+    public var timetableKey: Int?
 
-    public init(noon: Date, dayType: DayType) {
+    public init(noon: Date, dayType: DayType, timetableKey: Int? = nil) {
         self.noon = noon
         self.dayType = dayType
+        self.timetableKey = timetableKey
     }
 
     /// Clock time for a "seconds after midnight" schedule value.
@@ -40,15 +49,22 @@ public struct ServiceCalendar: Sendable {
     public var usesHolidaySchedule: Bool
     /// The day type substituted on those holidays (SEPTA: Sunday service).
     public var holidayDayType: DayType
+    /// The feed's date-by-date calendar. When present, every service day carries the
+    /// ``ServiceDay/timetableKey`` SEPTA publishes for that date, and the weekday and
+    /// holiday rules above only matter outside the dates it covers. `Timetable` fills
+    /// this in from its network, so callers rarely set it themselves.
+    public var serviceDates: ServiceDates?
 
     public init(
         timeZone: TimeZone = ServiceCalendar.easternTimeZone,
         usesHolidaySchedule: Bool = true,
-        holidayDayType: DayType = .sunday
+        holidayDayType: DayType = .sunday,
+        serviceDates: ServiceDates? = nil
     ) {
         self.timeZone = timeZone
         self.usesHolidaySchedule = usesHolidaySchedule
         self.holidayDayType = holidayDayType
+        self.serviceDates = serviceDates
     }
 
     public static let easternTimeZone =
@@ -76,14 +92,26 @@ public struct ServiceCalendar: Sendable {
     }
 
     public func serviceDay(containing date: Date) -> ServiceDay {
-        let anchor = noon(for: date)
-        return ServiceDay(noon: anchor, dayType: dayType(for: anchor))
+        makeServiceDay(anchor: noon(for: date))
     }
 
     private func serviceDay(offsetDays: Int, from date: Date) -> ServiceDay? {
         guard let shifted = calendar.date(byAdding: .day, value: offsetDays, to: noon(for: date)) else { return nil }
-        let anchor = noon(for: shifted)
-        return ServiceDay(noon: anchor, dayType: dayType(for: anchor))
+        return makeServiceDay(anchor: noon(for: shifted))
+    }
+
+    private func makeServiceDay(anchor: Date) -> ServiceDay {
+        let type = dayType(for: anchor)
+        guard let dates = serviceDates else { return ServiceDay(noon: anchor, dayType: type) }
+        let parts = calendar.dateComponents([.year, .month, .day], from: anchor)
+        let key = dates.key(year: parts.year ?? 0, month: parts.month ?? 0, day: parts.day ?? 0, dayType: type)
+        return ServiceDay(noon: anchor, dayType: type, timetableKey: key)
+    }
+
+    /// The service date of `date` (the calendar day of its noon), `yyyyMMdd`.
+    public func serviceDateString(for date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: noon(for: date))
+        return String(format: "%04d%02d%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
     /// Every service day whose trips could plausibly be running inside `window`,
@@ -112,9 +140,80 @@ public struct ServiceCalendar: Sendable {
     }
 }
 
+/// A feed's service calendar, date by date.
+///
+/// SEPTA's timetable is not a weekly one with a few holidays: its calendar files
+/// change trips date by date — a timetable revision mid-feed, Christmas and New
+/// Year's specials, Thanksgiving, a game at the stadiums. The generators group the
+/// dates into *timetable keys*, one per distinct set of services SEPTA runs, and
+/// each pattern lists its departures per key. This is the date → key table.
+public struct ServiceDates: Sendable, Hashable {
+    /// First date covered, as a day number (days since 1970-01-01).
+    public let firstDay: Int
+    /// `keys[i]` is the timetable key of `firstDay + i`.
+    public let keys: [Int]
+    /// Per weekday, Monday first: the key standing in for a date outside the table —
+    /// the one that covers the most dates of that weekday. A projection, not
+    /// SEPTA's word; the app says so (``PlanNote/scheduleOutOfDate(feedEndDate:)``).
+    public let weekdayKeys: [Int]
+
+    /// Number of distinct keys (one more than the largest).
+    public let keyCount: Int
+
+    public init(firstDay: Int, keys: [Int], weekdayKeys: [Int]) {
+        self.firstDay = firstDay
+        self.keys = keys
+        self.weekdayKeys = weekdayKeys
+        self.keyCount = max(keys.max() ?? -1, weekdayKeys.max() ?? -1) + 1
+    }
+
+    /// From `yyyyMMdd` and the key list; nil when malformed.
+    public init?(first yyyymmdd: String, keys: [Int], weekdayKeys: [Int]) {
+        guard let day = Self.dayNumber(yyyymmdd), weekdayKeys.count == 7, !keys.isEmpty else { return nil }
+        self.init(firstDay: day, keys: keys, weekdayKeys: weekdayKeys)
+    }
+
+    /// Last date covered, as a day number.
+    public var lastDay: Int { firstDay + keys.count - 1 }
+
+    /// The key SEPTA publishes for a date, if the table covers it.
+    public func exactKey(year: Int, month: Int, day: Int) -> Int? {
+        let index = Self.dayNumber(year: year, month: month, day: day) - firstDay
+        return keys.indices.contains(index) ? keys[index] : nil
+    }
+
+    /// The key for a date: exact inside the table, else the weekday's stand-in.
+    public func key(year: Int, month: Int, day: Int, dayType: DayType) -> Int {
+        if let exact = exactKey(year: year, month: month, day: day) { return exact }
+        return weekdayKeys[DayType.allCases.firstIndex(of: dayType) ?? 0]
+    }
+
+    /// Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant's
+    /// days_from_civil), so a lookup costs no `Calendar` arithmetic.
+    public static func dayNumber(year: Int, month: Int, day: Int) -> Int {
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let mp = (month + 9) % 12
+        let doy = (153 * mp + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146_097 + doe - 719_468
+    }
+
+    /// `yyyyMMdd` → day number; nil when malformed.
+    public static func dayNumber(_ yyyymmdd: String) -> Int? {
+        guard yyyymmdd.count == 8, let value = Int(yyyymmdd) else { return nil }
+        let year = value / 10_000, month = value / 100 % 100, day = value % 100
+        guard (1...12).contains(month), (1...31).contains(day) else { return nil }
+        return dayNumber(year: year, month: month, day: day)
+    }
+}
+
 /// The federal holidays on which SEPTA substitutes a weekend timetable.
 ///
-/// Computed rather than table-driven so the app does not silently go stale.
+/// Only consulted where there is no dated calendar to ask: the bundled timetables
+/// carry SEPTA's own service for every date they cover, holidays included, so this
+/// rule applies to hand-built networks and to dates past the end of the data.
 /// Agencies do deviate — treat this as a sane default, not gospel.
 public enum HolidayCalendar {
     public static func isMajorHoliday(_ date: Date, in timeZone: TimeZone) -> Bool {

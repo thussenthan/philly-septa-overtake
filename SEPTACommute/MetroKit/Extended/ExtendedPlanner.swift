@@ -108,7 +108,10 @@ public struct ExtendedPlanner: Sendable {
     public var timeZone: TimeZone = TimeZone(identifier: "America/New_York") ?? .current
     /// Leave out the modes whose feed no longer covers the service date (see
     /// ``ExtendedNetwork/busValidUntil`` / ``ExtendedNetwork/railValidUntil``): a
-    /// stale timetable would otherwise be presented as fact.
+    /// stale timetable would otherwise be presented as fact. Inside a feed's dates
+    /// every day runs SEPTA's timetable for that exact date. With this off, a date
+    /// past the end is planned on the weekday's most common timetable instead — a
+    /// projection, not a published schedule.
     public var skipExpiredModes = true
 
     public init(network: ExtendedNetwork, walking: WalkingModel = WalkingModel(), boardingMarginSeconds: TimeInterval = 30) {
@@ -125,7 +128,7 @@ public struct ExtendedPlanner: Sendable {
         guard walking.metersPerSecond.isFinite, walking.metersPerSecond > 0 else { return [] }
         let service = ServiceFrame(departAt: departAt, timeZone: timeZone)
         let t0 = Int32(departAt.timeIntervalSince(service.start).rounded(.up))
-        let clock = ServiceDayClock(net: net, frame: service)
+        let clock = ServiceDayClock(net: net, frame: service, project: !skipExpiredModes)
         var excluded = excludedModes
         if skipExpiredModes { excluded.formUnion(net.expiredModes(onServiceDate: service.yyyyMMdd)) }
 
@@ -361,8 +364,9 @@ public struct ExtendedPlanner: Sendable {
 
 /// The service day a query is planned in, and its neighbours, as the Metro
 /// planner's ``ServiceCalendar`` sees them: times count from noon − 12 h (the
-/// GTFS convention, right on the days the clocks change), and holidays run the
-/// substitute (Sunday) timetable.
+/// GTFS convention, right on the days the clocks change). Which trips run is the
+/// date's own timetable key (``ServiceDayClock``); the day type — holidays as
+/// Sunday — only decides the weekend rail fare and the stand-in past the data.
 struct ServiceFrame {
     let calendar: ServiceCalendar
     let yesterday: ServiceDay
@@ -370,6 +374,9 @@ struct ServiceFrame {
     let tomorrow: ServiceDay
     /// Today's date, yyyyMMdd.
     let yyyyMMdd: String
+    /// The three service dates as day numbers (``ServiceDates/dayNumber(year:month:day:)``):
+    /// yesterday, today, tomorrow.
+    let dayNumbers: (Int, Int, Int)
 
     init(departAt: Date, timeZone: TimeZone) {
         let calendar = ServiceCalendar(timeZone: timeZone)
@@ -387,6 +394,8 @@ struct ServiceFrame {
         tomorrow = neighbour(1)
         let parts = gregorian.dateComponents([.year, .month, .day], from: today.noon)
         yyyyMMdd = String(format: "%04d%02d%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+        let number = ServiceDates.dayNumber(year: parts.year ?? 0, month: parts.month ?? 0, day: parts.day ?? 0)
+        dayNumbers = (number - 1, number, number + 1)
     }
 
     /// Today's nominal midnight; search times are seconds after it.
@@ -402,8 +411,6 @@ struct ServiceFrame {
     func isWeekendFare(at seconds: Int32) -> Bool {
         calendar.dayType(for: date(seconds)).isWeekend
     }
-
-    static func index(_ day: DayType) -> Int { DayType.allCases.firstIndex(of: day) ?? 0 }
 }
 
 // MARK: - Internals
@@ -441,29 +448,49 @@ extension ExtendedNetwork {
 /// Trip lookups for one service day, including the previous day's after-midnight
 /// trips and the next day's early ones. A trip is identified by its start time in
 /// seconds after this service day's midnight.
+///
+/// Each day is looked up by its *timetable key* — SEPTA's service for that exact
+/// date — separately for the bus feed and the rail feed, since their calendars
+/// differ (a rail timetable change is not a bus one). Key -1 means no service.
 struct ServiceDayClock {
     let net: ExtendedNetwork
-    let days: (Int, Int, Int)   // day types (0 = Monday): yesterday, today, tomorrow
+    /// Timetable keys of the bus feed: yesterday, today, tomorrow.
+    let bus: (Int, Int, Int)
+    /// Timetable keys of the rail feed.
+    let rail: (Int, Int, Int)
     /// Each day's start relative to today's, in seconds.
     let shifts: (Int32, Int32, Int32)
 
-    init(net: ExtendedNetwork, days: (Int, Int, Int), shifts: (Int32, Int32, Int32) = (-86_400, 0, 86_400)) {
+    init(net: ExtendedNetwork, bus: (Int, Int, Int), rail: (Int, Int, Int),
+         shifts: (Int32, Int32, Int32) = (-86_400, 0, 86_400)) {
         self.net = net
-        self.days = days
+        self.bus = bus
+        self.rail = rail
         self.shifts = shifts
     }
 
-    init(net: ExtendedNetwork, frame: ServiceFrame) {
-        self.init(net: net,
-                  days: (ServiceFrame.index(frame.yesterday.dayType), ServiceFrame.index(frame.today.dayType),
-                         ServiceFrame.index(frame.tomorrow.dayType)),
+    /// `project`: for a date outside a feed's calendar, use its weekday stand-in
+    /// rather than no service (for a planner keeping stale modes).
+    init(net: ExtendedNetwork, frame: ServiceFrame, project: Bool = false) {
+        func keys(rail: Bool) -> (Int, Int, Int) {
+            (net.timetableKey(rail: rail, dayNumber: frame.dayNumbers.0, dayType: frame.yesterday.dayType, project: project),
+             net.timetableKey(rail: rail, dayNumber: frame.dayNumbers.1, dayType: frame.today.dayType, project: project),
+             net.timetableKey(rail: rail, dayNumber: frame.dayNumbers.2, dayType: frame.tomorrow.dayType, project: project))
+        }
+        self.init(net: net, bus: keys(rail: false), rail: keys(rail: true),
                   shifts: (frame.shift(to: frame.yesterday), 0, frame.shift(to: frame.tomorrow)))
+    }
+
+    @inline(__always)
+    func keys(of pattern: Int) -> (Int, Int, Int) {
+        net.patternIsRail[pattern] ? rail : bus
     }
 
     /// Earliest trip start whose boarding time at `position` is ≥ `time`, or `.max`.
     @inline(__always)
     func earliestTrip(pattern: Int, position: Int, departAtOrAfter time: Int32) -> Int32 {
         let off = net.boardOffset(pattern, position)
+        let days = keys(of: pattern)
         var best = Int32.max
         best = min(best, earliest(pattern, days.0, shifts.0, time - off))
         best = min(best, earliest(pattern, days.1, shifts.1, time - off))
@@ -472,9 +499,9 @@ struct ServiceDayClock {
     }
 
     @inline(__always)
-    private func earliest(_ pattern: Int, _ day: Int, _ shift: Int32, _ startAtLeast: Int32) -> Int32 {
-        let slot = (pattern * 7 + day) * 2
-        var lo = Int(net.tripRanges[slot]), hi = Int(net.tripRanges[slot + 1])
+    private func earliest(_ pattern: Int, _ key: Int, _ shift: Int32, _ startAtLeast: Int32) -> Int32 {
+        let range = net.tripRange(pattern: pattern, key: key)
+        var lo = range.lowerBound, hi = range.upperBound
         guard lo < hi else { return .max }
         let target = startAtLeast - shift
         return net.tripStarts.withUnsafeBufferPointer { starts in
@@ -490,17 +517,18 @@ struct ServiceDayClock {
     /// Latest trip start whose time at `position` is ≤ `time`, or `.min`.
     func latestTrip(pattern: Int, position: Int, arriveBy time: Int32) -> Int32 {
         let off = net.offset(pattern, position)
+        let days = keys(of: pattern)
         var best = Int32.min
-        for (day, shift) in [(days.0, shifts.0), (days.1, shifts.1), (days.2, shifts.2)] {
-            let slot = (pattern * 7 + day) * 2
-            var lo = Int(net.tripRanges[slot]), hi = Int(net.tripRanges[slot + 1])
+        for (key, shift) in [(days.0, shifts.0), (days.1, shifts.1), (days.2, shifts.2)] {
+            let range = net.tripRange(pattern: pattern, key: key)
+            var lo = range.lowerBound, hi = range.upperBound
             let target = time - off - shift
             // first index with start > target
             while lo < hi {
                 let mid = (lo + hi) >> 1
                 if net.tripStarts[mid] <= target { lo = mid + 1 } else { hi = mid }
             }
-            if lo > Int(net.tripRanges[slot]) {
+            if lo > range.lowerBound {
                 best = max(best, net.tripStarts[lo - 1] + shift)
             }
         }

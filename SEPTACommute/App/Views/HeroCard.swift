@@ -38,7 +38,7 @@ struct HeroCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 22)
-                .fill(.background.secondary)
+                .fill(Theme.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22)

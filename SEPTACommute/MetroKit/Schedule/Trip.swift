@@ -40,8 +40,12 @@ public struct Timetable: Sendable {
     public let network: Network
     public let calendar: ServiceCalendar
 
+    /// A calendar without dates of its own takes the network's, so every service day
+    /// is looked up by the timetable SEPTA publishes for that exact date.
     public init(network: Network, calendar: ServiceCalendar = ServiceCalendar()) {
         self.network = network
+        var calendar = calendar
+        if calendar.serviceDates == nil { calendar.serviceDates = network.serviceDates }
         self.calendar = calendar
     }
 
@@ -52,7 +56,7 @@ public struct Timetable: Sendable {
     public func trips(of pattern: ServicePattern, startingIn window: DateInterval) -> [Trip] {
         var result: [Trip] = []
         for day in calendar.serviceDays(overlapping: window) {
-            for seconds in pattern.schedule.startTimes(on: day.dayType) {
+            for seconds in pattern.schedule.startTimes(on: day) {
                 let start = day.date(secondsAfterMidnight: seconds)
                 guard start >= window.start, start <= window.end else { continue }
                 result.append(Trip(
@@ -126,10 +130,10 @@ public struct Timetable: Sendable {
             // Earliest schedule value that could still be caught, allowing for how
             // far into the trip this station is.
             let threshold = time.timeIntervalSince(day.start) - offset
-            guard let position = pattern.schedule.firstStartIndex(on: day.dayType, atOrAfter: threshold) else {
+            guard let position = pattern.schedule.firstStartIndex(on: day, atOrAfter: threshold) else {
                 continue
             }
-            let seconds = pattern.schedule.startTimes(on: day.dayType)[position]
+            let seconds = pattern.schedule.startTimes(on: day)[position]
             let start = day.date(secondsAfterMidnight: seconds)
             let departure = start.addingTimeInterval(offset)
             guard departure <= limit, departure < bestDeparture else { continue }

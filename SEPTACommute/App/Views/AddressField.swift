@@ -44,7 +44,7 @@ struct AddressField: View {
                 }
             }
             .padding(12)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
             .onChange(of: search.query) { _, _ in pending = nil }
 
             if let error = search.errorMessage {
@@ -79,7 +79,7 @@ struct AddressField: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
             }
 
             if !search.suggestions.isEmpty {
@@ -113,7 +113,7 @@ struct AddressField: View {
                         }
                     }
                 }
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
             }
         }
     }

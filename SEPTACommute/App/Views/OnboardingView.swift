@@ -118,7 +118,7 @@ struct OnboardingView: View {
                         .accessibilityHint("Clears this address so you can enter another")
                 }
                 .padding(12)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
             } else {
                 if role == .school {
                     // Asked here rather than after the fact: naming it is one tap, and
@@ -267,7 +267,7 @@ struct OnboardingView: View {
                             .frame(minHeight: 44)
                         }
                     }
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -284,7 +284,7 @@ struct OnboardingView: View {
                         CarFields(hasCar: $model.preferences.hasCar, car: $model.preferences.car)
                     }
                     .padding(12)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -300,10 +300,12 @@ struct OnboardingView: View {
                             prompt: Text("$\(Int(RiderPreferences.defaultHourlyValue))")
                         )
                         .keyboardType(.decimalPad)
+                        .accessibilityLabel("Your time is worth, dollars per hour")
                         Text("per hour").foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
                     .padding(12)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
                     Text("Ranks every way there by fare + time. Try your hourly wage.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

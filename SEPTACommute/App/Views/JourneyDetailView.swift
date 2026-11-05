@@ -47,6 +47,7 @@ struct JourneyDetailView: View {
             }
             .padding(20)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Your trip")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

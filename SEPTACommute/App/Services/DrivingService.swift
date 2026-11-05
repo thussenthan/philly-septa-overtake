@@ -23,8 +23,11 @@ struct DrivingEstimate: Equatable, Identifiable {
     var fuel: Double
     var wear: Double
     var parking: Double
+    /// The route uses a toll road. Apple Maps doesn't say what it costs, so
+    /// `cost` is everything but the toll: a floor, not the price.
+    var hasTolls: Bool
 
-    var id: String { "drive-\(name)-\(Int(meters))" }
+    var id: String { "drive-\(name)-\(Int(meters))\(hasTolls ? "-tolls" : "")" }
     var cost: Double { fuel + wear + parking }
     var arrival: Date { departure.addingTimeInterval(seconds) }
 
@@ -42,7 +45,8 @@ struct DrivingEstimate: Equatable, Identifiable {
             departure: departure,
             fuel: gallons * car.gasPrice,
             wear: miles * CarProfile.wearPerMile,
-            parking: car.parking
+            parking: car.parking,
+            hasTolls: route.hasTolls
         )
     }
 }
@@ -56,6 +60,7 @@ actor DrivingService {
         var seconds: TimeInterval
         var meters: Double
         var highwayMeters: Double
+        var hasTolls: Bool
     }
 
     /// Road names that mean highway driving, anywhere: interstates and US routes,
@@ -73,8 +78,8 @@ actor DrivingService {
 
     /// Every distinct route Apple Maps offers: its alternatives, and its best
     /// toll-free and highway-free routes. Apple says whether a route has tolls
-    /// but not what they cost, so tolled routes are left out rather than priced
-    /// with a guess. Which are worth showing is the Best value frontier's call.
+    /// but not what they cost, so a tolled route is priced without the toll and
+    /// marked "+ tolls". Which are worth showing is the Best value frontier's call.
     func estimates(from: Coordinate, to: Coordinate, car: CarProfile, now: Date) async -> [DrivingEstimate] {
         let key = String(format: "%.4f,%.4f>%.4f,%.4f", from.latitude, from.longitude, to.latitude, to.longitude)
         let routes: [Route]
@@ -116,12 +121,9 @@ actor DrivingService {
         }
         guard let response = try? await MKDirections(request: request).calculate() else { return [] }
         return response.routes.compactMap { route in
-            // Apple Maps can't say what a toll costs, so there is no honest
-            // price for this route; it isn't ranked.
-            if route.hasTolls { return nil }
             let highwayMeters = route.steps.filter { isHighway($0.instructions) }.reduce(0) { $0 + $1.distance }
             return Route(name: route.name, seconds: route.expectedTravelTime, meters: route.distance,
-                         highwayMeters: highwayMeters)
+                         highwayMeters: highwayMeters, hasTolls: route.hasTolls)
         }
     }
 }

@@ -20,7 +20,7 @@ struct DepartureBoardView: View {
                     row(departure)
                 }
             }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 

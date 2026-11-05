@@ -100,7 +100,7 @@ struct MoreWaysSection: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
@@ -129,7 +129,7 @@ struct MoreWaysSection: View {
                     .buttonStyle(.plain)
                 }
             }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 
@@ -142,8 +142,10 @@ struct MoreWaysSection: View {
             VStack(spacing: 0) {
                 ForEach(Array(ranking.enumerated()), id: \.element.id) { index, candidate in
                     if index > 0 { Divider().padding(.leading, 44) }
-                    let fare = candidate.fare < 0.005 ? "Free" : Format.money(candidate.fare)
-                    let total = Format.money(candidate.cost(perHour: rate))
+                    let fare = candidate.fareIsLowerBound
+                        ? Format.money(candidate.fare) + " + tolls"
+                        : (candidate.fare < 0.005 ? "Free" : Format.money(candidate.fare))
+                    let total = Format.money(candidate.cost(perHour: rate)) + (candidate.fareIsLowerBound ? "+" : "")
                     HStack(spacing: 10) {
                         Text("\(index + 1)")
                             .font(.caption.weight(.bold))
@@ -173,10 +175,10 @@ struct MoreWaysSection: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Number \(index + 1): \(candidate.title). \(fare), \(Format.minutes(candidate.travelTime)), arriving \(Format.clock(candidate.arrival)). \(total) counting your time.")
+                    .accessibilityLabel("Number \(index + 1): \(candidate.title). \(candidate.fareIsLowerBound ? "\(Format.money(candidate.fare)) plus tolls of unknown cost" : fare), \(Format.minutes(candidate.travelTime)), arriving \(Format.clock(candidate.arrival)). \(total) counting your time\(candidate.fareIsLowerBound ? " before tolls" : "").")
                 }
             }
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 }
@@ -386,6 +388,7 @@ struct ExtendedDetailView: View {
                             if walk.seconds >= 30 {
                                 HStack(alignment: .top, spacing: 12) {
                                     Image(systemName: "figure.walk").frame(width: 24).foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
                                     Text("Walk \(Format.minutes(walk.seconds)) to \(walk.toName == "Destination" ? destinationName : walk.toName)")
                                         .font(.subheadline)
                                 }
@@ -410,7 +413,7 @@ struct ExtendedDetailView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
 
                 Text("Scheduled times · SEPTA Key fare")
                     .font(.caption)
@@ -418,6 +421,7 @@ struct ExtendedDetailView: View {
             }
             .padding(20)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Your trip")
         .navigationBarTitleDisplayMode(.inline)
     }

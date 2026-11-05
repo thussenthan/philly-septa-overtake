@@ -122,6 +122,7 @@ struct SettingsView: View {
                 )
                 .keyboardType(.decimalPad)
                 .focused($editingValue)
+                .accessibilityLabel("My time is worth, dollars per hour")
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 110)
                 Text("/ hour").foregroundStyle(.secondary)
@@ -416,7 +417,7 @@ struct RankingExplainerView: View {
                 "Climbing on a classic bike counts twice: time and effort.",
                 "Driving: every Apple Maps route with live traffic.",
                 "Cost: gas from your mpg, 10¢/mi wear and parking.",
-                "Routes with tolls are left out: Apple Maps can't say what they cost.",
+                "Routes with tolls say \u{201C}+ tolls\u{201D}: Apple Maps can't say what they cost, so the price shown leaves them out.",
                 "Walking the whole way counts too, timed by Apple Maps.",
                 "Doesn't change the main answer.",
             ])
@@ -602,7 +603,7 @@ struct PlaceNameField: View {
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .padding(12)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
 
             if role == .school {
                 HStack(spacing: 8) {
