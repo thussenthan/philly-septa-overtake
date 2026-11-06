@@ -251,7 +251,10 @@ public struct JourneyNarrator: Sendable {
     /// three minutes or less, where running gains almost nothing.
     public func advisory(for journey: Journey, asOf now: Date) -> Advisory? {
         guard !journey.isWalkOnly else { return nil }
-        let secondsLeft = journey.urgency.secondsUntilLeaveBy(asOf: now)
+        // Already at the station, the time that matters is the train's.
+        let secondsLeft = journey.startsAtStation
+            ? journey.urgency.secondsUntilBoarding(asOf: now)
+            : journey.urgency.secondsUntilLeaveBy(asOf: now)
         if secondsLeft < -30 { return .missed }
 
         guard let cost = journey.missedCost else { return nil }
@@ -270,11 +273,16 @@ public struct JourneyNarrator: Sendable {
     }
 
     /// The advisory as a sentence.
-    public func advisoryText(_ advisory: Advisory) -> String {
+    public func advisoryText(_ advisory: Advisory, atStation: Bool = false) -> String {
         switch advisory {
         case .run(let penalty, let secondsLeft):
             // Floored like every other countdown: rounding said "2m" with 91 s left.
-            let when = secondsLeft <= 30 ? "Go now" : "Leave \(Format.relativeLeave(secondsLeft))"
+            let when: String
+            if atStation {
+                when = secondsLeft <= 30 ? "Board now" : "Train \(Format.relativeLeave(secondsLeft))"
+            } else {
+                when = secondsLeft <= 30 ? "Go now" : "Leave \(Format.relativeLeave(secondsLeft))"
+            }
             return "\(when) — miss this and you lose \(Format.minutes(penalty))"
         case .dontRush(let penalty):
             // "only under a minute behind" is what `Format.minutes` makes of a tie.
@@ -299,7 +307,7 @@ public struct JourneyNarrator: Sendable {
         // A run warning outranks any comparison between options: it is the only
         // thing that changes what the rider should do in the next thirty seconds.
         if let advisory = advisory(for: best, asOf: now), advisory.isUrgent {
-            return "\(bestSummary.title). \(advisoryText(advisory))."
+            return "\(bestSummary.title). \(advisoryText(advisory, atStation: best.startsAtStation))."
         }
 
         guard let runnerUp = plan.journeys.dropFirst().first else {

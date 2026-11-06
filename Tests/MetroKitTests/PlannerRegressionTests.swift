@@ -260,3 +260,14 @@ final class AtStationTests: XCTestCase {
         XCTAssertFalse(journey.startsAtStation)
     }
 }
+
+final class AtStationAdvisoryTests: XCTestCase {
+    func testTheRunWarningDoesNotTellAWaitingRiderToGo() {
+        let narrator = JourneyNarrator(network: Fixture.network)
+        let text = narrator.advisoryText(.run(penalty: 600, secondsLeft: 10), atStation: true)
+        XCTAssertTrue(text.hasPrefix("Board now"), text)
+        XCTAssertFalse(text.contains("Go now"), text)
+        let early = narrator.advisoryText(.run(penalty: 600, secondsLeft: 120), atStation: true)
+        XCTAssertTrue(early.hasPrefix("Train in"), early)
+    }
+}

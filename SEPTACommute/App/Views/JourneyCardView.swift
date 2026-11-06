@@ -155,7 +155,7 @@ struct JourneyCardView: View {
                 HStack(spacing: 7) {
                     Image(systemName: advisorySymbol(advisory))
                         .font(.caption.weight(.bold))
-                    Text(narrator.advisoryText(advisory))
+                    Text(narrator.advisoryText(advisory, atStation: journey.startsAtStation))
                         .font(.caption.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)

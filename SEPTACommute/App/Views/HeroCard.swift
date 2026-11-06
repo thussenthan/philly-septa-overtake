@@ -64,6 +64,8 @@ struct HeroCard: View {
                 Text(Format.clock(journey.arrivalTime))
                     .font(.title2.weight(.semibold))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 Text("arrive")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -296,7 +298,7 @@ struct HeroCard: View {
                     HStack(spacing: 7) {
                         Image(systemName: advisorySymbol(advisory))
                             .font(.caption.weight(.bold))
-                        Text(narrator.advisoryText(advisory))
+                        Text(narrator.advisoryText(advisory, atStation: journey.startsAtStation))
                             .font(.caption.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
@@ -359,7 +361,7 @@ struct HeroCard: View {
             // The most urgent thing on the card — whether to run — is otherwise only
             // visible, and the combined label replaces every child's own text.
             if let advisory = narrator.advisory(for: journey, asOf: Date()) {
-                parts.append(narrator.advisoryText(advisory))
+                parts.append(narrator.advisoryText(advisory, atStation: journey.startsAtStation))
             }
         }
         parts.append("arrive \(Format.clock(journey.arrivalTime))")
@@ -382,6 +384,20 @@ struct LeaveCountdown: View {
     /// Scales with Dynamic Type; a fixed 32 pt number stayed small beside everything
     /// else at the larger accessibility sizes.
     @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 32
+
+    private var countdownLabel: some View {
+        Text(atStation ? "Train in" : "Leave in")
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+    }
+
+    private func countdownNumber(_ remaining: TimeInterval, tint: Color) -> some View {
+        Text(Format.countdown(remaining))
+            .font(.system(size: numberSize, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(tint)
+            .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -413,14 +429,20 @@ struct LeaveCountdown: View {
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                 } else {
-                    Text(atStation ? "Train in" : "Leave in")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    Text(Format.countdown(remaining))
-                        .font(.system(size: numberSize, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(tint)
-                        .contentTransition(reduceMotion ? .identity : .numericText(countsDown: true))
+                    // Side by side when it fits; stacked at the large accessibility
+                    // sizes, where "Train in" otherwise broke mid-word.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            countdownLabel.fixedSize()
+                            countdownNumber(remaining, tint: tint).fixedSize()
+                        }
+                        VStack(alignment: .leading, spacing: 0) {
+                            countdownLabel
+                            countdownNumber(remaining, tint: tint)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        }
+                    }
                 }
             }
             .onChange(of: remaining < -2) { _, missed in
