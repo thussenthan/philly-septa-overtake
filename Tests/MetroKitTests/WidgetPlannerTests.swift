@@ -53,6 +53,17 @@ final class WidgetPlannerTests: XCTestCase {
         }
     }
 
+    /// A rider already at the station is counting down to the train, so the widget
+    /// says "train in", not "leave in".
+    func testARiderAtTheStationGetsTheTrainCountdownNotALeaveCountdown() throws {
+        let steps = self.steps(at: 8, 1)
+        XCTAssertFalse(steps.isEmpty)
+        for step in steps {
+            XCTAssertTrue(step.atStation)
+            XCTAssertEqual(step.cue, "train")
+        }
+    }
+
     func testEveryEntryIsStillCatchableWhenItTakesOver() throws {
         for step in steps(at: 8, 1) {
             XCTAssertGreaterThanOrEqual(

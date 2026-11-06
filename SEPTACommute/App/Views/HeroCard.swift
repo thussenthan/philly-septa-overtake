@@ -13,6 +13,7 @@ import SwiftUI
 /// the last and most error-prone step themselves.
 struct HeroCard: View {
     @ScaledMetric(relativeTo: .largeTitle) private var walkSize: CGFloat = 30
+    @Environment(\.dynamicTypeSize) private var typeSize
     var journey: Journey
     var summary: JourneySummary
     var narrator: JourneyNarrator
@@ -131,13 +132,23 @@ struct HeroCard: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.color(for: Urgency.Level.leaveSoon))
                 }
+                if typeSize.isAccessibilitySize {
+                    // Beside the text the clock squeezed it into a column a few
+                    // letters wide; under it, both read in full.
+                    Text(Format.clock(ride.departure))
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
                 stopStrip(for: ride)
             }
             Spacer(minLength: 0)
-            Text(Format.clock(ride.departure))
-                .font(.caption.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            if !typeSize.isAccessibilitySize {
+                Text(Format.clock(ride.departure))
+                    .font(.caption.weight(.medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -189,13 +200,15 @@ struct HeroCard: View {
                     .frame(width: isFirst || isLast ? 9 : 6)
                     .overlay(Circle().strokeBorder(Theme.color(for: line), lineWidth: 2))
             }
-            .frame(width: 12, height: 22)
+            .frame(width: 12)
+            .frame(minHeight: 22)
 
-            Text(name)
+            Text(isLast && typeSize.isAccessibilitySize ? "\(name) · get off" : name)
                 .font(isLast ? .caption.weight(.semibold) : .caption)
                 .foregroundStyle(isFirst || isLast ? .primary : .secondary)
-                .lineLimit(1)
-            if isLast {
+                .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
+            if isLast && !typeSize.isAccessibilitySize {
                 Text("get off")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Theme.accent)
@@ -206,6 +219,8 @@ struct HeroCard: View {
                     .font(.caption2)
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
     }
@@ -409,7 +424,7 @@ struct LeaveCountdown: View {
             let level = Urgency(
                 leaveBy: urgency.leaveBy,
                 boardingDeparture: urgency.boardingDeparture,
-                slack: atStation ? remaining - 30 : remaining
+                slack: remaining
             ).level
             let tint = Theme.color(for: level)
 

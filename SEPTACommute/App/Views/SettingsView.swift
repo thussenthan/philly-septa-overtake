@@ -380,7 +380,7 @@ struct RankingExplainerView: View {
             topic("The answer", symbol: "clock", [
                 "Sorted by when you reach the door, not by which train leaves first.",
                 "Only trains you can still catch, walk included.",
-                "\u{201C}Leave in\u{201D} counts down to the last moment to set off, safety margin included.",
+                "\u{201C}Leave in\u{201D} counts down to the last moment to set off, safety margin included. Already at the station, it counts down to the train itself.",
                 "A slower train stays listed if it lets you leave later.",
             ])
             topic("Broad Street Line", symbol: "tram", [

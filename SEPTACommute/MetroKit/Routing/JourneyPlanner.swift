@@ -236,6 +236,17 @@ public struct JourneyPlanner: Sendable {
         var straightLineMeters: Double
         var seconds: TimeInterval
         var isMeasured: Bool
+
+        /// Already standing at the station, so there is no walk for a margin to cover.
+        var isAtStation: Bool { straightLineMeters <= 20 }
+    }
+
+    /// The padding before a boarding. A rider already in the station has nothing
+    /// to be early for: the margin exists to cover getting there, and keeping it
+    /// hid the train for its last thirty seconds, when "boarding now" is exactly
+    /// what they need to see.
+    private func boardingBuffer(accessLeg: TerminalLeg, isFirstBoarding: Bool) -> TimeInterval {
+        isFirstBoarding && accessLeg.isAtStation ? 0 : options.boardingBufferSeconds
     }
 
     private func terminalLegs(for endpoint: Endpoint, role: Role, overrides: WalkTimeOverrides) -> [TerminalLeg] {
@@ -423,7 +434,7 @@ public struct JourneyPlanner: Sendable {
             guard let boardIndex = pattern.stopIndex(of: station),
                   pattern.stops[boardIndex].allowsBoarding else { continue }
 
-            let earliest = readyAt.addingTimeInterval(options.boardingBufferSeconds)
+            let earliest = readyAt.addingTimeInterval(boardingBuffer(accessLeg: accessLeg, isFirstBoarding: rides.isEmpty))
             guard earliest <= horizonEnd,
                   let trip = timetable.nextTrip(
                       of: pattern,
@@ -513,7 +524,9 @@ public struct JourneyPlanner: Sendable {
         // The rider does not need to leave when the planner started searching —
         // they need to leave in time to catch the first train. Reporting that
         // instant, rather than "now", is what makes the countdown honest.
-        let leaveBy = first.departure.addingTimeInterval(-accessLeg.seconds - options.boardingBufferSeconds)
+        let leaveBy = first.departure.addingTimeInterval(
+            -accessLeg.seconds - boardingBuffer(accessLeg: accessLeg, isFirstBoarding: true)
+        )
         let slack = leaveBy.timeIntervalSince(request.departAt)
         guard slack >= -30 else { return nil }
 

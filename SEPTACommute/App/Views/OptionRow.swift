@@ -13,6 +13,7 @@ struct OptionRow: View {
     var network: Network
     /// True when SEPTA is reporting something on one of this option's lines.
     var hasAlert: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 10) {
@@ -21,7 +22,7 @@ struct OptionRow: View {
                 HStack(spacing: 5) {
                     Text(summary.title)
                         .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                     if hasAlert {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.caption2)
@@ -34,7 +35,7 @@ struct OptionRow: View {
                     Text(tradeoff(asOf: context.date))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
                 }
             }
             Spacer(minLength: 4)

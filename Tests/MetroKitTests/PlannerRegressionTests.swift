@@ -271,3 +271,31 @@ final class AtStationAdvisoryTests: XCTestCase {
         XCTAssertTrue(early.hasPrefix("Train in"), early)
     }
 }
+
+final class AtStationBoardingMarginTests: XCTestCase {
+    private func planner() -> JourneyPlanner {
+        Fixture.planner { $0.boardingBufferSeconds = 30 }
+    }
+
+    /// Standing at the station, a train twenty seconds out is still the answer:
+    /// the margin covers a walk, and there is none.
+    func testATrainTwentySecondsOutStaysOnTheBoardAtTheStation() throws {
+        let plan = planner().plan(PlanRequest(
+            origin: .station("a"), destination: .station("f"), departAt: Fixture.date(8, 9, second: 40)
+        ))
+        let journey = try XCTUnwrap(plan.journeys.first { !$0.isWalkOnly })
+        XCTAssertEqual(journey.rides.first?.departure, Fixture.date(8, 10))
+        XCTAssertTrue(journey.startsAtStation)
+    }
+
+    /// Four hundred metres away the same margin still applies.
+    func testTheMarginStillAppliesWhenThereIsAWalk() throws {
+        let plan = planner().plan(PlanRequest(
+            origin: .place(name: "Home", coordinate: Fixture.coordinate(of: "a", offsetMeters: 400)),
+            destination: .station("f"),
+            departAt: Fixture.date(8, 9, second: 40)
+        ))
+        let first = plan.journeys.first { !$0.isWalkOnly }?.rides.first?.departure
+        XCTAssertNotEqual(first, Fixture.date(8, 10))
+    }
+}

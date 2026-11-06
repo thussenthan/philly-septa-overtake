@@ -204,7 +204,7 @@ struct UrgencyBadge: View {
             let level = Urgency(
                 leaveBy: urgency.leaveBy,
                 boardingDeparture: urgency.boardingDeparture,
-                slack: atStation ? remaining - 30 : remaining
+                slack: remaining
             ).level
 
             HStack(spacing: 5) {
