@@ -178,7 +178,10 @@ open the full itinerary with clock times and skipped stations. SEPTA's alert tex
 planner's caveats and where the timetable came from live in Settings, and a dot on the
 gear says when SEPTA is reporting something on your lines.
 The arrow between the two ends turns the trip round when both are somewhere a trip
-can start; every station picker opens on the stations **nearby**; and the itinerary
+can start; every station picker opens on the stations **nearby**; either picker also
+takes an address, a business or landmark ("Aldi", "Trader Joe's"), or a typed
+latitude and longitude, for a trip to somewhere that isn't a station or a saved
+place; and the itinerary
 can be shared as plain text — leave by, which trains, arrive — for whoever is
 waiting at the other end.
 
@@ -726,7 +729,7 @@ There is no account, no analytics, and no server. Addresses and preferences live
 - **SEPTA's public alerts feed**, which sends nothing about you.
 - **GitHub's releases API**, to check whether SEPTA has published a newer timetable.
 - **Indego's public dock feed** (only with bike share shown), which sends nothing about you.
-- **Apple's address search**, only while you're typing an address.
+- **Apple's address and place search**, only while you're typing an address or place name.
 - **Apple Maps**: map tiles, walking and cycling routes for the trip maps, and
   walking directions when measured walk times are on. These send Apple the start
   and end of each route.

@@ -9,6 +9,7 @@ struct DestinationPickerView: View {
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
+    @StateObject private var addresses = AddressSearch()
 
     var body: some View {
         NavigationStack {
@@ -48,6 +49,12 @@ struct DestinationPickerView: View {
                     }
                 }
 
+                AddressResultsSection(search: search, addresses: addresses) { place in
+                    model.registerOneOff(place)
+                    selection = .saved(place)
+                    dismiss()
+                }
+
                 if search.isEmpty {
                     NearbyStationsSection(isSelected: { selection == .station($0) }) { id in
                         selection = .station(id)
@@ -77,10 +84,12 @@ struct DestinationPickerView: View {
                     }
                 }
             }
-            .searchable(text: $search, prompt: "Find a station or place")
+            .searchable(text: $search, prompt: "Station, address, place or lat, lon")
+            .onChange(of: search) { _, new in addresses.query = new }
             .overlay {
                 if filteredSections.isEmpty && !search.isEmpty
-                    && StationSearch.places(places.places, matching: search).isEmpty {
+                    && StationSearch.places(places.places, matching: search).isEmpty
+                    && addresses.allSuggestions.isEmpty && Coordinate.parse(search) == nil {
                     ContentUnavailableView.search(text: search)
                 }
             }
@@ -107,6 +116,7 @@ struct OriginPickerView: View {
     @EnvironmentObject private var places: PlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
+    @StateObject private var addresses = AddressSearch()
 
     var body: some View {
         NavigationStack {
@@ -147,6 +157,12 @@ struct OriginPickerView: View {
                     }
                 }
 
+                AddressResultsSection(search: search, addresses: addresses) { place in
+                    model.registerOneOff(place)
+                    selection = .saved(place)
+                    dismiss()
+                }
+
                 if search.isEmpty {
                     NearbyStationsSection(isSelected: { selection == .station($0) }) { id in
                         selection = .station(id)
@@ -176,10 +192,12 @@ struct OriginPickerView: View {
                     }
                 }
             }
-            .searchable(text: $search, prompt: "Find a station or place")
+            .searchable(text: $search, prompt: "Station, address, place or lat, lon")
+            .onChange(of: search) { _, new in addresses.query = new }
             .overlay {
                 if filteredSections.isEmpty && !search.isEmpty
-                    && StationSearch.places(places.places, matching: search).isEmpty {
+                    && StationSearch.places(places.places, matching: search).isEmpty
+                    && addresses.allSuggestions.isEmpty && Coordinate.parse(search) == nil {
                     ContentUnavailableView.search(text: search)
                 }
             }
@@ -206,6 +224,64 @@ struct OriginPickerView: View {
 }
 
 // MARK: - Shared pieces
+
+/// Addresses and places anywhere SEPTA runs, found as the rider types.
+///
+/// Stations and saved places only covered where the rider already knew to look;
+/// a trip to somewhere new (an office, a friend's house, "Conshohocken") had no
+/// way in. A choice here is a one-off place: it plans the trip but is not added to
+/// the saved list.
+struct AddressResultsSection: View {
+    var search: String
+    @ObservedObject var addresses: AddressSearch
+    var onChoose: (SavedPlace) -> Void
+
+    @State private var resolving: String?
+
+    var body: some View {
+        let query = search.trimmingCharacters(in: .whitespaces)
+        let typed = Coordinate.parse(query).map {
+            AddressSearch.Suggestion(
+                title: String(format: "%.5f, %.5f", $0.latitude, $0.longitude),
+                subtitle: "Coordinates", coordinate: $0)
+        }
+        let found = (typed.map { [$0] } ?? []) + addresses.allSuggestions
+        if !query.isEmpty, !found.isEmpty {
+            Section("Addresses and places") {
+                ForEach(found.prefix(10)) { suggestion in
+                    Button {
+                        choose(suggestion)
+                    } label: {
+                        HStack {
+                            PickerRow(symbol: suggestion.subtitle == "Coordinates" ? "scope" : "mappin.circle.fill",
+                                      title: suggestion.title,
+                                      subtitle: suggestion.subtitle,
+                                      isSelected: false)
+                            if resolving == suggestion.id { ProgressView().controlSize(.small) }
+                        }
+                    }
+                    .disabled(resolving != nil)
+                }
+            }
+        }
+        if let error = addresses.errorMessage, !query.isEmpty {
+            Section { Text(error).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    private func choose(_ suggestion: AddressSearch.Suggestion) {
+        resolving = suggestion.id
+        Task {
+            if let found = await addresses.resolve(suggestion) {
+                let place = SavedPlace(role: .custom, name: suggestion.title,
+                                       address: suggestion.subtitle == "Coordinates" ? suggestion.title : found.address,
+                                       latitude: found.coordinate.latitude, longitude: found.coordinate.longitude)
+                onChoose(place)
+            }
+            resolving = nil
+        }
+    }
+}
 
 /// The search every picker runs, in one place so they can't drift apart.
 enum StationSearch {

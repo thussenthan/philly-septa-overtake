@@ -11,6 +11,9 @@ final class AddressSearch: NSObject, ObservableObject {
         var id: String { "\(title)|\(subtitle)" }
         var title: String
         var subtitle: String
+        /// Known already for a searched place or typed coordinates; `nil` for a
+        /// completer suggestion, which still has to be looked up.
+        var coordinate: Coordinate?
 
         var combined: String {
             subtitle.isEmpty ? title : "\(title), \(subtitle)"
@@ -24,6 +27,48 @@ final class AddressSearch: NSObject, ObservableObject {
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
                 suggestions = []
             }
+            searchPlaces()
+        }
+    }
+
+    /// Businesses and landmarks ("Aldi", "Trader Joe's"), which the completer is
+    /// poor at: a full search returns their coordinates directly.
+    @Published private(set) var places: [Suggestion] = []
+    private var placeTask: Task<Void, Never>?
+
+    /// Places first, then address completions that aren't the same thing again.
+    var allSuggestions: [Suggestion] {
+        let titles = Set(places.map { $0.title.lowercased() })
+        return places + suggestions.filter { !titles.contains($0.title.lowercased()) }
+    }
+
+    private func searchPlaces() {
+        placeTask?.cancel()
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 2, Coordinate.parse(text) == nil else {
+            places = []
+            return
+        }
+        placeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = text
+            request.region = Self.philadelphiaRegion
+            request.resultTypes = [.pointOfInterest, .address]
+            let response = try? await MKLocalSearch(request: request).start()
+            guard !Task.isCancelled, let self else { return }
+            let center = Coordinate(latitude: Self.serviceRegion.center.latitude, longitude: Self.serviceRegion.center.longitude)
+            self.places = (response?.mapItems ?? []).compactMap { item -> Suggestion? in
+                let c = Coordinate(latitude: item.placemark.coordinate.latitude, longitude: item.placemark.coordinate.longitude)
+                // SEPTA's service area only; "Aldi" has stores in every state.
+                guard c.distance(to: center) <= 85_000 else { return nil }
+                let address = Self.describe(item.placemark, fallback: "")
+                let title = item.name ?? address
+                guard !title.isEmpty else { return nil }
+                return Suggestion(title: title, subtitle: title == address ? "" : address, coordinate: c)
+            }
+            .prefix(8).map { $0 }
         }
     }
 
@@ -63,6 +108,9 @@ final class AddressSearch: NSObject, ObservableObject {
 
     /// Turn a suggestion into a coordinate.
     func resolve(_ suggestion: Suggestion) async -> (address: String, coordinate: Coordinate)? {
+        if let known = suggestion.coordinate {
+            return (address: suggestion.subtitle.isEmpty ? suggestion.title : suggestion.combined, coordinate: known)
+        }
         isResolving = true
         defer { isResolving = false }
 

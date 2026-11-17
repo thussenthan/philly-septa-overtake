@@ -244,6 +244,11 @@ final class CommuteModel: ObservableObject {
     /// overriding them. Deliberately not persisted — every launch starts by
     /// guessing again, which is the behaviour that makes the app useful at a glance.
     @Published private(set) var hasManualTarget = false
+    /// Places searched for in a picker and used for one trip: not in the saved list,
+    /// so edits to that list must not mistake them for deleted places.
+    private var oneOffPlaceIDs = Set<UUID>()
+
+    func registerOneOff(_ place: SavedPlace) { oneOffPlaceIDs.insert(place.id) }
 
     /// The services default to `nil` rather than to freshly constructed values.
     ///
@@ -483,7 +488,7 @@ final class CommuteModel: ObservableObject {
         // A saved place chosen as the start follows its edits, and a deleted one
         // hands back to the rider's location rather than planning from an address
         // that no longer exists.
-        if case .saved(let place) = source {
+        if case .saved(let place) = source, !oneOffPlaceIDs.contains(place.id) {
             if let refreshed = updated.first(where: { $0.id == place.id }) {
                 if refreshed != place { source = .saved(refreshed) }
             } else {
@@ -496,7 +501,9 @@ final class CommuteModel: ObservableObject {
             return
         }
         // Keep pointing at the same role if its address was edited.
-        if case .saved(let place) = target {
+        if case .saved(let place) = target, oneOffPlaceIDs.contains(place.id) {
+            // A searched-for destination stays as the rider chose it.
+        } else if case .saved(let place) = target {
             if let refreshed = updated.first(where: { $0.id == place.id }) {
                 target = .saved(refreshed)
             } else if let sameRole = updated.first(where: { $0.role == place.role }) {
