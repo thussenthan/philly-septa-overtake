@@ -182,3 +182,55 @@ final class PlaceStore: ObservableObject {
         defaults.set(data, forKey: storageKey)
     }
 }
+
+/// Places searched for and used, kept so a repeat trip is one tap, and the one
+/// offer to make a frequent place a favorite.
+@MainActor
+final class RecentPlaceStore: ObservableObject {
+    @Published private(set) var log = RecentPlaceLog()
+    /// Set when a place has earned the offer; the root view shows it once.
+    @Published var favoriteOffer: RecentPlace?
+
+    private let defaults: UserDefaults
+    private let storageKey = "recentPlaces.v1"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if let data = defaults.data(forKey: storageKey),
+           let decoded = try? JSONDecoder().decode(RecentPlaceLog.self, from: data) {
+            log = decoded
+        }
+    }
+
+    /// The place as a one-off `SavedPlace`, ready to plan to or from.
+    func asPlace(_ recent: RecentPlace) -> SavedPlace {
+        SavedPlace(id: recent.id, role: .custom, name: recent.name, address: recent.address,
+                   latitude: recent.latitude, longitude: recent.longitude)
+    }
+
+    /// Records that `place` was chosen. Already-saved places are not tracked.
+    func record(_ place: SavedPlace, saved: [SavedPlace]) {
+        guard !saved.contains(where: { $0.coordinate.distance(to: place.coordinate) <= RecentPlaceLog.samePlaceMeters }) else { return }
+        let stored = log.record(name: place.name, address: place.address, coordinate: place.coordinate, id: place.id)
+        if log.shouldOfferFavorite(stored) {
+            log.markPrompted(stored.id)
+            favoriteOffer = log.places.first { $0.id == stored.id }
+        }
+        persist()
+    }
+
+    func remove(_ recent: RecentPlace) {
+        log.remove(recent.id)
+        persist()
+    }
+
+    /// Recents that haven't since been saved as places.
+    func recents(excluding saved: [SavedPlace]) -> [RecentPlace] {
+        log.places.filter { r in !saved.contains { $0.coordinate.distance(to: r.coordinate) <= RecentPlaceLog.samePlaceMeters } }
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(log) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+}

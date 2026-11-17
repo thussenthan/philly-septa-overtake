@@ -181,7 +181,8 @@ The arrow between the two ends turns the trip round when both are somewhere a tr
 can start; every station picker opens on the stations **nearby**; either picker also
 takes an address, a business or landmark ("Aldi", "Trader Joe's"), or a typed
 latitude and longitude, for a trip to somewhere that isn't a station or a saved
-place; and the itinerary
+place — places you've searched for come back under **Recent**, and one you keep
+going to is offered, once, as a favorite; and the itinerary
 can be shared as plain text — leave by, which trains, arrive — for whoever is
 waiting at the other end.
 

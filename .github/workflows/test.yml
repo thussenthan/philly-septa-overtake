@@ -1,8 +1,13 @@
 # Runs the engine's tests and builds the app, on a macOS runner, so a change can be
-# checked without a Mac. Run it from the Actions tab.
+# checked without a Mac. Runs on every push to main, and from the Actions tab.
 name: Test
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
   workflow_dispatch:
 
 jobs:

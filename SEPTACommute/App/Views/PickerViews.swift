@@ -7,6 +7,7 @@ struct DestinationPickerView: View {
 
     @EnvironmentObject private var model: CommuteModel
     @EnvironmentObject private var places: PlaceStore
+    @EnvironmentObject private var recents: RecentPlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
     @StateObject private var addresses = AddressSearch()
@@ -51,8 +52,18 @@ struct DestinationPickerView: View {
 
                 AddressResultsSection(search: search, addresses: addresses) { place in
                     model.registerOneOff(place)
+                    recents.record(place, saved: places.places)
                     selection = .saved(place)
                     dismiss()
+                }
+
+                if search.isEmpty {
+                    RecentPlacesSection { place in
+                        model.registerOneOff(place)
+                        recents.record(place, saved: places.places)
+                        selection = .saved(place)
+                        dismiss()
+                    }
                 }
 
                 if search.isEmpty {
@@ -114,6 +125,7 @@ struct OriginPickerView: View {
 
     @EnvironmentObject private var model: CommuteModel
     @EnvironmentObject private var places: PlaceStore
+    @EnvironmentObject private var recents: RecentPlaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
     @StateObject private var addresses = AddressSearch()
@@ -159,8 +171,18 @@ struct OriginPickerView: View {
 
                 AddressResultsSection(search: search, addresses: addresses) { place in
                     model.registerOneOff(place)
+                    recents.record(place, saved: places.places)
                     selection = .saved(place)
                     dismiss()
+                }
+
+                if search.isEmpty {
+                    RecentPlacesSection { place in
+                        model.registerOneOff(place)
+                        recents.record(place, saved: places.places)
+                        selection = .saved(place)
+                        dismiss()
+                    }
                 }
 
                 if search.isEmpty {
@@ -224,6 +246,33 @@ struct OriginPickerView: View {
 }
 
 // MARK: - Shared pieces
+
+/// Places searched for before, for a repeat trip in one tap.
+struct RecentPlacesSection: View {
+    var onChoose: (SavedPlace) -> Void
+
+    @EnvironmentObject private var recents: RecentPlaceStore
+    @EnvironmentObject private var places: PlaceStore
+
+    var body: some View {
+        let recent = recents.recents(excluding: places.places)
+        if !recent.isEmpty {
+            Section("Recent") {
+                ForEach(recent) { item in
+                    Button {
+                        onChoose(recents.asPlace(item))
+                    } label: {
+                        PickerRow(symbol: "clock.arrow.circlepath", title: item.name,
+                                  subtitle: item.address, isSelected: false)
+                    }
+                    .swipeActions {
+                        Button("Remove", role: .destructive) { recents.remove(item) }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// Addresses and places anywhere SEPTA runs, found as the rider types.
 ///
