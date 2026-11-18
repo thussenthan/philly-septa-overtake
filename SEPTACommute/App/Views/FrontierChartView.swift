@@ -169,7 +169,7 @@ struct FrontierChartView: View {
     private func legend(hasTolls: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 14) {
-                legendItem(color: Theme.accent, dashed: true, text: "Frontier")
+                legendItem(color: Theme.accent, dashed: true, text: "Pareto frontier")
                 legendItem(color: Color.secondary.opacity(0.55), dashed: false, text: "Beaten on price and time")
             }
             if hasTolls {
@@ -178,7 +178,7 @@ struct FrontierChartView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Text("Nothing on the dashed line is both cheaper and sooner than another option. Lower and further left is better.")
+            Text("The dashed line is the Pareto frontier: no other option is both cheaper and sooner than anything on it. Lower and further left is better.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -218,7 +218,7 @@ struct FrontierChartView: View {
 
     private func accessibilitySummary(candidates: [ValueCandidate], frontier: [ValueCandidate]) -> String {
         let points = frontier.map { "\($0.title), \(price($0)), arriving \(Format.clock($0.arrival))" }
-        return "Price against arrival for \(candidates.count) options. \(frontier.count) on the frontier: " + points.joined(separator: "; ")
+        return "Price against arrival for \(candidates.count) options. \(frontier.count) on the Pareto frontier: " + points.joined(separator: "; ")
     }
 }
 
