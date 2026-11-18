@@ -46,27 +46,38 @@ struct PlanView: View {
             // With enough options to overflow, the minimum stops binding and the card
             // returns to its natural size.
             GeometryReader { viewport in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        tripRow
-                        answerSection
-                        // The station board is the list button in the top corner; a
-                        // second way in, down here, was the same thing twice.
-                        // Supplemental: bike share, buses, Regional Rail and value
-                        // ranking, under everything the Metro answer already shows.
-                        // Also the place a trip the Metro can't serve still gets one.
-                        if model.target != nil, model.resolvedOrigin != nil {
-                            MoreWaysSection().padding(.top, 6)
-                            // Last on the page and folded away: the picture behind
-                            // the answer, for whoever wants to see it.
-                            FrontierChartView().padding(.top, 6)
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            tripRow
+                            answerSection
+                            // The station board is the list button in the top corner; a
+                            // second way in, down here, was the same thing twice.
+                            // Supplemental: bike share, buses, Regional Rail and value
+                            // ranking, under everything the Metro answer already shows.
+                            // Also the place a trip the Metro can't serve still gets one.
+                            if model.target != nil, model.resolvedOrigin != nil {
+                                MoreWaysSection().padding(.top, 6)
+                                // Last on the page and folded away: the picture behind
+                                // the answer, for whoever wants to see it.
+                                FrontierChartView {
+                                    // After the card is in the layout, so there is
+                                    // something below the fold to scroll to.
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            scroller.scrollTo(FrontierChartView.scrollID, anchor: .bottom)
+                                        }
+                                    }
+                                }
+                                .padding(.top, 6)
+                            }
                         }
+                        // Tighter than the usual inset: the answer card is the screen, and
+                        // every point of margin is a point it isn't using.
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(minHeight: viewport.size.height, alignment: .top)
                     }
-                    // Tighter than the usual inset: the answer card is the screen, and
-                    // every point of margin is a point it isn't using.
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(minHeight: viewport.size.height, alignment: .top)
                 }
             }
             .background(Color(.systemGroupedBackground))

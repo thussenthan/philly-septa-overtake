@@ -12,6 +12,13 @@ import SwiftUI
 /// Collapsed by default — it explains the answer rather than being one.
 struct FrontierChartView: View {
     @EnvironmentObject private var model: CommuteModel
+    /// Called just after the chart opens, so the page can bring it into view: it
+    /// is the last thing on the screen, and otherwise opens below the fold.
+    var onExpand: () -> Void = {}
+
+    /// What the page scrolls to when the chart opens.
+    static let scrollID = "frontier-chart"
+
     @State private var isExpanded = false
     @State private var selectedArrival: Date?
     /// The last place the rider pointed. Chart selection clears when the finger
@@ -76,14 +83,24 @@ struct FrontierChartView: View {
             let frontier = model.valueFrontier(of: candidates).sorted { $0.arrival < $1.arrival }
             VStack(alignment: .leading, spacing: 6) {
                 Button {
-                    withAnimation(.snappy) { isExpanded.toggle() }
+                    // One short ease for the card and the chevron together. The old
+                    // spring slid the card down from behind the header, which read
+                    // as it dropping through the title.
+                    withAnimation(.easeInOut(duration: 0.25)) { isExpanded.toggle() }
+                    if isExpanded { onExpand() }
                 } label: {
                     HStack {
-                        SectionLabel(text: "Price vs. arrival")
+                        SectionLabel(text: "Price vs. arrival · Pareto frontier")
                         Spacer()
-                        Text(isExpanded ? "Hide" : "Show")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
+                        // Both words in one slot, so the swap is a crossfade rather
+                        // than the row reflowing around a word of a new width.
+                        ZStack(alignment: .trailing) {
+                            Text("Show").opacity(isExpanded ? 0 : 1)
+                            Text("Hide").opacity(isExpanded ? 1 : 0)
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -94,13 +111,15 @@ struct FrontierChartView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isExpanded ? "Hide price versus arrival chart" : "Show price versus arrival chart")
+                .accessibilityLabel(isExpanded ? "Hide price versus arrival Pareto frontier chart" : "Show price versus arrival Pareto frontier chart")
 
                 if isExpanded {
                     card(candidates: candidates, frontier: frontier)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        // Grows out of the header rather than sliding past it.
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                 }
             }
+            .id(Self.scrollID)
         }
     }
 
