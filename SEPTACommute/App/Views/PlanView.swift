@@ -58,7 +58,7 @@ struct PlanView: View {
                             // Also the place a trip the Metro can't serve still gets one.
                             if model.target != nil, model.resolvedOrigin != nil {
                                 MoreWaysSection().padding(.top, 6)
-                                // Last on the page and folded away: the picture behind
+                                // Last on the page, open unless folded: the picture behind
                                 // the answer, for whoever wants to see it.
                                 FrontierChartView {
                                     // After the card is in the layout, so there is
