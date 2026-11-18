@@ -9,7 +9,7 @@ import SwiftUI
 /// staircase joins those that nothing else beats on both price and arrival. A dot
 /// above and to the right of the staircase is something cheaper-and-sooner beats.
 ///
-/// Collapsed by default — it explains the answer rather than being one.
+/// Open by default; the header folds it away for anyone who would rather not see it.
 struct FrontierChartView: View {
     @EnvironmentObject private var model: CommuteModel
     /// Called just after the chart opens, so the page can bring it into view: it
@@ -19,7 +19,7 @@ struct FrontierChartView: View {
     /// What the page scrolls to when the chart opens.
     static let scrollID = "frontier-chart"
 
-    @State private var isExpanded = false
+    @State private var isExpanded = true
     @State private var selectedArrival: Date?
     /// The last place the rider pointed. Chart selection clears when the finger
     /// lifts; this keeps the readout (and its button) up so it can be tapped.
