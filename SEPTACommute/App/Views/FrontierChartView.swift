@@ -302,10 +302,11 @@ struct FrontierChartView: View {
         let reach: CGFloat = 24
         var best: (candidate: ValueCandidate, distance: CGFloat)?
         for candidate in candidates {
-            guard let point = proxy.position(forX: candidate.arrival, y: candidate.fare) else { continue }
-            let dx = point.x + origin.x - location.x, dy = point.y + origin.y - location.y
+            guard let point = proxy.position(for: (x: candidate.arrival, y: candidate.fare)) else { continue }
+            let dx: CGFloat = point.x + origin.x - location.x
+            let dy: CGFloat = point.y + origin.y - location.y
             // A frontier dot wins a near-tie with a grey one drawn under it.
-            let distance = (dx * dx + dy * dy).squareRoot() - (frontierIDs.contains(candidate.id) ? 4 : 0)
+            let distance: CGFloat = (dx * dx + dy * dy).squareRoot() - (frontierIDs.contains(candidate.id) ? 4 : 0)
             if distance <= reach, distance < (best?.distance ?? .infinity) {
                 best = (candidate, distance)
             }
