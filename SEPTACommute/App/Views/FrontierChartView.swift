@@ -14,8 +14,63 @@ struct FrontierChartView: View {
     @EnvironmentObject private var model: CommuteModel
     @State private var isExpanded = false
     @State private var selectedArrival: Date?
+    /// The last place the rider pointed. Chart selection clears when the finger
+    /// lifts; this keeps the readout (and its button) up so it can be tapped.
+    @State private var pinnedArrival: Date?
+    /// The option tapped, kept as a snapshot (as MoreWaysSection does) so a replan
+    /// every thirty seconds doesn't swap or pop the screen the rider is reading.
+    @State private var opened: OpenedRoute?
+
+    private enum OpenedRoute: Hashable {
+        case metro(Journey)
+        case alternative(AlternativeSelection)
+        case indego(IndegoSelection)
+    }
 
     var body: some View {
+        // Always present, so the destination below survives a replan that briefly
+        // leaves fewer than two options to plot.
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .navigationDestination(item: $opened) { route in
+            switch route {
+            case .metro(let journey):
+                JourneyDetailView(
+                    journey: journey,
+                    summary: model.narrator.summary(for: journey),
+                    narrator: model.narrator,
+                    network: model.network,
+                    originName: model.originName,
+                    destinationName: model.targetName,
+                    alert: model.alert(for: journey)
+                )
+            case .alternative(let selection):
+                ExtendedDetailView(
+                    itinerary: selection.itinerary,
+                    origin: selection.origin,
+                    destination: selection.destination,
+                    destinationName: selection.destinationName,
+                    reference: selection.reference,
+                    referenceNoun: selection.referenceNoun
+                )
+            case .indego(let selection):
+                IndegoDetailView(
+                    option: selection.option,
+                    pass: selection.pass,
+                    origin: selection.origin,
+                    originIsCurrentLocation: selection.originIsCurrentLocation,
+                    destination: selection.destination,
+                    destinationName: selection.destinationName,
+                    reference: selection.reference,
+                    referenceNoun: selection.referenceNoun
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let candidates = model.valueCandidates
         if candidates.count >= 2 {
             let frontier = model.valueFrontier(of: candidates).sorted { $0.arrival < $1.arrival }
@@ -52,7 +107,7 @@ struct FrontierChartView: View {
     private func card(candidates: [ValueCandidate], frontier: [ValueCandidate]) -> some View {
         let frontierIDs = Set(frontier.map(\.id))
         let others = candidates.filter { !frontierIDs.contains($0.id) }
-        let selected = selectedArrival.flatMap { nearest(to: $0, in: candidates) }
+        let selected = (selectedArrival ?? pinnedArrival).flatMap { nearest(to: $0, in: candidates) }
 
         return VStack(alignment: .leading, spacing: 10) {
             Chart {
@@ -108,6 +163,23 @@ struct FrontierChartView: View {
                 }
             }
             .chartXSelection(value: $selectedArrival)
+            .onChange(of: selectedArrival) { _, arrival in
+                if let arrival { pinnedArrival = arrival }
+            }
+            // A tap on a dot opens that route; a drag still scrubs the readout.
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture { location in
+                            if let hit = candidate(at: location, proxy: proxy, geometry: geometry, in: candidates, frontierIDs: frontierIDs) {
+                                pinnedArrival = hit.arrival
+                                open(hit)
+                            }
+                        }
+                }
+            }
             .chartYScale(domain: .automatic(includesZero: true))
             .chartYAxis {
                 AxisMarks(position: .leading) { value in
@@ -132,6 +204,12 @@ struct FrontierChartView: View {
             .frame(height: 220)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilitySummary(candidates: candidates, frontier: frontier))
+            // VoiceOver can't aim at a dot, so each option is an action on the chart.
+            .accessibilityActions {
+                ForEach(candidates.sorted { $0.arrival < $1.arrival }) { candidate in
+                    Button("Open \(candidate.title), arriving \(Format.clock(candidate.arrival))") { open(candidate) }
+                }
+            }
 
             readout(selected: selected, isOnFrontier: selected.map { frontierIDs.contains($0.id) } ?? false)
 
@@ -145,22 +223,30 @@ struct FrontierChartView: View {
     @ViewBuilder
     private func readout(selected: ValueCandidate?, isOnFrontier: Bool) -> some View {
         if let selected {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selected.title)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    Text("\(price(selected)) • \(Format.minutes(selected.travelTime)) • \(isOnFrontier ? "on the frontier" : "beaten on both")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            Button { open(selected) } label: {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selected.title)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        Text("\(price(selected)) • \(Format.minutes(selected.travelTime)) • \(isOnFrontier ? "on the frontier" : "beaten on both")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(Format.clock(selected.arrival))
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                    Image(systemName: opensInMaps(selected) ? "arrow.up.forward.app" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer()
-                Text(Format.clock(selected.arrival))
-                    .font(.subheadline.weight(.semibold))
-                    .monospacedDigit()
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(opensInMaps(selected) ? "Opens directions in \(model.preferences.mapsApp.label)" : "Shows this route")
         } else {
-            Text("Drag across the chart to see each option.")
+            Text("Tap a dot to open that route, or drag across the chart to compare.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -200,6 +286,84 @@ struct FrontierChartView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The dot under a tap, if one is close enough to mean it: the nearest within
+    /// a fingertip, preferring the frontier's where dots overlap.
+    private func candidate(
+        at location: CGPoint,
+        proxy: ChartProxy,
+        geometry: GeometryProxy,
+        in candidates: [ValueCandidate],
+        frontierIDs: Set<String>
+    ) -> ValueCandidate? {
+        guard let plotFrame = proxy.plotFrame else { return nil }
+        let origin = geometry[plotFrame].origin
+        let reach: CGFloat = 24
+        var best: (candidate: ValueCandidate, distance: CGFloat)?
+        for candidate in candidates {
+            guard let point = proxy.position(forX: candidate.arrival, y: candidate.fare) else { continue }
+            let dx = point.x + origin.x - location.x, dy = point.y + origin.y - location.y
+            // A frontier dot wins a near-tie with a grey one drawn under it.
+            let distance = (dx * dx + dy * dy).squareRoot() - (frontierIDs.contains(candidate.id) ? 4 : 0)
+            if distance <= reach, distance < (best?.distance ?? .infinity) {
+                best = (candidate, distance)
+            }
+        }
+        return best?.candidate
+    }
+
+    /// Walking and driving have no screen of their own in the app, so they hand
+    /// off to the rider's maps app, as the other routes' "Open in Maps" does.
+    private func opensInMaps(_ candidate: ValueCandidate) -> Bool {
+        switch candidate.kind {
+        case .walking, .driving: return true
+        case .metro, .extended, .indego: return false
+        }
+    }
+
+    private func open(_ candidate: ValueCandidate) {
+        let reference = model.plan?.best?.arrivalTime
+        switch candidate.kind {
+        case .metro(let journey):
+            opened = .metro(journey)
+        case .extended(let itinerary):
+            opened = .alternative(AlternativeSelection(
+                itinerary: itinerary,
+                origin: model.originCoordinate,
+                destination: model.destinationCoordinate,
+                destinationName: model.targetName,
+                reference: reference,
+                referenceNoun: model.referenceNoun
+            ))
+        case .indego(let option):
+            opened = .indego(IndegoSelection(
+                option: option,
+                pass: model.preferences.indegoPass,
+                origin: model.originCoordinate,
+                originIsCurrentLocation: model.isPlanningFromCurrentLocation,
+                destination: model.destinationCoordinate,
+                destinationName: model.targetName,
+                reference: reference,
+                referenceNoun: model.referenceNoun
+            ))
+        case .walking:
+            handOff(mode: .walking)
+        case .driving:
+            handOff(mode: .driving)
+        }
+    }
+
+    private func handOff(mode: MapsHandoff.Mode) {
+        guard let destination = model.destinationCoordinate else { return }
+        MapsHandoff.open(
+            app: model.preferences.mapsApp,
+            from: model.isPlanningFromCurrentLocation ? nil : model.originCoordinate,
+            fromName: model.originName,
+            to: destination,
+            toName: model.targetName,
+            mode: mode
+        )
     }
 
     private func price(_ candidate: ValueCandidate) -> String {

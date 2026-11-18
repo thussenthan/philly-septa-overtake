@@ -349,12 +349,13 @@ enum MapsApp: String, Codable, CaseIterable, Identifiable {
 /// directions included, which is what a rider with AirPods in actually wants.
 enum MapsHandoff {
     enum Mode {
-        case walking, cycling, transit
+        case walking, cycling, transit, driving
 
         var launchValue: String {
             switch self {
             case .walking: return MKLaunchOptionsDirectionsModeWalking
             case .cycling: return MKLaunchOptionsDirectionsModeCycling
+            case .driving: return MKLaunchOptionsDirectionsModeDriving
             case .transit: return MKLaunchOptionsDirectionsModeTransit
             }
         }
@@ -363,6 +364,7 @@ enum MapsHandoff {
             switch self {
             case .walking: return "walking"
             case .cycling: return "bicycling"
+            case .driving: return "driving"
             case .transit: return "transit"
             }
         }
