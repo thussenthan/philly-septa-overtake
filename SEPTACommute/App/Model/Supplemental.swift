@@ -384,6 +384,12 @@ extension CommuteModel {
     /// their time. `nil` when value ranking is off.
     var valueRanking: [ValueCandidate]? {
         guard let rate = preferences.valueOfTimePerHour, rate > 0 else { return nil }
+        return valueFrontier(of: valueCandidates).sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
+    }
+
+    /// Every way there the app knows of right now, before any filtering — what the
+    /// value ranking chooses from, and what the frontier chart plots.
+    var valueCandidates: [ValueCandidate] {
         var candidates: [ValueCandidate] = []
         let fareRules = network.fare
         // Walking the whole way, measured; it stands in for the main planner's
@@ -451,8 +457,13 @@ extension CommuteModel {
                 fareIsLowerBound: drive.hasTolls
             ))
         }
-        // Only what's on the price/arrival frontier: an option that costs more and
-        // arrives later than another is never the better pick, whatever the rate.
+        return candidates
+    }
+
+    /// Only what's on the price/arrival frontier: an option that costs more and
+    /// arrives later than another is never the better pick, whatever the rate.
+    /// Ties at the same price and minute collapse to the first of them.
+    func valueFrontier(of candidates: [ValueCandidate]) -> [ValueCandidate] {
         func minute(_ date: Date) -> Int { Int(date.timeIntervalSince1970 / 60) }
         func cents(_ amount: Double) -> Int { Int((amount * 100).rounded()) }
         let frontier = candidates.filter { candidate in
@@ -469,7 +480,6 @@ extension CommuteModel {
         // Two options at the same price and minute are one choice to the rider;
         // keep the first (the main plan's, then alternatives, bikes, drives).
         var seen = Set<String>()
-        let distinct = frontier.filter { seen.insert("\(cents($0.fare))@\(minute($0.arrival))").inserted }
-        return distinct.sorted { $0.cost(perHour: rate) < $1.cost(perHour: rate) }
+        return frontier.filter { seen.insert("\(cents($0.fare))@\(minute($0.arrival))").inserted }
     }
 }
