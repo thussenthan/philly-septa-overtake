@@ -90,7 +90,7 @@ struct FrontierChartView: View {
                     if isExpanded { onExpand() }
                 } label: {
                     HStack {
-                        SectionLabel(text: "Price vs. arrival · Pareto frontier")
+                        SectionLabel(text: "Price vs. arrival")
                         Spacer()
                         // Both words in one slot, so the swap is a crossfade rather
                         // than the row reflowing around a word of a new width.
@@ -111,7 +111,7 @@ struct FrontierChartView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isExpanded ? "Hide price versus arrival Pareto frontier chart" : "Show price versus arrival Pareto frontier chart")
+                .accessibilityLabel(isExpanded ? "Hide price versus arrival chart" : "Show price versus arrival chart")
 
                 if isExpanded {
                     card(candidates: candidates, frontier: frontier)
@@ -274,7 +274,7 @@ struct FrontierChartView: View {
     private func legend(hasTolls: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 14) {
-                legendItem(color: Theme.accent, dashed: true, text: "Pareto frontier")
+                legendItem(color: Theme.accent, dashed: true, text: "Optimal (Pareto frontier)")
                 legendItem(color: Color.secondary.opacity(0.55), dashed: false, text: "Beaten on price and time")
             }
             if hasTolls {
@@ -283,7 +283,7 @@ struct FrontierChartView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Text("The dashed line is the Pareto frontier: no other option is both cheaper and sooner than anything on it. Lower and further left is better.")
+            Text("The dashed line is the Pareto frontier: every candidate on it is optimal, because no other option is both cheaper and sooner. Lower and further left is better.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

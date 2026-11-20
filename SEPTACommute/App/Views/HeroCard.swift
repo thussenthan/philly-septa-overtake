@@ -98,7 +98,7 @@ struct HeroCard: View {
     private func lateTrain(asOf now: Date) -> BoardDeparture? {
         guard journey.startsAtStation, let next = journey.rides.first?.departure else { return nil }
         return departures.last {
-            $0.isUseful && $0.departure < next && $0.overdue(at: now) != nil && $0.isStillDue(at: now)
+            $0.departure < next && $0.overdue(at: now) != nil && $0.isWorthWaitingFor(on: departures, at: now)
         }
     }
 
@@ -106,7 +106,10 @@ struct HeroCard: View {
         let late = train.overdue(at: now) ?? 0
         let name = "The \(Format.clock(train.departure)) \(train.routeBadge)"
         let status = late < 60 ? "is due now" : Format.overdueSentence(late)
-        return "\(name) \(status). If it's running late and pulls in, take it — the countdown is for the train after."
+        // Only shown when it would still arrive first, so say so: that is the reason
+        // to take it over the train the countdown is for.
+        let stop = train.alightStation.map { " to \(stationName($0))" } ?? ""
+        return "\(name) \(status). If it's running late and pulls in, take it — it still gets you\(stop) first. The countdown is for the train after."
     }
 
     @ViewBuilder

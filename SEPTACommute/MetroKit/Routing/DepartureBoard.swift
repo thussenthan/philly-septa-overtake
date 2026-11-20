@@ -419,4 +419,30 @@ public extension Departing {
 }
 
 extension BoardDeparture: Departing {}
+
+public extension BoardDeparture {
+
+    /// Whether this train is still worth showing: anything not yet due, or — for a
+    /// train that should already have left — one that would still get the rider there
+    /// first if it pulled in now.
+    ///
+    /// A late train is the same fare as the trains behind it, so the only axis it can
+    /// win on is arrival, and the best it can do is leave this instant. If a train still
+    /// to come is scheduled to reach the same stop no later than that, the late one is
+    /// beaten on price and time and is no longer an optimal candidate: waiting on it
+    /// would only be a reason to let the better train go. At Girard, a B1 two minutes
+    /// late into Erie at 9:47 loses to the B3 due there at 9:45, so it goes.
+    ///
+    /// A late train that skips the rider's stop is never worth it.
+    func isWorthWaitingFor(on board: [BoardDeparture], at now: Date) -> Bool {
+        guard let late = overdue(at: now) else { return true }
+        guard isStillDue(at: now), let alight = alightStation, let arrival else { return false }
+        let soonestPossible = arrival.addingTimeInterval(late)
+        return !board.contains { other in
+            other.departure >= now
+                && other.alightStation == alight
+                && (other.arrival ?? .distantFuture) <= soonestPossible
+        }
+    }
+}
 extension StationDeparture: Departing {}

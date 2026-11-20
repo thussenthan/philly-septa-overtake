@@ -252,4 +252,23 @@ final class DepartureBoardTests: XCTestCase {
         XCTAssertEqual(JourneyPlanner.departureGrace(for: "T"), 300)
         XCTAssertEqual(JourneyPlanner.departureGrace(for: "B-OWL"), 300, "the owl is a bus")
     }
+
+    /// At 08:02 the 08:00 local could at best reach F at 08:12, and the 08:04 express
+    /// is due there at 08:08 — so the late local isn't worth waiting for.
+    func testALateTrainBeatenByOneStillToComeIsNotWorthWaitingFor() throws {
+        let now = Fixture.date(8, 2)
+        let rows = Fixture.planner().departureBoard(from: "a", to: ["f"], after: now, keepingLateTrains: true)
+        let late = try XCTUnwrap(rows.first { $0.departure == Fixture.date(8, 0) })
+        XCTAssertFalse(late.isWorthWaitingFor(on: rows, at: now))
+        XCTAssertTrue(rows.filter { $0.departure >= now }.allSatisfy { $0.isWorthWaitingFor(on: rows, at: now) })
+    }
+
+    /// At 08:11 the 08:10 local could still reach F by 08:21, ahead of anything else
+    /// (the 08:24 express gets there at 08:28), so it stays.
+    func testALateTrainThatWouldStillArriveFirstIsWorthWaitingFor() throws {
+        let now = Fixture.date(8, 11)
+        let rows = Fixture.planner().departureBoard(from: "a", to: ["f"], after: now, keepingLateTrains: true)
+        let late = try XCTUnwrap(rows.first { $0.departure == Fixture.date(8, 10) && $0.isUseful })
+        XCTAssertTrue(late.isWorthWaitingFor(on: rows, at: now))
+    }
 }
