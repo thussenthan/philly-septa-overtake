@@ -23,6 +23,9 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
     public var arrival: Date?
     /// The stop it fails to make, so the row can say why it is no use.
     public var missedDestination: StationID?
+    /// How long past `departure` the row stays on the board as possibly late. Set by
+    /// the board; see `JourneyPlanner.departureGrace(for:)`.
+    public var grace: TimeInterval = 0
 
     /// Whether this train is one the rider could actually take.
     public var isUseful: Bool { alightStation != nil }
@@ -86,16 +89,30 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
 
 public extension JourneyPlanner {
 
-    /// How long a train stays on a board after its scheduled departure.
+    /// How long a train on `line` stays on a board after its scheduled departure.
     ///
     /// These are scheduled times, and SEPTA publishes no delays for the subway, so the
     /// moment a train's minute passes the app has no idea whether it left or is still
     /// two stations up the line. Dropping it then is the worse guess: a rider on the
     /// platform watching a late train pull in would find it already gone from the app,
-    /// with nothing to tell them it was the one they were waiting for. Three minutes
-    /// covers an ordinary late running without leaving a train on the board long
-    /// after it has plainly gone.
-    static let departureGrace: TimeInterval = 3 * 60
+    /// with nothing to tell them it was the one they were waiting for.
+    ///
+    /// Three minutes on the lines with their own track — the L, the B and the
+    /// Norristown line — where a train rarely runs later than that and the next one is
+    /// often only a few minutes behind, so a longer allowance would mostly keep trains
+    /// that left on time. Five on the trolleys and buses, which share the street with
+    /// traffic, are routinely later, and run far enough apart that the extra minutes
+    /// don't stack one late vehicle on another.
+    ///
+    /// The board shortens this further for a frequent service; see `applyingGrace`.
+    static func departureGrace(for line: LineID) -> TimeInterval {
+        ownTrackLines.contains(line) ? 3 * 60 : 5 * 60
+    }
+
+    /// The longest `departureGrace` of any line: how far back a board has to look.
+    static let maximumDepartureGrace: TimeInterval = 5 * 60
+
+    private static let ownTrackLines: Set<LineID> = ["L", "B", "M"]
 
     /// A line and its feed direction: the platform, when there is no compass word.
     private static func platformKey(_ pattern: ServicePattern) -> String {
@@ -129,14 +146,14 @@ public extension JourneyPlanner {
         aimingAt: StationID? = nil,
         limit: Int = 8,
         horizon: TimeInterval = 90 * 60,
-        /// How far before `time` to keep trains that were scheduled to have left —
-        /// usually `departureGrace`. They come first and don't count towards `limit`,
-        /// so a late train never pushes an upcoming one off the board.
-        lookback: TimeInterval = 0
+        /// Keep trains scheduled to have left within their grace, as possibly late.
+        /// They come first and don't count towards `limit`, so a late train never
+        /// pushes an upcoming one off the board.
+        keepingLateTrains: Bool = false
     ) -> [BoardDeparture] {
         guard !destinations.isEmpty else { return [] }
         let window = DateInterval(
-            start: time.addingTimeInterval(-max(lookback, 0)),
+            start: keepingLateTrains ? time.addingTimeInterval(-Self.maximumDepartureGrace) : time,
             end: time.addingTimeInterval(horizon)
         )
 
@@ -184,7 +201,7 @@ public extension JourneyPlanner {
         // the wrong station would be worse than one that named none.
         let missed = aimingAt.flatMap { destinations.contains($0) ? $0 : nil }
 
-        var board: [BoardDeparture] = []
+        var keyed: [(row: BoardDeparture, service: String)] = []
         for pattern in boarding {
             let alightIndex = alightIndexByPattern[pattern.id]
             // A train that helps is always shown. One that doesn't is shown only if it
@@ -193,7 +210,7 @@ public extension JourneyPlanner {
 
             for trip in timetable.trips(of: pattern, departingFrom: origin, in: window) {
                 guard let departure = timetable.departure(of: trip, at: origin) else { continue }
-                board.append(BoardDeparture(
+                keyed.append((BoardDeparture(
                     trip: trip,
                     lineID: pattern.lineID,
                     routeID: pattern.routeID,
@@ -204,10 +221,11 @@ public extension JourneyPlanner {
                     alightStation: alightIndex.map { pattern.stops[$0].station },
                     arrival: alightIndex.map { trip.departure(atOffset: pattern.stops[$0].arrivalOffset) },
                     missedDestination: alightIndex == nil ? missed : nil
-                ))
+                ), Self.serviceKey(pattern)))
             }
         }
 
+        var board = Self.applyingGrace(keyed, at: time)
         board.sort { lhs, rhs in
             if lhs.departure != rhs.departure { return lhs.departure < rhs.departure }
             // Same minute: the one you can take goes first.
@@ -234,6 +252,8 @@ public struct StationDeparture: Sendable, Hashable, Identifiable {
     public var direction: Direction
     public var headsign: String
     public var departure: Date
+    /// How long past `departure` the row stays on the board as possibly late.
+    public var grace: TimeInterval = 0
 
     public var id: String { trip.id }
 
@@ -288,15 +308,15 @@ public extension JourneyPlanner {
         after time: Date,
         horizon: TimeInterval = 90 * 60,
         limit: Int = 60,
-        /// As on the trip board: trains scheduled up to this long before `time`, kept
-        /// first and outside `limit`.
-        lookback: TimeInterval = 0
+        /// As on the trip board: trains still within their grace, kept first and
+        /// outside `limit`.
+        keepingLateTrains: Bool = false
     ) -> [StationDeparture] {
         let window = DateInterval(
-            start: time.addingTimeInterval(-max(lookback, 0)),
+            start: keepingLateTrains ? time.addingTimeInterval(-Self.maximumDepartureGrace) : time,
             end: time.addingTimeInterval(horizon)
         )
-        var rows: [StationDeparture] = []
+        var keyed: [(row: StationDeparture, service: String)] = []
 
         for pattern in network.patterns(serving: station) {
             guard let index = pattern.stopIndex(of: station),
@@ -305,7 +325,7 @@ public extension JourneyPlanner {
 
             for trip in timetable.trips(of: pattern, departingFrom: station, in: window) {
                 guard let departure = timetable.departure(of: trip, at: station) else { continue }
-                rows.append(StationDeparture(
+                keyed.append((StationDeparture(
                     trip: trip,
                     lineID: pattern.lineID,
                     routeID: pattern.routeID,
@@ -314,15 +334,54 @@ public extension JourneyPlanner {
                     direction: pattern.direction,
                     headsign: pattern.headsign,
                     departure: departure
-                ))
+                ), Self.serviceKey(pattern)))
             }
         }
 
+        var rows = Self.applyingGrace(keyed, at: time)
         rows.sort { lhs, rhs in
             if lhs.departure != rhs.departure { return lhs.departure < rhs.departure }
             return lhs.id < rhs.id
         }
         return Self.keepingOverdue(rows, before: time) { Array($0.prefix(limit)) }
+    }
+
+    /// Which trains count as "the same service" when judging how frequent it is: one
+    /// route, one direction, one stopping pattern. The feed splits a route into
+    /// variants by its timings, so the pattern itself is too fine.
+    private static func serviceKey(_ pattern: ServicePattern) -> String {
+        "\(pattern.routeID.rawValue)|\(pattern.direction)|\(pattern.kind.rawValue)"
+    }
+
+    /// Gives each row its grace, and drops the rows already past it.
+    ///
+    /// The grace is the line's, capped at half the gap to the next train of the same
+    /// service from this stop. Past that halfway point, a train that still hasn't come
+    /// is as likely to be confused with the next one as to be the late one, and two
+    /// trains of the same service should never both be showing "should have left".
+    /// It matters most at the peak and late at night: a B every four minutes keeps a
+    /// late train for two, and an owl bus forty minutes apart keeps its full five.
+    private static func applyingGrace<Row: Departing>(
+        _ rows: [(row: Row, service: String)],
+        at time: Date
+    ) -> [Row] {
+        var nextDeparture: [Int: Date] = [:]
+        for indices in Dictionary(grouping: rows.indices, by: { rows[$0].service }).values {
+            let ordered = indices.sorted { rows[$0].row.departure < rows[$1].row.departure }
+            for (this, next) in zip(ordered, ordered.dropFirst()) {
+                nextDeparture[this] = rows[next].row.departure
+            }
+        }
+        return rows.indices.compactMap { index in
+            var row = rows[index].row
+            var grace = departureGrace(for: row.lineID)
+            if let next = nextDeparture[index] {
+                grace = min(grace, next.timeIntervalSince(row.departure) / 2)
+            }
+            row.grace = grace
+            if let late = row.overdue(at: time), late > grace { return nil }
+            return row
+        }
     }
 
     /// The overdue rows of a sorted board, untouched, followed by `trim` applied to the
@@ -340,6 +399,8 @@ public extension JourneyPlanner {
 /// A row with a scheduled departure, which is all the overdue rule needs to know.
 public protocol Departing {
     var departure: Date { get }
+    var lineID: LineID { get }
+    var grace: TimeInterval { get set }
 }
 
 public extension Departing {
@@ -347,6 +408,13 @@ public extension Departing {
     func overdue(at now: Date) -> TimeInterval? {
         let late = now.timeIntervalSince(departure)
         return late > 0 ? late : nil
+    }
+
+    /// Whether the row still belongs on the board: not yet left, or late by no more
+    /// than its grace.
+    func isStillDue(at now: Date) -> Bool {
+        guard let late = overdue(at: now) else { return true }
+        return late <= grace
     }
 }
 

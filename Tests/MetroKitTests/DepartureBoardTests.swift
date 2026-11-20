@@ -220,25 +220,36 @@ final class DepartureBoardTests: XCTestCase {
     func testATrainJustPastItsTimeStaysOnTheBoard() throws {
         let now = Fixture.date(8, 2)
         let rows = Fixture.planner().departureBoard(
-            from: "a", to: ["f"], after: now, limit: 2, lookback: JourneyPlanner.departureGrace
+            from: "a", to: ["f"], after: now, limit: 2, keepingLateTrains: true
         )
         let first = try XCTUnwrap(rows.first)
         XCTAssertEqual(first.departure, Fixture.date(8, 0))
         XCTAssertEqual(first.overdue(at: now), 120)
+        XCTAssertTrue(first.isStillDue(at: now))
         XCTAssertEqual(rows.dropFirst().filter { $0.departure >= now }.count, 2, "the limit is for trains still to come")
     }
 
-    /// Past the grace it has gone, as far as the board is concerned.
-    func testATrainLongPastItsTimeIsDropped() {
-        let rows = Fixture.planner().departureBoard(
-            from: "a", to: ["f"], after: Fixture.date(8, 4), lookback: JourneyPlanner.departureGrace
-        )
-        XCTAssertFalse(rows.contains { $0.departure == Fixture.date(8, 0) })
+    /// The fixture's line runs on the street, so it gets five minutes — and its
+    /// ten-minute headway caps that at five too. Past that it has gone.
+    func testATrainLongPastItsGraceIsDropped() {
+        let planner = Fixture.planner()
+        let atFive = planner.departureBoard(from: "a", to: ["f"], after: Fixture.date(8, 5), keepingLateTrains: true)
+        XCTAssertTrue(atFive.contains { $0.departure == Fixture.date(8, 0) }, "five minutes late is still within grace")
+        let atSix = planner.departureBoard(from: "a", to: ["f"], after: Fixture.date(8, 6), keepingLateTrains: true)
+        XCTAssertFalse(atSix.contains { $0.departure == Fixture.date(8, 0) })
     }
 
     /// Without asking for it, the board is still only trains to come.
     func testNoLookbackMeansNoOverdueTrains() {
         let now = Fixture.date(8, 2)
         XCTAssertTrue(Fixture.planner().departureBoard(from: "a", to: ["f"], after: now).allSatisfy { $0.departure >= now })
+    }
+
+    func testOwnTrackLinesGetLessGraceThanTheStreet() {
+        XCTAssertEqual(JourneyPlanner.departureGrace(for: "B"), 180)
+        XCTAssertEqual(JourneyPlanner.departureGrace(for: "L"), 180)
+        XCTAssertEqual(JourneyPlanner.departureGrace(for: "M"), 180)
+        XCTAssertEqual(JourneyPlanner.departureGrace(for: "T"), 300)
+        XCTAssertEqual(JourneyPlanner.departureGrace(for: "B-OWL"), 300, "the owl is a bus")
     }
 }

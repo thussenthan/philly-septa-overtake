@@ -91,7 +91,7 @@ struct DepartureBoardView: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = departure.departure.timeIntervalSince(context.date)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(countdownText(remaining: remaining))
+                Text(countdownText(departure, remaining: remaining))
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(countdownColor(remaining: remaining, recommended: recommended))
@@ -140,9 +140,9 @@ struct DepartureBoardView: View {
 
     /// Counting down, then "due" / "2 min ago" while the train may only be late, then
     /// "gone" for the few seconds until the next refresh takes the row away.
-    private func countdownText(remaining: TimeInterval) -> String {
+    private func countdownText(_ departure: BoardDeparture, remaining: TimeInterval) -> String {
         if remaining > 0 { return Format.countdown(remaining) }
-        if -remaining <= JourneyPlanner.departureGrace { return Format.overdue(-remaining) }
+        if -remaining <= departure.grace { return Format.overdue(-remaining) }
         return "gone"
     }
 

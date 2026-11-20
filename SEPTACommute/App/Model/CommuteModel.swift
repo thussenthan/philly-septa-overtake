@@ -542,7 +542,7 @@ final class CommuteModel: ObservableObject {
             at: station,
             after: now,
             limit: 1_000,
-            lookback: JourneyPlanner.departureGrace
+            keepingLateTrains: true
         )
     }
 
@@ -709,7 +709,7 @@ final class CommuteModel: ObservableObject {
             after: now,
             aimingAt: plan.best?.rides.first?.alightStation,
             limit: boardMaximum,
-            lookback: JourneyPlanner.departureGrace
+            keepingLateTrains: true
         )
         // Trains that should already have left stay on, first, for a few minutes: the
         // times are scheduled, so one of them may be running late rather than gone.

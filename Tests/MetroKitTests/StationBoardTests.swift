@@ -33,13 +33,35 @@ final class StationBoardTests: XCTestCase {
     /// the trains to come and outside the limit.
     func testOverdueTrainsStayForTheGrace() {
         let now = Fixture.date(8, 11)
-        let rows = Fixture.planner().stationBoard(
-            at: "a", after: now, limit: 3, lookback: JourneyPlanner.departureGrace
-        )
+        let rows = Fixture.planner().stationBoard(at: "a", after: now, limit: 3, keepingLateTrains: true)
         let overdue = rows.prefix { $0.departure < now }
         XCTAssertFalse(overdue.isEmpty)
-        XCTAssertTrue(overdue.allSatisfy { now.timeIntervalSince($0.departure) <= JourneyPlanner.departureGrace })
+        XCTAssertTrue(overdue.allSatisfy { $0.isStillDue(at: now) })
         XCTAssertEqual(rows.count - overdue.count, 3)
+    }
+
+    /// Against the real feed at the morning peak: a frequent service's grace is cut to
+    /// half its headway, so no two trains of one service are ever both overdue, and no
+    /// subway train gets more than three minutes.
+    func testAFrequentServiceNeverShowsTwoLateTrains() throws {
+        let planner = JourneyPlanner(network: SEPTAData.network)
+        var components = DateComponents()
+        components.year = 2026; components.month = 11; components.day = 4
+        components.hour = 8; components.minute = 30
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = ServiceCalendar.easternTimeZone
+        let morning = try XCTUnwrap(gregorian.date(from: components))
+
+        for station: StationID in ["city-hall", "erie"] {
+            let rows = planner.stationBoard(at: station, after: morning, keepingLateTrains: true)
+            XCTAssertFalse(rows.isEmpty, "\(station)")
+            for row in rows where row.lineID == "B" {
+                XCTAssertLessThanOrEqual(row.grace, 180)
+            }
+            let late = rows.filter { $0.overdue(at: morning) != nil }
+            let services = late.map { "\($0.routeID.rawValue)|\($0.direction)|\($0.kind.rawValue)" }
+            XCTAssertEqual(services.count, Set(services).count, "two late trains of one service at \(station)")
+        }
     }
 
     /// The same promise against the real feed: nothing on a station's board is a train
