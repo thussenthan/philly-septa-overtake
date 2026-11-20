@@ -422,7 +422,7 @@ extension BoardDeparture: Departing {}
 
 public extension BoardDeparture {
 
-    /// Whether this train is still worth showing: anything not yet due, or — for a
+    /// Whether this train is still worth recommending: anything not yet due, or — for a
     /// train that should already have left — one that would still get the rider there
     /// first if it pulled in now.
     ///
@@ -434,6 +434,9 @@ public extension BoardDeparture {
     /// late into Erie at 9:47 loses to the B3 due there at 9:45, so it goes.
     ///
     /// A late train that skips the rider's stop is never worth it.
+    ///
+    /// For the recommendation card only. The departure board keeps every train for
+    /// its whole grace regardless, as the platform sign would.
     func isWorthWaitingFor(on board: [BoardDeparture], at now: Date) -> Bool {
         guard let late = overdue(at: now) else { return true }
         guard isStillDue(at: now), let alight = alightStation, let arrival else { return false }

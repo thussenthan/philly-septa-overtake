@@ -12,28 +12,20 @@ struct DepartureBoardView: View {
     @EnvironmentObject private var model: CommuteModel
 
     var body: some View {
-        // Re-judged every few seconds: a late train only gets less worth waiting for,
-        // and the board itself is rebuilt just twice a minute.
-        TimelineView(.periodic(from: .now, by: 5)) { context in
-            let rows = shown(at: context.date)
-            if !rows.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, departure in
-                        if index > 0 { Divider().padding(.leading, 52) }
-                        row(departure)
-                    }
+        // Every train stays for its whole grace, late or not and beaten or not: the
+        // board is the platform sign, and a train the rider can see pulling in belongs
+        // on it. Judging whether a late train is still worth taking is the
+        // recommendation card's job, not the board's.
+        if !model.departures.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                ForEach(Array(model.departures.enumerated()), id: \.element.id) { index, departure in
+                    if index > 0 { Divider().padding(.leading, 52) }
+                    row(departure)
                 }
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
             }
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16))
         }
-    }
-
-    /// The board, less any train that should already have left and would no longer
-    /// get the rider there first even if it pulled in now. A late train stays only
-    /// while it is still an optimal candidate.
-    private func shown(at now: Date) -> [BoardDeparture] {
-        model.departures.filter { $0.isWorthWaitingFor(on: model.departures, at: now) }
     }
 
     private var header: some View {
