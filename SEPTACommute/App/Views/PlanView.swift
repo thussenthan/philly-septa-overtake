@@ -291,7 +291,8 @@ struct PlanView: View {
                         narrator: model.narrator,
                         network: model.network,
                         alert: model.alert(for: best),
-                        alertLabel: model.alert(for: best).map { model.alertChipText($0) }
+                        alertLabel: model.alert(for: best).map { model.alertChipText($0) },
+                        departures: model.departures
                     )
                 }
                 .buttonStyle(.plain)

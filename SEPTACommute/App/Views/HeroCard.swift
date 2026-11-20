@@ -21,10 +21,14 @@ struct HeroCard: View {
     /// SEPTA's worst notice for the lines this option uses, if any.
     var alert: ServiceAlert?
     var alertLabel: String?
+    /// The board for the station this journey boards at, which is where a train that
+    /// should already have left — but may only be late — is found.
+    var departures: [BoardDeparture] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             timing
+            lateTrainNote
             if !journey.isWalkOnly {
                 Divider().opacity(0.35).padding(.vertical, 14)
                 instructions
@@ -74,6 +78,52 @@ struct HeroCard: View {
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: - A train that may only be late
+
+    /// A train that would have done the job, should already have left, and is still
+    /// within its grace — for a rider standing on the platform.
+    ///
+    /// The card's countdown stays on the next train still to come: that is the one
+    /// thing it can promise, and a countdown stuck on "due" for three minutes would
+    /// leave the rider with nothing to act on if the train really had gone. But the
+    /// timetable can't tell late from gone, so the late one is mentioned rather than
+    /// dropped — otherwise a rider watching it pull in would see the app telling them
+    /// to wait for the one after.
+    ///
+    /// Only at the station. Away from it, the rider can't see whether it has come and
+    /// shouldn't set off counting on a train that has probably left.
+    private func lateTrain(asOf now: Date) -> BoardDeparture? {
+        guard journey.startsAtStation, let next = journey.rides.first?.departure else { return nil }
+        return departures.last {
+            $0.isUseful && $0.departure < next && $0.overdue(at: now) != nil && $0.isStillDue(at: now)
+        }
+    }
+
+    private func lateTrainText(_ train: BoardDeparture, asOf now: Date) -> String {
+        let late = train.overdue(at: now) ?? 0
+        let name = "The \(Format.clock(train.departure)) \(train.routeBadge)"
+        let status = late < 60 ? "is due now" : Format.overdueSentence(late)
+        return "\(name) \(status). If it's running late and pulls in, take it — the countdown is for the train after."
+    }
+
+    @ViewBuilder
+    private var lateTrainNote: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            if let train = lateTrain(asOf: context.date) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.caption.weight(.semibold))
+                    Text(lateTrainText(train, asOf: context.date))
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.top, 10)
+            }
         }
     }
 
@@ -380,6 +430,7 @@ struct HeroCard: View {
             }
         }
         parts.append("arrive \(Format.clock(journey.arrivalTime))")
+        if let train = lateTrain(asOf: Date()) { parts.append(lateTrainText(train, asOf: Date())) }
         if let alertLabel { parts.append(alertLabel) }
         return parts.joined(separator: ", ")
     }
@@ -432,7 +483,9 @@ struct LeaveCountdown: View {
                 if remaining < -5 {
                     // "Go now" past the moment the train left sent a rider running for
                     // one that had gone. Say so, and find the next one straight away.
-                    Text(atStation ? "Just left" : "Just missed it")
+                    // Not "just left" at the station: the timetable can't tell late from
+                    // gone, and the late-train note below says so a moment later.
+                    Text(atStation ? "Due now" : "Just missed it")
                         .font(.system(size: numberSize * 0.75, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .minimumScaleFactor(0.6)
@@ -464,7 +517,7 @@ struct LeaveCountdown: View {
                 if missed { model.replan() }
             }
             .accessibilityLabel(
-                remaining < -5 ? "missed, finding the next train"
+                remaining < -5 ? (atStation ? "due now, finding the next train" : "missed, finding the next train")
                     : atStation
                         ? (remaining <= 30 ? "boarding now" : "train in \(Format.minutes(remaining))")
                         : (remaining <= 30 ? "leave now" : "leave in \(Format.minutes(remaining))")
