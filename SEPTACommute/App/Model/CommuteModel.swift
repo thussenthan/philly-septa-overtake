@@ -538,7 +538,12 @@ final class CommuteModel: ObservableObject {
     /// before a quieter one got a row — at a station like 15th St a platform could
     /// vanish from the board altogether.
     func stationBoard(at station: StationID, asOf now: Date) -> [StationDeparture] {
-        boardPlanner.stationBoard(at: station, after: now, limit: 1_000)
+        boardPlanner.stationBoard(
+            at: station,
+            after: now,
+            limit: 1_000,
+            lookback: JourneyPlanner.departureGrace
+        )
     }
 
     /// Where a station board should open: the station the rider is standing in, else
@@ -703,13 +708,20 @@ final class CommuteModel: ObservableObject {
             to: destinations,
             after: now,
             aimingAt: plan.best?.rides.first?.alightStation,
-            limit: boardMaximum
+            limit: boardMaximum,
+            lookback: JourneyPlanner.departureGrace
         )
+        // Trains that should already have left stay on, first, for a few minutes: the
+        // times are scheduled, so one of them may be running late rather than gone.
+        // They sit outside the window and the minimum below, which are about trains
+        // still to come.
+        let overdue = board.prefix { $0.departure < now }
+        let upcoming = board.dropFirst(overdue.count)
         // A window rather than a count: six rows is twenty-five minutes at the peak
         // and an hour on a Sunday. The minimum keeps a sparse evening from showing a
         // single row; the full board is a tap away for anything further out.
-        let soon = board.prefix { $0.departure.timeIntervalSince(now) <= boardWindow }.count
-        return Array(board.prefix(max(soon, boardMinimum)))
+        let soon = upcoming.prefix { $0.departure.timeIntervalSince(now) <= boardWindow }.count
+        return Array(overdue) + Array(upcoming.prefix(max(soon, boardMinimum)))
     }
 
     private nonisolated static let boardWindow: TimeInterval = 30 * 60

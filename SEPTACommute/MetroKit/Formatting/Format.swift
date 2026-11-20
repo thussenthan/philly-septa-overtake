@@ -58,6 +58,21 @@ public enum Format {
         return "\(whole / 60):\(pad(whole % 60))"
     }
 
+    /// What an overdue train's countdown says: "due" for its first minute, then "2 min
+    /// ago". Never seconds — the train may be late rather than gone, so there is
+    /// nothing to count down to, and a ticking digit would claim a precision the
+    /// timetable doesn't have.
+    public static func overdue(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds / 60)
+        return total < 1 ? "due" : "\(total) min ago"
+    }
+
+    /// The same as a sentence: "should have left just now", "should have left 2 min ago".
+    public static func overdueSentence(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds / 60)
+        return total < 1 ? "should have left just now" : "should have left \(total) min ago"
+    }
+
     /// "+3 min" / "−2 min" / "same time", for comparing options.
     public static func signedMinutes(_ seconds: TimeInterval) -> String {
         let total = Int((seconds / 60).rounded())

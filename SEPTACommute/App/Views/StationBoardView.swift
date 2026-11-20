@@ -79,7 +79,7 @@ struct StationBoardView: View {
                             message: "No trains in the next hour and a half. Service may have stopped for the night."
                         )
                     } else {
-                        ForEach(platforms(from: rows), id: \.title) { platform in
+                        ForEach(platforms(from: rows, now: context.date), id: \.title) { platform in
                             platformCard(platform, now: context.date)
                         }
                     }
@@ -100,7 +100,11 @@ struct StationBoardView: View {
 
     /// One card per direction, the way the platforms are laid out, ordered by whichever
     /// has a train leaving first.
-    private func platforms(from rows: [StationDeparture]) -> [Platform] {
+    ///
+    /// Trains that should already have left are kept on top of their card and don't
+    /// count towards its few rows: one may only be late, and it shouldn't cost the
+    /// platform a train still to come.
+    private func platforms(from rows: [StationDeparture], now: Date) -> [Platform] {
         var order: [String] = []
         var grouped: [String: [StationDeparture]] = [:]
         for row in rows {
@@ -108,7 +112,12 @@ struct StationBoardView: View {
             if grouped[key] == nil { order.append(key) }
             grouped[key, default: []].append(row)
         }
-        return order.map { Platform(title: $0, rows: Array((grouped[$0] ?? []).prefix(rowsPerPlatform))) }
+        return order.map { key in
+            let all = grouped[key] ?? []
+            let overdue = all.prefix { $0.departure < now }
+            let upcoming = all.dropFirst(overdue.count).prefix(rowsPerPlatform)
+            return Platform(title: key, rows: Array(overdue) + Array(upcoming))
+        }
     }
 
     private func platformCard(_ platform: Platform, now: Date) -> some View {
@@ -135,18 +144,30 @@ struct StationBoardView: View {
                 textColor: Theme.foreground(on: line),
                 size: 28
             )
-            Text(row.serviceHeadline)
-                .font(.subheadline)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.serviceHeadline)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                // Scheduled times only, so past its minute the train may be late
+                // rather than gone. Said in words, so the row isn't mistaken for one
+                // still to come.
+                if let late = row.overdue(at: now) {
+                    Text(Format.overdueSentence(late))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
                 // Its own one-second timeline: the rows above are recomputed every
                 // fifteen seconds, which is plenty for the list but not for the
                 // seconds that appear inside the last two minutes.
                 TimelineView(.periodic(from: .now, by: 1)) { tick in
-                    Text(Format.countdown(row.departure.timeIntervalSince(tick.date)))
+                    let remaining = row.departure.timeIntervalSince(tick.date)
+                    Text(remaining > 0 ? Format.countdown(remaining) : Format.overdue(-remaining))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
+                        .foregroundStyle(remaining > 0 ? Color.primary : Color.secondary)
                         .contentTransition(.numericText(countsDown: true))
                 }
                 Text(Format.clock(row.departure))
@@ -163,8 +184,13 @@ struct StationBoardView: View {
 
     private func spoken(_ row: StationDeparture, remaining: TimeInterval) -> String {
         var parts: [String] = [row.routeBadge, row.platformTitle, row.serviceHeadline]
-        parts.append("leaves at \(Format.clock(row.departure))")
-        if remaining > 0 { parts.append("in \(Format.minutes(remaining))") }
+        if remaining > 0 {
+            parts.append("leaves at \(Format.clock(row.departure))")
+            parts.append("in \(Format.minutes(remaining))")
+        } else {
+            parts.append("scheduled \(Format.clock(row.departure))")
+            parts.append(Format.overdueSentence(-remaining))
+        }
         return parts.joined(separator: ", ")
     }
 }

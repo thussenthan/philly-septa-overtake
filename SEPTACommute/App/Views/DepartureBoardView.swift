@@ -91,7 +91,7 @@ struct DepartureBoardView: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = departure.departure.timeIntervalSince(context.date)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(remaining <= 0 ? "gone" : Format.countdown(remaining))
+                Text(countdownText(remaining: remaining))
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(countdownColor(remaining: remaining, recommended: recommended))
@@ -124,7 +124,11 @@ struct DepartureBoardView: View {
     /// four interpolations and a ternary is enough to time the type checker out.
     private func spokenLabel(for departure: BoardDeparture, recommended: Bool) -> String {
         var parts: [String] = [departure.routeBadge, departure.platformHeadline]
-        parts.append("leaves \(Format.clock(departure.departure))")
+        if let late = departure.overdue(at: .now) {
+            parts.append("scheduled \(Format.clock(departure.departure)), \(Format.overdueSentence(late))")
+        } else {
+            parts.append("leaves \(Format.clock(departure.departure))")
+        }
         if let alight = departure.alightStation, let arrival = departure.arrival {
             parts.append("reaches \(stationName(alight)) at \(Format.clock(arrival))")
         } else if let missed = departure.missedDestination {
@@ -132,6 +136,14 @@ struct DepartureBoardView: View {
         }
         if recommended { parts.append("recommended") }
         return parts.joined(separator: ", ")
+    }
+
+    /// Counting down, then "due" / "2 min ago" while the train may only be late, then
+    /// "gone" for the few seconds until the next refresh takes the row away.
+    private func countdownText(remaining: TimeInterval) -> String {
+        if remaining > 0 { return Format.countdown(remaining) }
+        if -remaining <= JourneyPlanner.departureGrace { return Format.overdue(-remaining) }
+        return "gone"
     }
 
     /// Three-way choice pulled out of the view body — `.tertiary` and `.primary` are

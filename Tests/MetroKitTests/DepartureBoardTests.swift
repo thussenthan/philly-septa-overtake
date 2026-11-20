@@ -212,4 +212,33 @@ final class DepartureBoardTests: XCTestCase {
             "\(pattern.id) offers boarding where SEPTA prohibits it"
         )
     }
+
+    // MARK: - Late trains
+
+    /// The times are scheduled, so the 08:00 local two minutes later may only be late.
+    /// It stays on, first, and doesn't take one of the upcoming trains' places.
+    func testATrainJustPastItsTimeStaysOnTheBoard() throws {
+        let now = Fixture.date(8, 2)
+        let rows = Fixture.planner().departureBoard(
+            from: "a", to: ["f"], after: now, limit: 2, lookback: JourneyPlanner.departureGrace
+        )
+        let first = try XCTUnwrap(rows.first)
+        XCTAssertEqual(first.departure, Fixture.date(8, 0))
+        XCTAssertEqual(first.overdue(at: now), 120)
+        XCTAssertEqual(rows.dropFirst().filter { $0.departure >= now }.count, 2, "the limit is for trains still to come")
+    }
+
+    /// Past the grace it has gone, as far as the board is concerned.
+    func testATrainLongPastItsTimeIsDropped() {
+        let rows = Fixture.planner().departureBoard(
+            from: "a", to: ["f"], after: Fixture.date(8, 4), lookback: JourneyPlanner.departureGrace
+        )
+        XCTAssertFalse(rows.contains { $0.departure == Fixture.date(8, 0) })
+    }
+
+    /// Without asking for it, the board is still only trains to come.
+    func testNoLookbackMeansNoOverdueTrains() {
+        let now = Fixture.date(8, 2)
+        XCTAssertTrue(Fixture.planner().departureBoard(from: "a", to: ["f"], after: now).allSatisfy { $0.departure >= now })
+    }
 }

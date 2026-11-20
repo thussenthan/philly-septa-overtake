@@ -186,6 +186,15 @@ final class FormatTests: XCTestCase {
         XCTAssertEqual(Format.compactMinutes(4320), "1h12m")
     }
 
+    /// Whole minutes only: the train may be late, so there's nothing to count.
+    func testOverdue() {
+        XCTAssertEqual(Format.overdue(20), "due")
+        XCTAssertEqual(Format.overdue(61), "1 min ago")
+        XCTAssertEqual(Format.overdue(179), "2 min ago")
+        XCTAssertEqual(Format.overdueSentence(20), "should have left just now")
+        XCTAssertEqual(Format.overdueSentence(150), "should have left 2 min ago")
+    }
+
     func testCountdown() {
         XCTAssertEqual(Format.countdown(-5), "now")
         XCTAssertEqual(Format.countdown(0.4), "now", "not \"0:00\"")

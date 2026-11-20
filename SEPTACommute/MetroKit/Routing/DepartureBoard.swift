@@ -86,6 +86,17 @@ public struct BoardDeparture: Sendable, Hashable, Identifiable {
 
 public extension JourneyPlanner {
 
+    /// How long a train stays on a board after its scheduled departure.
+    ///
+    /// These are scheduled times, and SEPTA publishes no delays for the subway, so the
+    /// moment a train's minute passes the app has no idea whether it left or is still
+    /// two stations up the line. Dropping it then is the worse guess: a rider on the
+    /// platform watching a late train pull in would find it already gone from the app,
+    /// with nothing to tell them it was the one they were waiting for. Three minutes
+    /// covers an ordinary late running without leaving a train on the board long
+    /// after it has plainly gone.
+    static let departureGrace: TimeInterval = 3 * 60
+
     /// A line and its feed direction: the platform, when there is no compass word.
     private static func platformKey(_ pattern: ServicePattern) -> String {
         "\(pattern.lineID.rawValue)|\(pattern.direction)"
@@ -117,10 +128,17 @@ public extension JourneyPlanner {
         /// Without it those rows can say they are no use but not why.
         aimingAt: StationID? = nil,
         limit: Int = 8,
-        horizon: TimeInterval = 90 * 60
+        horizon: TimeInterval = 90 * 60,
+        /// How far before `time` to keep trains that were scheduled to have left —
+        /// usually `departureGrace`. They come first and don't count towards `limit`,
+        /// so a late train never pushes an upcoming one off the board.
+        lookback: TimeInterval = 0
     ) -> [BoardDeparture] {
         guard !destinations.isEmpty else { return [] }
-        let window = DateInterval(start: time, end: time.addingTimeInterval(horizon))
+        let window = DateInterval(
+            start: time.addingTimeInterval(-max(lookback, 0)),
+            end: time.addingTimeInterval(horizon)
+        )
 
         // Which patterns can do the job, and where each would drop the rider.
         var alightIndexByPattern: [PatternID: Int] = [:]
@@ -196,7 +214,7 @@ public extension JourneyPlanner {
             if lhs.isUseful != rhs.isUseful { return lhs.isUseful }
             return (lhs.arrival ?? .distantFuture) < (rhs.arrival ?? .distantFuture)
         }
-        return Array(board.prefix(limit))
+        return Self.keepingOverdue(board, before: time) { Array($0.prefix(limit)) }
     }
 }
 
@@ -269,9 +287,15 @@ public extension JourneyPlanner {
         at station: StationID,
         after time: Date,
         horizon: TimeInterval = 90 * 60,
-        limit: Int = 60
+        limit: Int = 60,
+        /// As on the trip board: trains scheduled up to this long before `time`, kept
+        /// first and outside `limit`.
+        lookback: TimeInterval = 0
     ) -> [StationDeparture] {
-        let window = DateInterval(start: time, end: time.addingTimeInterval(horizon))
+        let window = DateInterval(
+            start: time.addingTimeInterval(-max(lookback, 0)),
+            end: time.addingTimeInterval(horizon)
+        )
         var rows: [StationDeparture] = []
 
         for pattern in network.patterns(serving: station) {
@@ -298,6 +322,33 @@ public extension JourneyPlanner {
             if lhs.departure != rhs.departure { return lhs.departure < rhs.departure }
             return lhs.id < rhs.id
         }
-        return Array(rows.prefix(limit))
+        return Self.keepingOverdue(rows, before: time) { Array($0.prefix(limit)) }
+    }
+
+    /// The overdue rows of a sorted board, untouched, followed by `trim` applied to the
+    /// rest — so a cap on how many rows to show is a cap on trains still to come.
+    private static func keepingOverdue<Row>(
+        _ rows: [Row],
+        before time: Date,
+        trim: ([Row]) -> [Row]
+    ) -> [Row] where Row: Departing {
+        let overdue = rows.prefix { $0.departure < time }
+        return Array(overdue) + trim(Array(rows.dropFirst(overdue.count)))
     }
 }
+
+/// A row with a scheduled departure, which is all the overdue rule needs to know.
+public protocol Departing {
+    var departure: Date { get }
+}
+
+public extension Departing {
+    /// How long ago this train was scheduled to leave, or nil if it hasn't been yet.
+    func overdue(at now: Date) -> TimeInterval? {
+        let late = now.timeIntervalSince(departure)
+        return late > 0 ? late : nil
+    }
+}
+
+extension BoardDeparture: Departing {}
+extension StationDeparture: Departing {}

@@ -29,6 +29,19 @@ final class StationBoardTests: XCTestCase {
         XCTAssertLessThanOrEqual(Fixture.planner().stationBoard(at: "c", after: Fixture.date(8, 0), limit: 3).count, 3)
     }
 
+    /// A train scheduled a minute ago may be running late, so it stays on, ahead of
+    /// the trains to come and outside the limit.
+    func testOverdueTrainsStayForTheGrace() {
+        let now = Fixture.date(8, 11)
+        let rows = Fixture.planner().stationBoard(
+            at: "a", after: now, limit: 3, lookback: JourneyPlanner.departureGrace
+        )
+        let overdue = rows.prefix { $0.departure < now }
+        XCTAssertFalse(overdue.isEmpty)
+        XCTAssertTrue(overdue.allSatisfy { now.timeIntervalSince($0.departure) <= JourneyPlanner.departureGrace })
+        XCTAssertEqual(rows.count - overdue.count, 3)
+    }
+
     /// The same promise against the real feed: nothing on a station's board is a train
     /// that ends there or won't open its doors there.
     func testEveryRealStationBoardIsMadeOfRealDepartures() throws {
